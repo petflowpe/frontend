@@ -1,0 +1,67 @@
+id_cita,id_cliente,fecha_cita,hora_cita,tipo_servicio,duracion_minutos,estado_cita,monto_facturado,vehiculo_asignado,empleado_asignado,calificacion_servicio,comentarios_cliente,distrito_servicio,direccion_servicio,latitud,longitud
+CITA001,C001,2024-10-05,09:00,peluquería,60,completada,180.00,Vehículo 1,María López,5,Excelente servicio,Miraflores,Av. Larco 1234,-12.1195,-77.0282
+CITA002,C001,2024-11-10,14:30,baño,45,completada,120.00,Vehículo 1,Carlos Ruiz,5,Muy puntual,Miraflores,Av. Larco 1234,-12.1195,-77.0282
+CITA003,C001,2024-12-15,10:00,veterinaria,90,completada,250.00,Vehículo 2,Dr. Sánchez,5,Profesional,Miraflores,Av. Larco 1234,-12.1195,-77.0282
+CITA004,C002,2024-10-12,15:00,peluquería,75,completada,280.00,Vehículo 1,María López,4,Buen servicio,Miraflores,Calle Schell 567,-12.1215,-77.0295
+CITA005,C002,2024-11-20,09:30,baño,60,completada,200.00,Vehículo 1,Carlos Ruiz,5,Excelente,Miraflores,Calle Schell 567,-12.1215,-77.0295
+CITA006,C002,2024-12-10,16:00,peluquería,75,completada,280.00,Vehículo 1,María López,5,Muy contenta,Miraflores,Calle Schell 567,-12.1215,-77.0295
+CITA007,C003,2024-10-08,11:00,veterinaria,120,completada,450.00,Vehículo 2,Dr. Sánchez,5,Excelente atención,Miraflores,Av. Benavides 890,-12.1180,-77.0310
+CITA008,C003,2024-11-15,14:00,peluquería,90,completada,320.00,Vehículo 1,María López,5,Perfecto,Miraflores,Av. Benavides 890,-12.1180,-77.0310
+CITA009,C003,2024-12-20,10:30,baño,80,completada,260.00,Vehículo 1,Carlos Ruiz,4,Bien,Miraflores,Av. Benavides 890,-12.1180,-77.0310
+CITA010,C004,2024-10-25,10:00,peluquería,30,completada,80.00,Vehículo 1,María López,5,Adorable,Miraflores,Calle Porta 234,-12.1225,-77.0265
+CITA011,C004,2024-11-25,09:00,baño,25,completada,60.00,Vehículo 1,Carlos Ruiz,4,Bueno,Miraflores,Calle Porta 234,-12.1225,-77.0265
+CITA012,C005,2024-10-18,15:30,peluquería,50,completada,150.00,Vehículo 1,María López,5,Recomendado,Miraflores,Av. Pardo 456,-12.1170,-77.0320
+CITA013,C005,2024-11-22,14:00,baño,40,completada,110.00,Vehículo 1,Carlos Ruiz,5,Excelente,Miraflores,Av. Pardo 456,-12.1170,-77.0320
+CITA014,C005,2024-12-18,16:30,peluquería,50,completada,150.00,Vehículo 1,María López,5,Perfecto,Miraflores,Av. Pardo 456,-12.1170,-77.0320
+CITA015,C006,2024-10-02,08:00,peluquería,120,completada,500.00,Vehículo 2,María López,5,Profesional,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA016,C006,2024-10-16,08:00,peluquería,120,completada,500.00,Vehículo 2,María López,5,Excelente,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA017,C006,2024-10-30,08:00,peluquería,120,completada,500.00,Vehículo 2,María López,5,Perfecto,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA018,C006,2024-11-13,08:00,peluquería,120,completada,500.00,Vehículo 2,María López,5,Impecable,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA019,C006,2024-11-27,08:00,peluquería,120,completada,500.00,Vehículo 2,María López,5,Excelente,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA020,C006,2024-12-11,08:00,veterinaria,150,completada,600.00,Vehículo 2,Dr. Sánchez,5,Muy profesional,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA021,C006,2024-12-22,08:00,peluquería,120,completada,500.00,Vehículo 2,María López,5,Siempre excelente,San Isidro,Av. Javier Prado 890,-12.0931,-77.0465
+CITA022,C007,2024-10-20,15:00,veterinaria,60,completada,180.00,Vehículo 2,Dr. Sánchez,4,Buen servicio,San Isidro,Calle Los Pinos 123,-12.0945,-77.0480
+CITA023,C007,2024-11-25,14:30,peluquería,55,completada,170.00,Vehículo 2,María López,5,Excelente,San Isidro,Calle Los Pinos 123,-12.0945,-77.0480
+CITA024,C007,2024-12-05,16:00,baño,45,completada,130.00,Vehículo 2,Carlos Ruiz,4,Bien,San Isidro,Calle Los Pinos 123,-12.0945,-77.0480
+CITA025,C008,2024-10-28,10:00,peluquería,40,completada,140.00,Vehículo 2,María López,5,Adorables,San Isidro,Av. Conquistadores 456,-12.0920,-77.0455
+CITA026,C008,2024-11-30,09:30,baño,35,completada,100.00,Vehículo 2,Carlos Ruiz,5,Muy limpio,San Isidro,Av. Conquistadores 456,-12.0920,-77.0455
+CITA027,C008,2024-12-12,11:00,peluquería,40,completada,140.00,Vehículo 2,María López,5,Perfecto,San Isidro,Av. Conquistadores 456,-12.0920,-77.0455
+CITA028,C009,2024-10-15,16:00,baño,25,completada,70.00,Vehículo 2,Carlos Ruiz,4,Bueno,San Isidro,Calle Las Camelias 789,-12.0955,-77.0470
+CITA029,C009,2024-11-30,15:30,peluquería,30,completada,90.00,Vehículo 2,María López,5,Excelente,San Isidro,Calle Las Camelias 789,-12.0955,-77.0470
+CITA030,C010,2024-10-10,09:00,peluquería,90,completada,380.00,Vehículo 2,María López,5,Profesional,San Isidro,Av. República de Panamá 234,-12.0915,-77.0490
+CITA031,C010,2024-11-18,08:30,veterinaria,120,completada,450.00,Vehículo 2,Dr. Sánchez,5,Excelente veterinario,San Isidro,Av. República de Panamá 234,-12.0915,-77.0490
+CITA032,C010,2024-12-16,10:00,baño,75,completada,300.00,Vehículo 2,Carlos Ruiz,5,Muy bien,San Isidro,Av. República de Panamá 234,-12.0915,-77.0490
+CITA033,C011,2024-10-22,14:00,peluquería,65,completada,220.00,Vehículo 3,María López,4,Bien,Jesús María,Av. Brasil 1234,-12.0720,-77.0490
+CITA034,C011,2024-11-28,15:00,baño,55,completada,180.00,Vehículo 3,Carlos Ruiz,5,Excelente,Jesús María,Av. Brasil 1234,-12.0720,-77.0490
+CITA035,C011,2024-12-08,13:30,peluquería,65,completada,220.00,Vehículo 3,María López,5,Muy bien,Jesús María,Av. Brasil 1234,-12.0720,-77.0490
+CITA036,C012,2024-10-06,10:00,veterinaria,100,completada,380.00,Vehículo 3,Dr. Sánchez,5,Excelente,Jesús María,Av. San Felipe 567,-12.0735,-77.0505
+CITA037,C012,2024-11-12,09:30,peluquería,80,completada,340.00,Vehículo 3,María López,5,Perfecto,Jesús María,Av. San Felipe 567,-12.0735,-77.0505
+CITA038,C012,2024-12-19,11:00,baño,70,completada,280.00,Vehículo 3,Carlos Ruiz,5,Impecable,Jesús María,Av. San Felipe 567,-12.0735,-77.0505
+CITA039,C013,2024-10-30,15:30,peluquería,45,completada,160.00,Vehículo 3,María López,4,Buen trabajo,Jesús María,Calle Manco Cápac 890,-12.0710,-77.0475
+CITA040,C013,2024-12-01,14:00,baño,40,completada,130.00,Vehículo 3,Carlos Ruiz,5,Muy bien,Jesús María,Calle Manco Cápac 890,-12.0710,-77.0475
+CITA041,C013,2024-12-14,16:00,peluquería,45,completada,160.00,Vehículo 3,María López,5,Excelente,Jesús María,Calle Manco Cápac 890,-12.0710,-77.0475
+CITA042,C014,2024-11-05,11:00,baño,20,completada,60.00,Vehículo 3,Carlos Ruiz,4,Bien,Jesús María,Av. Salaverry 345,-12.0745,-77.0520
+CITA043,C014,2024-11-28,10:30,peluquería,25,completada,80.00,Vehículo 3,María López,5,Adorable,Jesús María,Av. Salaverry 345,-12.0745,-77.0520
+CITA044,C015,2024-10-04,13:00,peluquería,140,completada,580.00,Vehículo 3,María López,5,Servicio premium,Surco,Av. Primavera 2345,-12.1450,-76.9950
+CITA045,C015,2024-10-25,12:00,veterinaria,180,completada,650.00,Vehículo 3,Dr. Sánchez,5,Excelente,Surco,Av. Primavera 2345,-12.1450,-76.9950
+CITA046,C015,2024-11-15,13:30,peluquería,140,completada,580.00,Vehículo 3,María López,5,Impecable,Surco,Av. Primavera 2345,-12.1450,-76.9950
+CITA047,C015,2024-12-10,11:00,baño,120,completada,480.00,Vehículo 3,Carlos Ruiz,5,Perfecto,Surco,Av. Primavera 2345,-12.1450,-76.9950
+CITA048,C015,2024-12-21,14:00,peluquería,140,completada,580.00,Vehículo 3,María López,5,Siempre excelente,Surco,Av. Primavera 2345,-12.1450,-76.9950
+CITA049,C016,2024-10-18,10:00,peluquería,60,completada,190.00,Vehículo 3,María López,4,Bien,Surco,Av. El Polo 678,-12.1480,-76.9970
+CITA050,C016,2024-11-22,09:30,baño,50,completada,150.00,Vehículo 3,Carlos Ruiz,5,Muy bien,Surco,Av. El Polo 678,-12.1480,-76.9970
+CITA051,C016,2024-12-11,11:00,peluquería,60,completada,190.00,Vehículo 3,María López,5,Excelente,Surco,Av. El Polo 678,-12.1480,-76.9970
+CITA052,C017,2024-10-28,15:00,peluquería,45,completada,165.00,Vehículo 3,María López,5,Adorables,Surco,Calle Los Sauces 901,-12.1420,-76.9930
+CITA053,C017,2024-12-02,14:30,baño,40,completada,140.00,Vehículo 3,Carlos Ruiz,4,Bien,Surco,Calle Los Sauces 901,-12.1420,-76.9930
+CITA054,C017,2024-12-17,16:00,peluquería,45,completada,165.00,Vehículo 3,María López,5,Perfecto,Surco,Calle Los Sauces 901,-12.1420,-76.9930
+CITA055,C018,2024-10-08,09:00,veterinaria,130,completada,490.00,Vehículo 3,Dr. Sánchez,5,Excelente atención,Surco,Av. Santiago de Surco 1234,-12.1495,-76.9985
+CITA056,C018,2024-11-05,08:30,peluquería,110,completada,460.00,Vehículo 3,María López,5,Profesional,Surco,Av. Santiago de Surco 1234,-12.1495,-76.9985
+CITA057,C018,2024-12-03,10:00,baño,95,completada,380.00,Vehículo 3,Carlos Ruiz,5,Impecable,Surco,Av. Santiago de Surco 1234,-12.1495,-76.9985
+CITA058,C018,2024-12-23,09:30,peluquería,110,completada,460.00,Vehículo 3,María López,5,Siempre perfectos,Surco,Av. Santiago de Surco 1234,-12.1495,-76.9985
+CITA059,C019,2024-10-15,14:00,peluquería,65,completada,210.00,Vehículo 1,María López,4,Buen servicio,Barranco,Av. Grau 456,-12.1470,-77.0200
+CITA060,C019,2024-11-20,15:30,baño,55,completada,170.00,Vehículo 1,Carlos Ruiz,5,Muy bien,Barranco,Av. Grau 456,-12.1470,-77.0200
+CITA061,C019,2024-12-09,13:00,peluquería,65,completada,210.00,Vehículo 1,María López,5,Excelente,Barranco,Av. Grau 456,-12.1470,-77.0200
+CITA062,C020,2024-11-10,10:00,baño,20,completada,55.00,Vehículo 1,Carlos Ruiz,4,Bien,Barranco,Jr. Cajamarca 789,-12.1485,-77.0215
+CITA063,C020,2024-11-26,09:30,peluquería,25,completada,75.00,Vehículo 1,María López,5,Adorable,Barranco,Jr. Cajamarca 789,-12.1485,-77.0215
+CITA064,C021,2024-10-12,16:00,peluquería,95,completada,400.00,Vehículo 1,María López,5,Excelente trabajo,Barranco,Calle Domeyer 123,-12.1455,-77.0185
+CITA065,C021,2024-11-18,15:30,veterinaria,110,completada,480.00,Vehículo 1,Dr. Sánchez,5,Muy profesional,Barranco,Calle Domeyer 123,-12.1455,-77.0185
+CITA066,C021,2024-12-24,14:00,peluquería,95,completada,400.00,Vehículo 1,María López,5,Perfecto como siempre,Barranco,Calle Domeyer 123,-12.1455,-77.0185

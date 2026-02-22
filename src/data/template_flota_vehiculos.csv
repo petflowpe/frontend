@@ -1,0 +1,4 @@
+id_vehiculo,nombre_vehiculo,tipo_vehiculo,capacidad_citas_dia,zona_operacion_actual,distrito_base,estado_actual,año_adquisicion,placa,marca_modelo,equipamiento,observaciones
+VEH001,Vehículo 1,Van móvil,8,Zona Centro,Miraflores,activo,2023,ABC-123,Toyota Hiace,"Mesa peluquería, tanque agua 100L, generador, aire acondicionado","Vehículo principal, mejor equipado"
+VEH002,Vehículo 2,Van móvil,8,Zona Norte,San Isidro,activo,2023,DEF-456,Toyota Hiace,"Mesa veterinaria, mesa peluquería, tanque agua 100L, generador","Equipamiento completo para veterinaria"
+VEH003,Vehículo 3,Van compacta,6,Zona Sur,Surco,activo,2024,GHI-789,Hyundai H1,"Mesa peluquería, tanque agua 80L, generador portátil","Vehículo más nuevo, ideal para Surco"

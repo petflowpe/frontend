@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reserva tu Cita - SmartPet Grooming Móvil</title>
+  <meta name="description" content="Agenda tu cita de grooming móvil 24/7. Servicio a domicilio para tu mascota.">
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:title" content="Reserva tu Cita - SmartPet">
+  <meta property="og:description" content="Grooming móvil a domicilio para tu mascota">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://smartpet.com/reservar">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      animation: fadeInDown 0.6s ease;
+    }
+
+    .header p {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      animation: fadeInUp 0.6s ease;
+    }
+
+    .booking-card {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 40px;
+      animation: fadeInUp 0.8s ease;
+    }
+
+    .progress-bar {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .progress-bar::before {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: #e0e0e0;
+      z-index: 0;
+    }
+
+    .progress-bar-fill {
+      position: absolute;
+      top: 20px;
+      left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width 0.3s ease;
+      z-index: 1;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 2;
+      position: relative;
+    }
+
+    .step-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #666;
+      transition: all 0.3s ease;
+      margin-bottom: 8px;
+    }
+
+    .step.active .step-circle {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      transform: scale(1.1);
+    }
+
+    .step.completed .step-circle {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .step-label {
+      font-size: 0.85rem;
+      color: #666;
+      text-align: center;
+    }
+
+    .form-section {
+      display: none;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .form-section.active {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 1rem;
+      transition: border-color 0.3s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .service-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .service-card {
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .service-card:hover {
+      border-color: #667eea;
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.2);
+    }
+
+    .service-card.selected {
+      border-color: #667eea;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    }
+
+    .service-card h3 {
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .service-card p {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+    }
+
+    .service-price {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .time-slots {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .time-slot {
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .time-slot:hover {
+      border-color: #667eea;
+      background: rgba(102, 126, 234, 0.1);
+    }
+
+    .time-slot.selected {
+      border-color: #667eea;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+    }
+
+    .time-slot.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: white;
+      color: #667eea;
+      border: 2px solid #667eea;
+    }
+
+    .btn-secondary:hover {
+      background: #f5f5f5;
+    }
+
+    .confirmation {
+      text-align: center;
+    }
+
+    .success-icon {
+      width: 80px;
+      height: 80px;
+      background: #4CAF50;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      animation: scaleIn 0.5s ease;
+    }
+
+    .success-icon::before {
+      content: '✓';
+      font-size: 3rem;
+      color: white;
+    }
+
+    .summary-box {
+      background: #f9f9f9;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+      text-align: left;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .summary-row:last-child {
+      border-bottom: none;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes scaleIn {
+      from {
+        opacity: 0;
+        transform: scale(0);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 2rem;
+      }
+
+      .booking-card {
+        padding: 24px;
+      }
+
+      .service-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🐾 SmartPet Grooming</h1>
+      <p>Reserva tu cita de grooming móvil - Disponible 24/7</p>
+    </div>
+
+    <div class="booking-card">
+      <!-- Progress Bar -->
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progressFill"></div>
+        <div class="step active" data-step="1">
+          <div class="step-circle">1</div>
+          <div class="step-label">Servicio</div>
+        </div>
+        <div class="step" data-step="2">
+          <div class="step-circle">2</div>
+          <div class="step-label">Fecha y Hora</div>
+        </div>
+        <div class="step" data-step="3">
+          <div class="step-circle">3</div>
+          <div class="step-label">Tus Datos</div>
+        </div>
+        <div class="step" data-step="4">
+          <div class="step-circle">4</div>
+          <div class="step-label">Confirmación</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Seleccionar Servicio -->
+      <div class="form-section active" id="step1">
+        <h2>Selecciona el Servicio</h2>
+        <p style="color: #666; margin-bottom: 24px;">Elige el servicio que necesita tu mascota</p>
+        
+        <div class="service-grid">
+          <div class="service-card" data-service="baño-basico" data-price="50">
+            <h3>🛁 Baño Básico</h3>
+            <p>Baño completo con shampoo premium, secado y cepillado</p>
+            <div class="service-price">Desde S/ 50</div>
+          </div>
+          
+          <div class="service-card" data-service="baño-completo" data-price="80">
+            <h3>✨ Baño Completo</h3>
+            <p>Baño + corte de uñas + limpieza de oídos + perfume</p>
+            <div class="service-price">Desde S/ 80</div>
+          </div>
+          
+          <div class="service-card" data-service="corte-completo" data-price="120">
+            <h3>✂️ Corte Completo</h3>
+            <p>Baño + corte de pelo + estilizado + acabados</p>
+            <div class="service-price">Desde S/ 120</div>
+          </div>
+          
+          <div class="service-card" data-service="spa" data-price="150">
+            <h3>💆 Spa Premium</h3>
+            <p>Tratamiento completo con masajes y aromaterapia</p>
+            <div class="service-price">Desde S/ 150</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tamaño de tu Mascota</label>
+          <select id="petSize">
+            <option value="small">Pequeño (hasta 10 kg)</option>
+            <option value="medium" selected>Mediano (10-25 kg)</option>
+            <option value="large">Grande (25-40 kg)</option>
+            <option value="extra-large">Extra Grande (+40 kg)</option>
+          </select>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Fecha y Hora -->
+      <div class="form-section" id="step2">
+        <h2>Fecha y Hora</h2>
+        <p style="color: #666; margin-bottom: 24px;">¿Cuándo te gustaría el servicio?</p>
+        
+        <div class="form-group">
+          <label>Selecciona la Fecha</label>
+          <input type="date" id="appointmentDate" min="">
+        </div>
+
+        <div class="form-group">
+          <label>Horarios Disponibles</label>
+          <div class="time-slots" id="timeSlots">
+            <!-- Se generan dinámicamente -->
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-secondary" onclick="prevStep()">← Atrás</button>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Datos del Cliente -->
+      <div class="form-section" id="step3">
+        <h2>Tus Datos</h2>
+        <p style="color: #666; margin-bottom: 24px;">Para confirmar tu reserva</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div class="form-group">
+            <label>Nombre *</label>
+            <input type="text" id="firstName" placeholder="Tu nombre" required>
+          </div>
+          
+          <div class="form-group">
+            <label>Apellido *</label>
+            <input type="text" id="lastName" placeholder="Tu apellido" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Email *</label>
+          <input type="email" id="email" placeholder="tu@email.com" required>
+        </div>
+
+        <div class="form-group">
+          <label>Teléfono / WhatsApp *</label>
+          <input type="tel" id="phone" placeholder="+51 999 999 999" required>
+        </div>
+
+        <div class="form-group">
+          <label>Dirección Completa *</label>
+          <input type="text" id="address" placeholder="Av. Principal 123, Dpto 401" required>
+        </div>
+
+        <div class="form-group">
+          <label>Distrito *</label>
+          <select id="district">
+            <option value="miraflores">Miraflores</option>
+            <option value="san-isidro">San Isidro</option>
+            <option value="surco">Surco</option>
+            <option value="la-molina">La Molina</option>
+            <option value="san-borja">San Borja</option>
+            <option value="magdalena">Magdalena</option>
+            <option value="pueblo-libre">Pueblo Libre</option>
+            <option value="barranco">Barranco</option>
+          </select>
+        </div>
+
+        <h3 style="margin-top: 32px; margin-bottom: 16px;">Información de tu Mascota</h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div class="form-group">
+            <label>Nombre de la Mascota *</label>
+            <input type="text" id="petName" placeholder="Nombre de tu mascota" required>
+          </div>
+          
+          <div class="form-group">
+            <label>Raza</label>
+            <input type="text" id="petBreed" placeholder="Ej: Golden Retriever">
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-secondary" onclick="prevStep()">← Atrás</button>
+          <button class="btn btn-primary" onclick="nextStep()">Confirmar Reserva</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Confirmación -->
+      <div class="form-section" id="step4">
+        <div class="confirmation">
+          <div class="success-icon"></div>
+          <h2>¡Reserva Confirmada!</h2>
+          <p style="color: #666; margin: 16px 0;">Hemos enviado un correo de confirmación</p>
+
+          <div class="summary-box" id="summaryBox">
+            <!-- Se genera dinámicamente -->
+          </div>
+
+          <div style="background: #e3f2fd; padding: 20px; border-radius: 12px; margin: 24px 0;">
+            <p style="margin-bottom: 12px;">📱 <strong>Próximos pasos:</strong></p>
+            <ul style="text-align: left; padding-left: 24px; line-height: 1.8;">
+              <li>Recibirás un SMS/WhatsApp 24 horas antes</li>
+              <li>Otro recordatorio 2 horas antes de tu cita</li>
+              <li>Link de tracking para seguir a tu groomer en tiempo real</li>
+              <li>El pago se realiza al finalizar el servicio</li>
+            </ul>
+          </div>
+
+          <button class="btn btn-primary" onclick="window.location.reload()">
+            Agendar Otra Cita
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    let bookingData = {
+      service: null,
+      servicePrice: 0,
+      petSize: 'medium',
+      date: '',
+      time: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      address: '',
+      district: '',
+      petName: '',
+      petBreed: ''
+    };
+
+    // Inicializar fecha mínima
+    document.getElementById('appointmentDate').min = new Date().toISOString().split('T')[0];
+
+    // Selección de servicio
+    document.querySelectorAll('.service-card').forEach(card => {
+      card.addEventListener('click', function() {
+        document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+        this.classList.add('selected');
+        bookingData.service = this.dataset.service;
+        bookingData.servicePrice = parseInt(this.dataset.price);
+      });
+    });
+
+    // Cambio de tamaño de mascota
+    document.getElementById('petSize').addEventListener('change', function() {
+      bookingData.petSize = this.value;
+    });
+
+    // Generar slots de tiempo al seleccionar fecha
+    document.getElementById('appointmentDate').addEventListener('change', function() {
+      bookingData.date = this.value;
+      generateTimeSlots();
+    });
+
+    function generateTimeSlots() {
+      const container = document.getElementById('timeSlots');
+      container.innerHTML = '';
+      
+      const times = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
+                     '12:00', '12:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'];
+      
+      times.forEach(time => {
+        const slot = document.createElement('div');
+        slot.className = 'time-slot';
+        slot.textContent = time;
+        slot.addEventListener('click', function() {
+          if (!this.classList.contains('disabled')) {
+            document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
+            this.classList.add('selected');
+            bookingData.time = time;
+          }
+        });
+        container.appendChild(slot);
+      });
+    }
+
+    function nextStep() {
+      // Validaciones
+      if (currentStep === 1 && !bookingData.service) {
+        alert('Por favor selecciona un servicio');
+        return;
+      }
+
+      if (currentStep === 2 && (!bookingData.date || !bookingData.time)) {
+        alert('Por favor selecciona fecha y hora');
+        return;
+      }
+
+      if (currentStep === 3) {
+        // Capturar datos del formulario
+        bookingData.firstName = document.getElementById('firstName').value;
+        bookingData.lastName = document.getElementById('lastName').value;
+        bookingData.email = document.getElementById('email').value;
+        bookingData.phone = document.getElementById('phone').value;
+        bookingData.address = document.getElementById('address').value;
+        bookingData.district = document.getElementById('district').value;
+        bookingData.petName = document.getElementById('petName').value;
+        bookingData.petBreed = document.getElementById('petBreed').value;
+
+        if (!bookingData.firstName || !bookingData.email || !bookingData.phone || !bookingData.address || !bookingData.petName) {
+          alert('Por favor completa todos los campos obligatorios');
+          return;
+        }
+
+        // Generar resumen
+        generateSummary();
+      }
+
+      // Avanzar al siguiente paso
+      if (currentStep < 4) {
+        document.getElementById(`step${currentStep}`).classList.remove('active');
+        currentStep++;
+        document.getElementById(`step${currentStep}`).classList.add('active');
+        updateProgress();
+      }
+    }
+
+    function prevStep() {
+      if (currentStep > 1) {
+        document.getElementById(`step${currentStep}`).classList.remove('active');
+        currentStep--;
+        document.getElementById(`step${currentStep}`).classList.add('active');
+        updateProgress();
+      }
+    }
+
+    function updateProgress() {
+      const progress = ((currentStep - 1) / 3) * 100;
+      document.getElementById('progressFill').style.width = progress + '%';
+
+      document.querySelectorAll('.step').forEach((step, index) => {
+        if (index < currentStep - 1) {
+          step.classList.add('completed');
+          step.classList.remove('active');
+        } else if (index === currentStep - 1) {
+          step.classList.add('active');
+          step.classList.remove('completed');
+        } else {
+          step.classList.remove('active', 'completed');
+        }
+      });
+    }
+
+    function generateSummary() {
+      const multipliers = {
+        small: 1,
+        medium: 1.3,
+        large: 1.6,
+        'extra-large': 2
+      };
+      const finalPrice = bookingData.servicePrice * multipliers[bookingData.petSize];
+
+      const summary = `
+        <div class="summary-row">
+          <span>Servicio:</span>
+          <strong>${bookingData.service.replace(/-/g, ' ').toUpperCase()}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Fecha:</span>
+          <strong>${bookingData.date}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Hora:</span>
+          <strong>${bookingData.time}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Mascota:</span>
+          <strong>${bookingData.petName}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Dirección:</span>
+          <strong>${bookingData.address}, ${bookingData.district}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Total:</span>
+          <strong>S/ ${finalPrice.toFixed(2)}</strong>
+        </div>
+      `;
+      
+      document.getElementById('summaryBox').innerHTML = summary;
+    }
+
+    // Inicializar
+    updateProgress();
+  </script>
+</body>
+</html>
