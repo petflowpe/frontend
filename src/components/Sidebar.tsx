@@ -317,7 +317,7 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
           {showExpanded && (
             <div>
               <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight leading-none">
-                SmartPet
+                PetFlow
               </h1>
               <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mt-0.5">Pro Dashboard</p>
             </div>
@@ -400,7 +400,7 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
                   <Star className="h-4 w-4 text-white fill-white" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-slate-900 dark:text-white">SmartPet Pro</p>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white">PetFlow Pro</p>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">v2.1 Stable</p>
                 </div>
               </div>

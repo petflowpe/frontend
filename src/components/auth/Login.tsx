@@ -398,7 +398,7 @@ export const Login = ({
           <h2 className="text-4xl xl:text-6xl font-black tracking-tighter mb-6 text-slate-900 dark:text-white leading-tight drop-shadow-sm">
             Bienvenido a<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-purple-600 dark:from-cyan-400 dark:to-fuchsia-500 filter drop-shadow-[0_0_15px_rgba(34,211,238,0.3)]">
-              SmartPet
+              PetFlow
             </span>
           </h2>
           
@@ -468,7 +468,7 @@ export const Login = ({
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Acceso Seguro</h1>
               <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 mt-2 text-xs sm:text-sm font-medium">
                 <Cloud className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span>SmartPet Cloud</span>
+                <span>PetFlow Cloud</span>
               </div>
             </div>
           </div>
