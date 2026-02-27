@@ -1,5 +1,9 @@
 import { CalendarLayout } from './calendar/CalendarLayout';
 
-export function Calendar() {
-  return <CalendarLayout />;
+interface CalendarProps {
+  currentUser?: { companyId?: number } | null;
+}
+
+export function Calendar({ currentUser }: CalendarProps) {
+  return <CalendarLayout currentUser={currentUser} />;
 }

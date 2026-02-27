@@ -18,11 +18,12 @@ interface ResourceViewProps {
   onDateClick: (date: Date, resourceId?: string) => void;
   onAppointmentClick: (appointment: any) => void;
   onAppointmentDrop?: (appointmentId: string, newDate: Date, newTime?: string, newResourceId?: string) => void;
+  firstHour?: number;
+  lastHour?: number;
 }
 
-export function ResourceView({ currentDate, appointments, resources, onDateClick, onAppointmentClick, onAppointmentDrop }: ResourceViewProps) {
-  // Hours from 8:00 to 20:00
-  const hours = Array.from({ length: 13 }, (_, i) => i + 8);
+export function ResourceView({ currentDate, appointments, resources, onDateClick, onAppointmentClick, onAppointmentDrop, firstHour = 8, lastHour = 20 }: ResourceViewProps) {
+  const hours = Array.from({ length: lastHour - firstHour + 1 }, (_, i) => i + firstHour);
   
   const [draggedAppointment, setDraggedAppointment] = useState<any>(null);
   const [dragOverSlot, setDragOverSlot] = useState<{ resourceId: string; hour: number } | null>(null);
@@ -138,20 +139,21 @@ export function ResourceView({ currentDate, appointments, resources, onDateClick
                 {/* Appointments for this resource */}
                 {dayAppointments
                   .filter(apt => {
-                    // Match resource. Logic depends on how vehicle is stored in appointment.
-                    // In Appointments.tsx it was apt.vehicle.id or apt.vehicle (object)
-                    const aptVehicleId = apt.vehicle?.id || apt.vehicle;
-                    return aptVehicleId === resource.id || aptVehicleId === `vehiculo-${resource.id}` || resource.id === `vehiculo-${aptVehicleId}`; 
-                    // Trying to be robust with IDs as I saw 'vehiculo-1' vs '1' potential issues.
+                    const aptVehicleId = apt.vehicle?.id ?? apt.vehicle;
+                    const sid = String(resource.id);
+                    return sid === String(aptVehicleId) || sid === `vehiculo-${aptVehicleId}` || `vehiculo-${sid}` === String(aptVehicleId);
                   })
                   .map(apt => {
-                    const [aptHour, aptMinute] = apt.time.split(':').map(Number);
-                    if (aptHour < 8 || aptHour > 20) return null;
+                    const parts = (apt.time || '').split(':').map(Number);
+                    const aptHour = parts[0] ?? 0;
+                    const aptMinute = parts[1] ?? 0;
+                    if (aptHour < firstHour || aptHour > lastHour) return null;
 
-                    const startMinutes = (aptHour - 8) * 60 + aptMinute;
+                    const startMinutes = (aptHour - firstHour) * 60 + aptMinute;
                     const duration = apt.totalDuration || 60;
                     const height = (duration / 60) * 80;
-                    const top = (startMinutes / 60) * 80;
+                    const slotHeight = 80;
+                    const top = (startMinutes / 60) * slotHeight;
 
                     return (
                       <div

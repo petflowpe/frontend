@@ -108,7 +108,11 @@ export function useVehicles(companyId: number = DEFAULT_COMPANY_ID) {
       setVehicles(list.map(fromBackendFormat));
     } catch (e: any) {
       console.error('Error cargando vehículos', e);
-      toast.error(e.message || 'Error cargando vehículos');
+      const isNetworkError = e?.name === 'TypeError' && e?.message === 'Failed to fetch';
+      const msg = isNetworkError
+        ? 'No se pudo conectar al servidor. ¿Está el backend en ejecución? (http://localhost:8000)'
+        : (e?.message || 'Error cargando vehículos');
+      toast.error(msg);
       setVehicles([]);
     } finally {
       setLoading(false);

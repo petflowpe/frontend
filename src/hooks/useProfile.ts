@@ -12,6 +12,7 @@ export interface Profile {
   role_display?: string;
   company_id?: number;
   company?: string;
+  locale?: string;
   avatar_url?: string;
   phone?: string;
   position?: string;
@@ -51,6 +52,7 @@ export function useProfile() {
       const body: Record<string, unknown> = {};
       if (payload.name != null) body.name = payload.name;
       if (payload.email != null) body.email = payload.email;
+      if (payload.locale != null) body.locale = payload.locale;
       if (payload.current_password != null) body.current_password = payload.current_password;
       if (payload.password != null) body.password = payload.password;
       if (payload.phone != null) body.phone = payload.phone;

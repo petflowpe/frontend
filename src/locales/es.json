@@ -1,0 +1,37 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "search": "Buscar",
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito"
+  },
+  "auth": {
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "email": "Correo",
+    "password": "Contraseña",
+    "loginError": "No se pudo iniciar sesión",
+    "serverError": "No se pudo conectar al servidor. Compruebe que el backend esté en ejecución."
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "calendar": "Agenda Visual",
+    "appointments": "Lista de Citas",
+    "clients": "Clientes",
+    "pets": "Mascotas",
+    "products": "Productos",
+    "inventory": "Inventario",
+    "settings": "Configuración",
+    "profile": "Perfil"
+  },
+  "language": {
+    "label": "Idioma",
+    "es": "Español",
+    "en": "English",
+    "pt_BR": "Português (Brasil)"
+  }
+}

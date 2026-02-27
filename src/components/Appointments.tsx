@@ -84,6 +84,8 @@ export function Appointments() {
   const [cancellingAppointment, setCancellingAppointment] = useState<string | null>(null);
   const [cloningAppointment, setCloningAppointment] = useState(false);
 
+  const [newAppointmentInitialPet, setNewAppointmentInitialPet] = useState<{ petId?: string; clientId?: string; petName?: string; ownerName?: string } | null>(null);
+
   // Initial fetch
   useEffect(() => {
     fetchAppointments();
@@ -91,15 +93,23 @@ export function Appointments() {
 
   useEffect(() => {
     const pending = getPendingAction('appointments');
-    if (!pending || pending.action !== 'focus_pet') return;
-    const petId = String(pending.payload?.petId || '');
-    if (petId) {
-      setPetFilter(petId);
-      if (pending.payload?.petName) {
-        toast.info(`Filtrando citas de ${pending.payload.petName}`);
+    if (!pending) return;
+    if (pending.action === 'focus_pet') {
+      const petId = String(pending.payload?.petId || '');
+      if (petId) {
+        setPetFilter(petId);
+        if (pending.payload?.petName) {
+          toast.info(`Filtrando citas de ${pending.payload.petName}`);
+        }
       }
+      clearPendingAction();
+      return;
     }
-    clearPendingAction();
+    if (pending.action === 'new_appointment_with_pet') {
+      setShowNewAppointment(true);
+      setNewAppointmentInitialPet(pending.payload || null);
+      clearPendingAction();
+    }
   }, []);
 
   // Configurar verificador de notificaciones automáticas
@@ -421,8 +431,9 @@ export function Appointments() {
 
           <NewAppointmentDialog 
             open={showNewAppointment} 
-            onOpenChange={setShowNewAppointment} 
+            onOpenChange={(open) => { setShowNewAppointment(open); if (!open) setNewAppointmentInitialPet(null); }} 
             onSuccess={() => fetchAppointments()}
+            initialPetForNewAppointment={newAppointmentInitialPet}
           />
           
           <RescheduleDialog

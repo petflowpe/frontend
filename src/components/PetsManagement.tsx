@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -34,7 +34,6 @@ import {
   Heart,
   Users,
   Settings,
-  LayoutGrid,
   List,
   ChevronLeft,
   ChevronRight,
@@ -420,7 +419,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
   const [sortBy, setSortBy] = useState<string>(() => (savedPrefs.current?.sortBy as string) ?? 'name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => (savedPrefs.current?.sortOrder as 'asc' | 'desc') ?? 'asc');
   const [exportScope, setExportScope] = useState<'page' | 'all'>('page');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => (savedPrefs.current?.viewMode as 'cards' | 'table') ?? 'cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => (savedPrefs.current?.viewMode as 'cards' | 'table') ?? 'table');
   const [pageSize, setPageSize] = useState<number>(() => {
     const saved = Number(savedPrefs.current?.pageSize);
     return Number.isFinite(saved) && saved > 0 ? saved : 15;
@@ -812,6 +811,33 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
     onNavigate?.(tab);
   }, [onNavigate]);
 
+  /** Ir a Citas y abrir directamente el paso de crear cita con esta mascota */
+  const navigateToNewAppointmentWithPet = useCallback((pet: PetRecord) => {
+    const clientId = pet?.client_id ?? (pet?.client as any)?.id ?? (Array.isArray(pet?.owners) ? pet.owners[0]?.id : undefined);
+    setPendingAction('appointments', 'new_appointment_with_pet', {
+      petId: String(pet?.id || ''),
+      clientId: clientId != null ? String(clientId) : undefined,
+      petName: getPetDisplayName(pet),
+      ownerName: pet?.client?.razon_social || (Array.isArray(pet?.owners) ? pet.owners[0]?.razon_social : '') || '',
+    });
+    onNavigate?.('appointments');
+  }, [onNavigate]);
+
+  /** Ir a Clientes y abrir el formulario de la mascota (editar) */
+  const navigateToClientsEditPet = useCallback((pet: PetRecord) => {
+    const clientId = pet?.client_id ?? (pet?.client as any)?.id ?? (Array.isArray(pet?.owners) ? pet.owners[0]?.id : undefined);
+    setPendingAction('clients', 'edit_pet', {
+      petId: String(pet?.id || ''),
+      clientId: clientId != null ? String(clientId) : undefined,
+    });
+    onNavigate?.('clients');
+  }, [onNavigate]);
+
+  const [showProfilePet, setShowProfilePet] = useState<PetRecord | null>(null);
+  const openPetProfile = useCallback((pet: PetRecord) => {
+    setShowProfilePet(pet);
+  }, []);
+
   const confirmDeletePet = useCallback(async () => {
     if (!petToDelete) return;
     try {
@@ -1074,16 +1100,11 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
         <Badge variant="outline" className="h-9 sm:h-10 inline-flex items-center px-3">
           Recordatorios 30d: {remindersCount}
         </Badge>
-        <Button onClick={openNewPetModal} size="sm" className="h-9 sm:h-10 bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 touch-manipulation min-h-[44px] shadow-sm hover:shadow-md transition-shadow sm:ml-2">
-          <Plus className="h-4 w-4 mr-2 shrink-0" />
-          Nueva Mascota
-        </Button>
-      </div>
+        </div>
 
-      {/* Filtros y vista */}
-      <Card className="p-4 sm:p-5 md:p-6 mt-4 mb-4 sm:mt-0">
-        <div className="space-y-3">
-          <div className="flex flex-col md:flex-row flex-wrap gap-3 sm:gap-4 items-stretch md:items-center">
+      {/* Filtros y vista en una sola línea */}
+      <Card className="p-3 sm:p-4 mt-4 mb-4 sm:mt-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex-1 min-w-0 w-full sm:min-w-[180px] md:min-w-[220px]"> 
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -1181,14 +1202,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                 {sortOrder === 'asc' ? '↑' : '↓'}
               </Button>
             </Tooltip>
-            <div className="flex gap-1 border rounded-md p-1" role="group" aria-label="Vista de lista">
-              <Button variant={viewMode === 'cards' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('cards')} aria-label="Vista en tarjetas">
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-              <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('table')} aria-label="Vista en tabla">
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
             <div className="flex items-center gap-2 sm:border-l sm:border-gray-200 dark:border-gray-700 sm:pl-3">
               <Tooltip content="Elige si Excel/PDF incluyen solo la página visible o todas las mascotas (respetando filtros)">
                 <div className="inline-block">
@@ -1257,7 +1270,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                 </Button>
               </Tooltip>
             </div>
-          </div>
         </div>
       </Card>
 
@@ -1340,7 +1352,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
 
       {/* Lista de mascotas */}
       {loading ? (
-        viewMode === 'table' ? (
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1373,34 +1384,12 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
               </table>
             </div>
           </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <Card key={i} className="p-4 sm:p-5 overflow-hidden rounded-xl">
-                <div className="flex items-start gap-3 mb-3">
-                  <Skeleton className="w-14 h-14 rounded-xl flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <Skeleton className="h-5 w-3/4 mb-2" />
-                    <Skeleton className="h-4 w-1/2 mb-1" />
-                    <Skeleton className="h-4 w-full" />
-                  </div>
-                </div>
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-2/3 mb-4" />
-                <div className="flex gap-2 pt-2 border-t">
-                  <Skeleton className="h-9 flex-1 rounded-md" />
-                  <Skeleton className="h-9 w-9 rounded-md" />
-                </div>
-              </Card>
-            ))}
-          </div>
-        )
       ) : pets.length === 0 ? (
         <Card className="p-8 text-center">
           <PawPrint className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500">No se encontraron mascotas</p>
         </Card>
-      ) : viewMode === 'table' ? (
+      ) : (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1437,7 +1426,9 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                               {pet.species === 'Gato' ? <Cat className="h-5 w-5" /> : <Dog className="h-5 w-5" />}
                             </div>
                           )}
-                          <span className="font-medium">{getPetDisplayName(pet)}</span>
+                          <button type="button" onClick={() => openPetProfile(pet)} className="font-medium text-left hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded">
+                            {getPetDisplayName(pet)}
+                          </button>
                         </div>
                       </td>
                       <td className="p-3 text-sm">
@@ -1492,7 +1483,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                       <td className="p-3 text-right">
                         {onNavigate && (
                           <>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 mr-1" onClick={() => navigateToPetContext('appointments', pet)} title="Citas">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 mr-1" onClick={() => navigateToNewAppointmentWithPet(pet)} title="Crear cita">
                               <CalendarClock className="h-4 w-4" />
                             </Button>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 mr-1" onClick={() => navigateToPetContext('medical', pet)} title="Historial">
@@ -1500,7 +1491,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                             </Button>
                           </>
                         )}
-                        <Button variant="outline" size="sm" className="mr-1" onClick={() => openEditPetModal(pet)} title="Editar">
+                        <Button variant="outline" size="sm" className="mr-1" onClick={() => navigateToClientsEditPet(pet)} title="Editar (formulario en Clientes)">
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button variant="outline" size="sm" className="mr-1" onClick={() => openPetTimeline(pet)} title="Timeline/Auditoría">
@@ -1517,126 +1508,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
             </table>
           </div>
         </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">          {pets.map((pet, index) => {
-            const daysBirthday = getDaysUntilBirthday(pet.birth_date);
-            const isBirthdayToday = daysBirthday === 0;
-            const isBirthdaySoon = daysBirthday != null && daysBirthday > 0 && daysBirthday <= 30;
-            const isMale = (pet.gender || '').toLowerCase() === 'macho' || (pet.gender || '').toLowerCase() === 'male';
-            const daysVacc = getDaysUntil(pet.next_vaccination_date);
-            const daysDeworm = getDaysUntil(pet.next_deworming_date);
-            const vaccSoon = daysVacc != null && daysVacc <= 30;
-            const dewormSoon = daysDeworm != null && daysDeworm <= 30;
-            const hasPhoto = Boolean(pet.photos?.[0]?.url);
-            const isCat = pet.species === 'Gato';
-            const heroFallbackClass = isCat
-              ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-orange-600 dark:from-amber-600 dark:via-orange-700 dark:to-orange-900'
-              : 'bg-gradient-to-br from-sky-400 via-blue-500 to-blue-600 dark:from-sky-600 dark:via-blue-700 dark:to-blue-900';
-            return (
-              <Card
-                key={pet.id}
-                className="group relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-b from-card to-card/95 text-card-foreground shadow-md transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:border-primary/25"
-                style={{ animationDelay: `${index * 40}ms` }}
-              >
-                <div className="relative h-56 sm:h-64">
-                  {hasPhoto ? (
-                    <>
-                      <img
-                        src={pet.photos[0].url}
-                        alt={getPetDisplayName(pet)}
-                        className="absolute inset-0 h-full w-full object-cover scale-110 blur-sm opacity-55 transition-transform duration-700 group-hover:scale-115"
-                      />
-                      <img
-                        src={pet.photos[0].url}
-                        alt={getPetDisplayName(pet)}
-                        className="relative z-[1] h-full w-full object-contain p-1 sm:p-2 transition-transform duration-700 group-hover:scale-[1.02]"
-                      />
-                    </>
-                  ) : (
-                    <div className={`h-full w-full flex items-center justify-center ${heroFallbackClass}`}>
-                      {pet.species === 'Gato' ? <Cat className="h-24 w-24 text-white/95" /> : <Dog className="h-24 w-24 text-white/95" />}
-                    </div>
-                  )}
-                  {hasPhoto && <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-black/5" />}
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-transparent pointer-events-none" />
-
-                  <div className="absolute left-4 top-4">
-                    <Badge className="border-0 bg-black/50 text-white backdrop-blur-sm">{pet.species || 'Mascota'}</Badge>
-                  </div>
-
-                  <div className="absolute left-4 right-4 bottom-4">
-                    <div className="flex items-start justify-between gap-3 rounded-2xl bg-black/35 backdrop-blur-md px-3 py-2.5">
-                      <div className="min-w-0">
-                        <h3 className="text-2xl font-bold tracking-tight truncate text-white drop-shadow-sm">{getPetDisplayName(pet)}</h3>
-                        <p className="text-sm text-white/90 truncate">{pet.species} {pet.breed ? `- ${pet.breed}` : ''}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        {pet.fallecido ? (
-                          <Badge variant="destructive" className="text-xs border-0 shadow-sm">Fallecido</Badge>
-                        ) : (
-                          <Badge className="bg-emerald-500 text-white border-0 text-xs shadow-sm">Activo</Badge>
-                        )}
-                        <span className="inline-flex items-center gap-1 text-xs text-white/90">
-                          {isMale ? <Mars className="h-3.5 w-3.5 text-sky-300" /> : <Venus className="h-3.5 w-3.5 text-pink-300" />}
-                          {pet.gender || '-'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {isBirthdaySoon && (
-                    <Tooltip content={isBirthdayToday ? 'Feliz cumpleaños' : `Cumpleaños en ${daysBirthday} días`}>
-                      <div className={`absolute top-4 right-4 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${isBirthdayToday ? 'bg-amber-400 text-amber-950' : 'bg-pink-500/90 text-white'}`}>
-                        {isBirthdayToday ? <Cake className="h-3.5 w-3.5" /> : <Gift className="h-3.5 w-3.5" />}
-                        {isBirthdayToday ? 'Hoy cumple' : `Cumple en ${daysBirthday}d`}
-                      </div>
-                    </Tooltip>
-                  )}
-                </div>
-
-                <div className="p-4 sm:p-5 space-y-3 bg-card/85 text-card-foreground">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
-                    <Users className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{pet.client?.razon_social || 'Sin propietario asignado'}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                    <span className="inline-flex items-center gap-1"><Calendar className="h-4 w-4" />{pet.age != null ? `${pet.age} años` : 'Edad no registrada'}</span>
-                    <span className="inline-flex items-center gap-1"><Heart className="h-4 w-4 text-rose-500" />{pet.weight != null ? `${pet.weight} kg` : 'Peso no registrado'}</span>
-                    {vaccSoon && <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-300"><Syringe className="h-4 w-4" />Vacuna {daysVacc === 0 ? 'hoy' : `en ${daysVacc}d`}</span>}
-                    {dewormSoon && <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"><Bug className="h-4 w-4" />Desparas. {daysDeworm === 0 ? 'hoy' : `en ${daysDeworm}d`}</span>}
-                  </div>
-
-                  <div className="pt-2 border-t border-border/70 flex flex-wrap gap-2">
-                    {onNavigate && (
-                      <>
-                        <Button variant="outline" size="sm" onClick={() => navigateToPetContext('appointments', pet)} className="gap-1 rounded-xl border-border bg-background/80 text-foreground hover:bg-accent/80 shadow-sm" title="Ver citas">
-                          <CalendarClock className="h-4 w-4" />
-                          Citas
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => navigateToPetContext('medical', pet)} className="gap-1 rounded-xl border-border bg-background/80 text-foreground hover:bg-accent/80 shadow-sm" title="Historial médico">
-                          <FileText className="h-4 w-4" />
-                          Historial
-                        </Button>
-                      </>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => openEditPetModal(pet)} className="gap-1 rounded-xl border-border bg-background/80 text-foreground hover:bg-accent/80 shadow-sm" title="Editar mascota">
-                      <Edit className="h-4 w-4" />
-                      Editar
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => openPetTimeline(pet)} className="gap-1 rounded-xl border-border bg-background/80 text-foreground hover:bg-accent/80 shadow-sm" title="Timeline y auditoría">
-                      <FileText className="h-4 w-4" />
-                      Timeline
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDeletePet(pet.id.toString())} className="rounded-xl border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-900/20 shadow-sm" title="Eliminar">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
       )}
 
       {/* Paginación */}
@@ -1682,6 +1553,52 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
           </div>
         </Card>
       )}
+
+      {/* Diálogo perfil de mascota (al hacer clic en el nombre) */}
+      <Dialog open={!!showProfilePet} onOpenChange={(open) => { if (!open) setShowProfilePet(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Perfil de la mascota</DialogTitle>
+            <DialogDescription>Datos principales. Usa Editar para modificar en Clientes.</DialogDescription>
+          </DialogHeader>
+          {showProfilePet && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                {showProfilePet.photos?.[0]?.url ? (
+                  <img src={showProfilePet.photos[0].url} alt={getPetDisplayName(showProfilePet)} className="w-16 h-16 rounded-xl object-cover" />
+                ) : (
+                  <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${showProfilePet.species === 'Gato' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                    {showProfilePet.species === 'Gato' ? <Cat className="h-8 w-8" /> : <Dog className="h-8 w-8" />}
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-lg">{getPetDisplayName(showProfilePet)}</p>
+                  <p className="text-sm text-muted-foreground">{showProfilePet.species} {showProfilePet.breed ? ` / ${showProfilePet.breed}` : ''}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="text-muted-foreground">Cliente:</span>
+                <span>{showProfilePet.client?.razon_social || (Array.isArray(showProfilePet.owners) ? showProfilePet.owners[0]?.razon_social : '') || '-'}</span>
+                <span className="text-muted-foreground">Edad / Peso:</span>
+                <span>{showProfilePet.age != null ? `${showProfilePet.age} años` : '-'} {showProfilePet.weight != null ? ` / ${showProfilePet.weight} kg` : ''}</span>
+                <span className="text-muted-foreground">Sexo:</span>
+                <span>{showProfilePet.gender || '-'}</span>
+                <span className="text-muted-foreground">Estado:</span>
+                <span>{showProfilePet.fallecido ? 'Fallecido' : 'Activo'}</span>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => { setShowProfilePet(null); openEditPetModal(showProfilePet); }} className="gap-1">
+                  <Edit className="h-4 w-4" />
+                  Editar (en este módulo)
+                </Button>
+                <Button variant="default" size="sm" onClick={() => { setShowProfilePet(null); navigateToClientsEditPet(showProfilePet); }} className="gap-1">
+                  Ir a Clientes y editar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Diálogo de nueva/editar mascota */}
       <Dialog

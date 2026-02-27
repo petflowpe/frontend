@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -35,7 +36,9 @@ import {
   TrendingUp,
   Gauge,
   Trash2,
-  Cog
+  Cog,
+  Check,
+  Pencil
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { MAINTENANCE_TYPES, CHART_OF_ACCOUNTS } from '../config/defaults';
@@ -188,7 +191,10 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       if (selectedVehicle && editingVehicle && String(selectedVehicle.id) === String(editingVehicle.id)) {
         setSelectedVehicle(null);
       }
-    } catch (_e) {}
+    } catch (e: any) {
+      const msg = e?.message || e?.errors ? (typeof e.errors === 'object' ? Object.values(e.errors).flat().join(', ') : e.message) : 'No se pudo guardar el vehículo';
+      toast.error(msg);
+    }
   };
 
   const handleDeleteVehicle = async (id: number) => {
@@ -506,17 +512,17 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
         {/* TAB: Mantenimiento */}
         <TabsContent value="maintenance" className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg">Historial de Mantenimiento</h3>
+            <h3 className="text-xl font-semibold text-foreground">Historial de Mantenimiento</h3>
             <Dialog open={showNewMaintenance} onOpenChange={setShowNewMaintenance}>
               <DialogTrigger asChild>
-                <Button onClick={() => setEditingMaintenance(null)}>
+                <Button onClick={() => setEditingMaintenance(null)} className="bg-primary hover:bg-primary/90">
                   <Plus className="h-4 w-4 mr-2" />
                   Nuevo Mantenimiento
                 </Button>
               </DialogTrigger>
               <MaintenanceDialog
                 maintenance={editingMaintenance}
-                vehicles={vehicles}
+                vehicles={vehiclesForUI}
                 maintenanceTypes={maintenanceTypes}
                 workshops={workshops}
                 onSave={handleSaveMaintenance}
@@ -528,76 +534,121 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
             </Dialog>
           </div>
 
-          <div className="space-y-4">
-            {maintenanceHistory.map((maintenance) => {
-              const vehicle = vehiclesForUI.find(v => v.id === maintenance.vehicleId);
-              const account = CHART_OF_ACCOUNTS.find(a => a.code === maintenance.accountCode);
-              return (
-                <Card key={maintenance.id} className="p-4 hover:shadow-lg transition-shadow bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border-l-4 border-l-primary">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-4 flex-1">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center shadow-md ${
-                        maintenance.status === 'completed' ? 'bg-green-500 dark:bg-green-600' : 'bg-orange-500 dark:bg-orange-600'
-                      }`}>
-                        <Wrench className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-semibold">{vehicle?.name}</h4>
-                          <Badge variant="outline">{maintenance.type}</Badge>
-                          <Badge className={
-                            maintenance.status === 'completed' ? 
-                            'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' :
-                            'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200'
-                          }>
-                            {maintenance.status === 'completed' ? 'Completado' : 'En Progreso'}
-                          </Badge>
+          <div className="space-y-3">
+            {maintenanceHistory.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Wrench className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No hay registros de mantenimiento. Agrega uno nuevo para comenzar.</p>
+              </Card>
+            ) : (
+              maintenanceHistory.map((maintenance) => {
+                const vehicle = vehiclesForUI.find(v => v.id === maintenance.vehicleId);
+                const account = CHART_OF_ACCOUNTS.find(a => a.code === maintenance.accountCode);
+                const isCompleted = maintenance.status === 'completed';
+                const vehicleType = vehicle?.type === 'furgoneta_grande' ? 'Furgoneta' : 
+                                  vehicle?.type === 'auto_compacto' ? 'Auto compacto' :
+                                  vehicle?.type === 'camioneta' ? 'Camioneta' :
+                                  vehicle?.type === 'moto' ? 'Moto' : 'Vehículo';
+                const vehicleNumber = vehicle?.id ? `#${String(vehicle.id).padStart(3, '0')}` : '';
+                
+                return (
+                  <Card key={maintenance.id} className="p-5 hover:shadow-lg transition-all border border-border/50 dark:border-border/30 bg-card">
+                    <div className="flex items-start justify-between gap-4">
+                      {/* Lado izquierdo: Icono + Info principal */}
+                      <div className="flex items-start gap-4 flex-1 min-w-0">
+                        {/* Icono por estado */}
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center shadow-md shrink-0 ${
+                          isCompleted ? 'bg-green-500 dark:bg-green-600' : 'bg-orange-500 dark:bg-orange-600'
+                        }`}>
+                          <Wrench className="h-6 w-6 text-white" />
                         </div>
-                        <p className="text-sm text-muted-foreground mb-2">{maintenance.description}</p>
-                        <div className="text-xs text-muted-foreground space-y-1">
-                          <div className="flex items-center gap-4">
-                            <span>📅 {formatDate(maintenance.date)}</span>
-                            <span>🔧 {maintenance.workshop}</span>
-                            {maintenance.nextDue && <span>⏭️ Próximo: {formatDate(maintenance.nextDue)}</span>}
+                        
+                        {/* Información principal */}
+                        <div className="flex-1 min-w-0">
+                          {/* Fila 1: Vehículo + Tags */}
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <h4 className="font-bold text-base text-foreground">
+                              {vehicleType} {vehicle?.name || 'Sin nombre'} {vehicleNumber}
+                            </h4>
+                            <Badge variant="outline" className="bg-background border-border text-foreground">
+                              {maintenance.type}
+                            </Badge>
+                            <Badge className={
+                              isCompleted ? 
+                              'bg-green-500 text-white border-green-600' :
+                              'bg-orange-500 text-white border-orange-600'
+                            }>
+                              {isCompleted ? 'Completado' : 'En proceso'}
+                            </Badge>
                           </div>
-                          {account && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="font-mono text-xs bg-primary/10 px-2 py-0.5 rounded">
-                                {account.code}
-                              </span>
-                              <span>{account.name}</span>
+                          
+                          {/* Descripción */}
+                          <p className="text-sm text-muted-foreground mb-3">{maintenance.description}</p>
+                          
+                          {/* Fechas y taller */}
+                          <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="h-3.5 w-3.5" />
+                                <span>{formatDate(maintenance.date)}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Check className="h-3.5 w-3.5" />
+                                <span>{maintenance.workshop || '—'}</span>
+                              </div>
+                              {maintenance.nextDue && (
+                                <div className="flex items-center gap-1.5">
+                                  <MapPin className="h-3.5 w-3.5" />
+                                  <span>Próximo: {formatDate(maintenance.nextDue)}</span>
+                                </div>
+                              )}
                             </div>
-                          )}
+                            
+                            {/* Código y tipo detallado */}
+                            {account && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded border border-border">
+                                  {account.code}
+                                </span>
+                                <span className="text-xs">{account.name}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Lado derecho: Costo + Acciones */}
+                      <div className="text-right shrink-0 flex flex-col items-end gap-3">
+                        <p className="font-semibold text-lg text-foreground">
+                          {formatCurrency(maintenance.cost, 'PEN')}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            onClick={() => {
+                              setEditingMaintenance(maintenance);
+                              setShowNewMaintenance(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteMaintenance(maintenance.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     </div>
-                    <div className="text-right ml-4">
-                      <p className="font-semibold text-lg">{formatCurrency(maintenance.cost)}</p>
-                      <div className="flex gap-2 mt-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => {
-                            setEditingMaintenance(maintenance);
-                            setShowNewMaintenance(true);
-                          }}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleDeleteMaintenance(maintenance.id)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
+                  </Card>
+                );
+              })
+            )}
           </div>
         </TabsContent>
 
@@ -1044,8 +1095,15 @@ const DAY_LABELS: Record<string, string> = {
 
 // Diálogo para agregar/editar vehículo
 function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
+  const VEHICLE_TYPES = [
+    { value: 'furgoneta_grande', label: 'Furgoneta grande' },
+    { value: 'auto_compacto', label: 'Auto compacto' },
+    { value: 'camioneta', label: 'Camioneta' },
+    { value: 'moto', label: 'Moto' },
+  ];
   const [formData, setFormData] = useState({
     name: vehicle?.name || '',
+    type: vehicle?.type || 'furgoneta_grande',
     plate: vehicle?.plate || '',
     brand: vehicle?.brand || brands[0] || '',
     model: vehicle?.model || '',
@@ -1121,6 +1179,22 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
                 onChange={(e) => setFormData({ ...formData, plate: e.target.value })}
                 required
               />
+            </div>
+            <div>
+              <Label>Tipo de vehículo *</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(v) => setFormData({ ...formData, type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VEHICLE_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1672,9 +1746,44 @@ function MaintenanceTypeConfigDialog({ maintenanceTypes, onSave, onClose }: any)
 
 // Diálogo de mantenimiento
 function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops, onSave, onClose }: any) {
+  const expenseAccounts = CHART_OF_ACCOUNTS.filter(a => a.type === 'expense' && a.category === 'Gastos de Vehículos');
+
+  const normalize = (s: string) =>
+    (s || '')
+      .normalize('NFD')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const suggestAccountCodeForType = (type: string): string => {
+    const t = normalize(type);
+    if (!t) return '63102000';
+
+    const exact = expenseAccounts.find(a => normalize(a.name) === t);
+    if (exact) return exact.code;
+
+    // Coincidencia parcial (p.ej. "Reparación" -> "Reparaciones", "ITV" -> "ITV y Documentación")
+    const partial = expenseAccounts.find(a => {
+      const an = normalize(a.name);
+      return an.includes(t) || t.includes(an);
+    });
+    if (partial) return partial.code;
+
+    // Heurística mínima para términos típicos
+    if (t.includes('itv')) return '63105000';
+    if (t.includes('repar')) return '63103000';
+    if (t.includes('manten')) return '63102000';
+
+    return '63199000';
+  };
+
+  const initialType = maintenance?.type || maintenanceTypes?.[0] || 'Mantenimiento Preventivo';
+  const initialAccountCode = maintenance?.accountCode || suggestAccountCodeForType(initialType);
+
   const [formData, setFormData] = useState({
-    vehicleId: maintenance?.vehicleId || vehicles[0]?.id || '',
-    type: maintenance?.type || maintenanceTypes[0] || 'Mantenimiento Preventivo',
+    vehicleId: maintenance?.vehicleId || vehicles?.[0]?.id || '',
+    type: initialType,
     description: maintenance?.description || '',
     date: maintenance?.date || new Date().toISOString().split('T')[0],
     cost: maintenance?.cost || 0,
@@ -1684,84 +1793,152 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
     workshopPhone: maintenance?.workshopPhone || '',
     nextDue: maintenance?.nextDue || '',
     status: maintenance?.status || 'completed',
-    accountCode: maintenance?.accountCode || '63102000'
+    accountCode: initialAccountCode
   });
+
+  // Si el usuario cambia manualmente la cuenta, no la sobreescribimos al cambiar tipo
+  const [accountTouched, setAccountTouched] = useState(Boolean(maintenance?.accountCode));
 
   // Autocompletar datos del taller al ingresar RUC
   const handleRucChange = (ruc: string) => {
-    setFormData({ ...formData, workshopRuc: ruc });
+    const cleanRuc = ruc.replace(/\D/g, ''); // Solo números
+    setFormData({ ...formData, workshopRuc: cleanRuc });
     
-    if (ruc.length === 11) {
-      const foundWorkshop = workshops.find((w: any) => w.ruc === ruc);
+    if (cleanRuc.length === 11) {
+      const foundWorkshop = workshops.find((w: any) => w.ruc === cleanRuc);
       if (foundWorkshop) {
         setFormData({
           ...formData,
-          workshopRuc: ruc,
+          workshopRuc: cleanRuc,
           workshop: foundWorkshop.name,
           workshopAddress: foundWorkshop.address || '',
           workshopPhone: foundWorkshop.phone || ''
         });
+        toast.success('Datos del taller autocompletados');
       }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
+  const handleTypeChange = (type: string) => {
+    const suggested = suggestAccountCodeForType(type);
+    setFormData({
+      ...formData,
+      type,
+      accountCode: accountTouched ? formData.accountCode : suggested
+    });
   };
 
-  const expenseAccounts = CHART_OF_ACCOUNTS.filter(a => a.type === 'expense' && a.category === 'Gastos de Vehículos');
+  const isValidISODate = (value: string) => {
+    if (!value) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [y, m, d] = value.split('-').map((n) => Number(n));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+    if (y < 1900 || y > 2100) return false;
+    if (m < 1 || m > 12) return false;
+    if (d < 1 || d > 31) return false;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (
+      dt.getUTCFullYear() === y &&
+      dt.getUTCMonth() === m - 1 &&
+      dt.getUTCDate() === d
+    );
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validaciones adicionales
+    if (!isValidISODate(formData.date)) {
+      toast.error('Fecha inválida. Verifica que el año tenga 4 dígitos (YYYY-MM-DD).');
+      return;
+    }
+    if (formData.nextDue && !isValidISODate(formData.nextDue)) {
+      toast.error('Próximo mantenimiento inválido. Verifica que el año tenga 4 dígitos (YYYY-MM-DD).');
+      return;
+    }
+    if (formData.workshopRuc.length !== 11) {
+      toast.error('El RUC debe tener 11 dígitos');
+      return;
+    }
+    
+    if (Number.isNaN(Number(formData.cost)) || Number(formData.cost) < 0) {
+      toast.error('El costo no puede ser negativo');
+      return;
+    }
+
+    onSave(formData);
+    toast.success(maintenance ? 'Mantenimiento actualizado' : 'Mantenimiento registrado');
+  };
 
   return (
-    <DialogContent className="max-w-2xl">
+    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{maintenance ? 'Editar Mantenimiento' : 'Nuevo Mantenimiento'}</DialogTitle>
         <DialogDescription>
-          {maintenance ? 'Modifica los datos del registro de mantenimiento' : 'Registra un nuevo mantenimiento o reparación'}
+          {maintenance ? 'Modifica un registro de mantenimiento' : 'Registra un nuevo mantenimiento o reparación'}
         </DialogDescription>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Vehículo */}
         <div>
           <Label>Vehículo *</Label>
-          <select
-            className="w-full p-2 border rounded-md"
-            value={formData.vehicleId}
-            onChange={(e) => setFormData({ ...formData, vehicleId: Number(e.target.value) })}
+          <Select
+            value={String(formData.vehicleId)}
+            onValueChange={(value) => setFormData({ ...formData, vehicleId: Number(value) })}
             required
           >
-            {vehiclesForUI.map((vehicle: any) => (
-              <option key={vehicle.id} value={vehicle.id}>{vehicle.name}</option>
-            ))}
-          </select>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccione un vehículo" />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicles.map((vehicle: any) => (
+                <SelectItem key={vehicle.id} value={String(vehicle.id)}>
+                  {vehicle.name} {vehicle.plate ? `(${vehicle.plate})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
+        {/* Tipo de Mantenimiento y Estado */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Tipo de Mantenimiento *</Label>
-            <select
-              className="w-full p-2 border rounded-md"
+            <Select
               value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              onValueChange={handleTypeChange}
+              required
             >
-              {maintenanceTypes.map((type: string) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {maintenanceTypes.map((type: string) => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
             <Label>Estado *</Label>
-            <select
-              className="w-full p-2 border rounded-md"
+            <Select
               value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              onValueChange={(value) => setFormData({ ...formData, status: value })}
+              required
             >
-              <option value="completed">Completado</option>
-              <option value="in_progress">En Progreso</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="completed">Completado</SelectItem>
+                <SelectItem value="in_progress">En proceso</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
+        {/* Descripción */}
         <div>
           <Label>Descripción *</Label>
           <Textarea
@@ -1769,10 +1946,12 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             placeholder="Describe el mantenimiento realizado..."
             required
-            rows={3}
+            rows={4}
+            className="resize-none"
           />
         </div>
 
+        {/* Fecha, Costo y Próximo Mantenimiento */}
         <div className="grid grid-cols-3 gap-4">
           <div>
             <Label>Fecha *</Label>
@@ -1793,6 +1972,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
               required
               min="0"
               step="0.01"
+              placeholder="0.00"
             />
           </div>
 
@@ -1802,10 +1982,12 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
               type="date"
               value={formData.nextDue}
               onChange={(e) => setFormData({ ...formData, nextDue: e.target.value })}
+              placeholder="dd/mm/aaaa"
             />
           </div>
         </div>
 
+        {/* RUC y Taller/Proveedor */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>RUC Taller/Proveedor *</Label>
@@ -1832,6 +2014,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
           </div>
         </div>
 
+        {/* Dirección y Teléfono */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Dirección</Label>
@@ -1852,27 +2035,36 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
           </div>
         </div>
 
+        {/* Cuenta Contable */}
         <div>
           <Label>Cuenta Contable *</Label>
-          <select
-            className="w-full p-2 border rounded-md font-mono text-sm"
+          <Select
             value={formData.accountCode}
-            onChange={(e) => setFormData({ ...formData, accountCode: e.target.value })}
+            onValueChange={(value) => {
+              setAccountTouched(true);
+              setFormData({ ...formData, accountCode: value });
+            }}
             required
           >
-            {expenseAccounts.map((account) => (
-              <option key={account.code} value={account.code}>
-                {account.code} - {account.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {expenseAccounts.map((account) => (
+                <SelectItem key={account.code} value={account.code}>
+                  <span className="font-mono">{account.code}</span> - {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
+        {/* Botones */}
         <div className="flex justify-end gap-2 pt-4 border-t">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">
+          <Button type="submit" className="bg-primary hover:bg-primary/90">
             {maintenance ? 'Guardar Cambios' : 'Registrar Mantenimiento'}
           </Button>
         </div>

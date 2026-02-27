@@ -84,9 +84,11 @@ interface NewAppointmentDialogProps {
   onSuccess?: () => void;
   onNewClientRequest?: () => void;
   newClient?: any; // Cliente recién creado para auto-seleccionar
+  /** Al abrir desde Mascotas (botón Cita), pre-selecciona mascota y salta al paso de crear cita (3) */
+  initialPetForNewAppointment?: { petId?: string; clientId?: string; petName?: string; ownerName?: string } | null;
 }
 
-export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClientRequest, newClient }: NewAppointmentDialogProps) {
+export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClientRequest, newClient, initialPetForNewAppointment }: NewAppointmentDialogProps) {
   const [step, setStep] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -156,6 +158,35 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
       setAvailabilitySuggestions([]);
     }
   }, [open, form]);
+
+  // Abrir directamente en paso 3 (crear cita) con mascota pre-seleccionada (desde módulo Mascotas)
+  useEffect(() => {
+    if (!open || !initialPetForNewAppointment?.petId || !initialPetForNewAppointment?.clientId || !clients?.length || !loadClientPets) return;
+    const clientId = String(initialPetForNewAppointment.clientId);
+    const petId = String(initialPetForNewAppointment.petId);
+    const client = clients.find((c: any) => String(c.id) === clientId);
+    if (!client) return;
+    (async () => {
+      let clientPets = client.pets || [];
+      if (clientPets.length === 0) clientPets = await loadClientPets(clientId);
+      const pet = clientPets.find((p: any) => String(p.id) === petId);
+      if (!pet) return;
+      setValue('client', {
+        id: client.id,
+        fullName: client.fullName,
+        documentNumber: client.documentNumber,
+        phone1: client.phone1,
+        address: client.address,
+        district: client.district,
+      });
+      setValue('pet', { id: pet.id, name: pet.name, breed: pet.breed || '', size: pet.size });
+      if (vehicles?.length > 0) {
+        const v = vehicles[0];
+        setValue('vehicle', { id: v.id, name: v.name, driver: v.driver, driverName: v.driver_name || v.driver });
+      }
+      setStep(3);
+    })();
+  }, [open, initialPetForNewAppointment?.petId, initialPetForNewAppointment?.clientId, clients, loadClientPets, setValue, vehicles]);
 
   // Validación de disponibilidad en tiempo real (solo en paso 3)
   useEffect(() => {

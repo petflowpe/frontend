@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save, User, Building, Bell, Shield, Palette, Globe, Database, Car, DollarSign, BookOpen, MapPin, FileText, Plus, Trash2, MessageSquare } from 'lucide-react';
+import { Settings as SettingsIcon, Save, User, Building, Bell, Shield, Palette, Globe, Database, Car, DollarSign, BookOpen, MapPin, FileText, Plus, Trash2, MessageSquare, Calendar } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,9 +11,14 @@ import { Separator } from './ui/separator';
 import { AccountingConfig } from './AccountingConfig';
 import { ChatAutomationConfig } from './ChatAutomationConfig';
 import { GoogleMapsConfig } from './admin/GoogleMapsConfig';
+import { CalendarSettings } from './settings/CalendarSettings';
 import { toast } from 'sonner';
 
-export function Settings() {
+interface SettingsProps {
+  currentUser?: { companyId?: number; id?: string; role?: string } | null;
+}
+
+export function Settings({ currentUser }: SettingsProps) {
   const [businessSettings, setBusinessSettings] = useState({
     name: 'SmartPet Mobile Services',
     address: 'Av. Larco 1234, Miraflores, Lima',
@@ -163,6 +168,10 @@ export function Settings() {
           <TabsTrigger value="system" className="flex-1">Sistema</TabsTrigger>
           <TabsTrigger value="security" className="flex-1">Seguridad</TabsTrigger>
           <TabsTrigger value="templates" className="flex-1">Plantillas</TabsTrigger>
+          <TabsTrigger value="calendar" className="flex-1 flex items-center justify-center gap-2">
+            <Calendar className="w-4 h-4" />
+            Calendario
+          </TabsTrigger>
           <TabsTrigger value="googlemaps" className="flex-1">Google Maps</TabsTrigger>
           <TabsTrigger value="integrations" className="flex-1">Integraciones</TabsTrigger>
           <TabsTrigger value="automation" className="flex-1 flex items-center justify-center gap-2">
@@ -170,6 +179,10 @@ export function Settings() {
             Respuestas Auto.
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="calendar" className="space-y-6">
+          <CalendarSettings companyId={currentUser?.companyId ?? 1} />
+        </TabsContent>
 
         <TabsContent value="automation" className="space-y-6">
            <ChatAutomationConfig />

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { BellRing, Moon, Sun, Search, Settings2, UserRound, ChevronDown, Globe, ExternalLink, LogOut, Sparkles, Menu, Monitor } from 'lucide-react';
+import { BellRing, Moon, Sun, Search, Settings2, UserRound, ChevronDown, ExternalLink, LogOut, Sparkles, Menu, Monitor } from 'lucide-react';
+import { LanguageSelector } from './LanguageSelector';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
@@ -273,6 +274,9 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
 
           {/* Notificaciones */}
           <NotificationCenter onViewAll={() => setActiveTab?.('notifications')} onViewDetails={handleViewNotificationDetails} />
+
+          {/* Selector de idioma */}
+          <LanguageSelector authenticated={!!currentUser} />
 
           {/* Selector de tema: Light / Dark / System */}
           <Popover>

@@ -18,6 +18,12 @@ export const API = {
     info: '/system/info',
   },
 
+  // Core (multimoneda, módulos, i18n)
+  core: {
+    currencies: '/core/currencies',
+    modules: '/core/modules',
+  },
+
   // Protegidas (con token, prefijo /v1)
   authProtected: {
     logout: '/auth/logout',
@@ -83,6 +89,7 @@ export const API = {
     products: (id: string | number) => `/companies/${id}/products`,
     vehicles: (id: string | number) => `/companies/${id}/vehicles`,
     config: (id: string | number) => `/companies/${id}/config`,
+    configSection: (id: string | number, section: string) => `/companies/${id}/config/${section}`,
     greCredentials: (id: string | number) => `/companies/${id}/gre-credentials`,
   },
   branches: {

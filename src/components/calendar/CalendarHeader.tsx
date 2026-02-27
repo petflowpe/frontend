@@ -9,9 +9,10 @@ interface CalendarHeaderProps {
   onDateChange: (date: Date) => void;
   view: 'month' | 'week' | 'day' | 'resource';
   onViewChange: (view: 'month' | 'week' | 'day' | 'resource') => void;
+  showDayView?: boolean;
 }
 
-export function CalendarHeader({ currentDate, onDateChange, view, onViewChange }: CalendarHeaderProps) {
+export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, showDayView = true }: CalendarHeaderProps) {
   
   const handlePrevious = () => {
     const newDate = new Date(currentDate);
@@ -90,7 +91,7 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange }
           <SelectContent>
             <SelectItem value="month">Mes</SelectItem>
             <SelectItem value="week">Semana</SelectItem>
-            <SelectItem value="day">Día</SelectItem>
+            {showDayView && <SelectItem value="day">Día</SelectItem>}
             <SelectItem value="resource">Agenda por Móvil</SelectItem>
           </SelectContent>
         </Select>

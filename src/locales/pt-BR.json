@@ -1,0 +1,37 @@
+{
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "search": "Buscar",
+    "loading": "Carregando...",
+    "error": "Erro",
+    "success": "Sucesso"
+  },
+  "auth": {
+    "login": "Entrar",
+    "logout": "Sair",
+    "email": "E-mail",
+    "password": "Senha",
+    "loginError": "Não foi possível entrar",
+    "serverError": "Não foi possível conectar ao servidor. Verifique se o backend está em execução."
+  },
+  "menu": {
+    "dashboard": "Painel",
+    "calendar": "Agenda Visual",
+    "appointments": "Lista de Agendamentos",
+    "clients": "Clientes",
+    "pets": "Pets",
+    "products": "Produtos",
+    "inventory": "Estoque",
+    "settings": "Configurações",
+    "profile": "Perfil"
+  },
+  "language": {
+    "label": "Idioma",
+    "es": "Español",
+    "en": "English",
+    "pt_BR": "Português (Brasil)"
+  }
+}

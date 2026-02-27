@@ -17,6 +17,7 @@ import { PageSkeleton } from './components/PageSkeleton';
 import { isModuleAllowed } from './utils/permissions';
 import { getStoredTheme, applyTheme, setTheme, subscribeToSystemPreference } from './utils/theme';
 import { ShortcutsModal } from './components/ShortcutsModal';
+import { setI18nLanguage } from './i18n';
 
 // 🚀 LAZY LOADING: Optimización de carga inicial
 // Los componentes pesados se cargan solo cuando son necesarios
@@ -217,6 +218,7 @@ function AppContent() {
             };
             setIsAuthenticated(true);
             setCurrentUser(user);
+            if (userData.locale) setI18nLanguage(userData.locale);
             try {
               localStorage.setItem('smartpet_user', JSON.stringify(user));
             } catch (_) {}
@@ -437,7 +439,7 @@ function AppContent() {
 
     switch (activeTab) {
       case 'dashboard': return <Dashboard onNavigate={setActiveTab} />;
-      case 'calendar': return <Calendar />;
+      case 'calendar': return <Calendar currentUser={currentUser} />;
       case 'appointments': return <Appointments />;
       case 'clients': return <Clients />;
       case 'pets': return <PetsManagement onNavigate={setActiveTab} />;
@@ -452,7 +454,7 @@ function AppContent() {
       case 'payments': return <Payments />;
       case 'staff': return <Staff />;
       case 'reports': return <Reports />;
-      case 'settings': return <Settings />;
+      case 'settings': return <Settings currentUser={currentUser} />;
       case 'cash-register': return <CashRegister />;
       case 'kardex': return <ProductKardex />;
       case 'accounting': return <AccountingConfig />;

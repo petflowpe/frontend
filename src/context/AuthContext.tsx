@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { apiClient } from '../utils/api/client';
+import { ApiAuthError } from '../utils/api/config';
 import { User, Pet, Appointment, Notification, Membership } from '../types';
 import type { DocumentType } from '../types';
 
@@ -205,9 +206,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       return null;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error en login:', error);
-      return null;
+      // Mostrar mensaje del backend (credenciales, usuario inactivo, bloqueado)
+      if (error instanceof ApiAuthError) {
+        throw new Error(error.message);
+      }
+      // Error de red: backend no responde
+      const msg = error instanceof Error ? error.message : '';
+      if (typeof msg === 'string' && (msg.includes('fetch') || msg.includes('Failed') || msg.includes('Network') || msg.includes('Load'))) {
+        throw new Error('No se pudo conectar al servidor. Comprueba que el backend esté en ejecución (http://localhost:8000).');
+      }
+      if (error instanceof Error) throw error;
+      throw new Error('Error al iniciar sesión');
     }
   };
 

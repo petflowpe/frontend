@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Search, Phone, Mail, MapPin, PawPrint, Calendar, Eye, Heart, Edit2, Trash2, UserPlus, FileText, DollarSign, Truck, Settings, ChevronRight, ChevronLeft, Dog, Cat, Bug, Syringe, Shield, Bell } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, MapPin, PawPrint, Calendar, Eye, Heart, Edit2, Trash2, UserPlus, FileText, DollarSign, Truck, Settings, ChevronRight, ChevronLeft, Dog, Cat, Bug, Syringe, Shield, Bell, ArrowLeft, StickyNote } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -87,6 +87,7 @@ export function Clients() {
   const [editingClient, setEditingClient] = useState<any>(null);
   const [editingPet, setEditingPet] = useState<any>(null);
   const [showNewAppointment, setShowNewAppointment] = useState(false);
+  const [clientFichaTab, setClientFichaTab] = useState('detalles');
 
   // Estados para configuraciones - REMOVIDOS (ahora están en PetsManagement)
 
@@ -389,12 +390,15 @@ export function Clients() {
     }
   }, [clients]);
 
-  const filteredClients = (clients || []).filter(client =>
-    client.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.documentNumber.includes(searchTerm) ||
-    client.pets.some(pet => pet.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredClients = (clients || []).filter(client => {
+    const pets = client.pets || [];
+    return (
+      (client.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.documentNumber || '').includes(searchTerm) ||
+      pets.some((pet: any) => (pet.name || '').toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  });
 
   if (selectedPetId) {
     return (
@@ -409,208 +413,525 @@ export function Clients() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl text-primary">Gestión de Clientes</h1>
-            <Badge 
-              variant="outline" 
-              className={`cursor-pointer hover:opacity-80 transition-opacity ${
-                currentUser.role === 'Super Administrador'
-                  ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400'
-                  : currentUser.role === 'Administrador' 
-                  ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-950/30 dark:text-purple-400' 
-                  : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/30 dark:text-blue-400'
-              }`}
-              onClick={toggleUserRole}
-              title="Click para cambiar rol (demo)"
-            >
-              <Shield className="h-3 w-3 mr-1" />
-              {currentUser.role}
-            </Badge>
+      {!selectedClient ? (
+        <>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl text-primary">Gestión de Clientes</h1>
+                <Badge 
+                  variant="outline" 
+                  className={`cursor-pointer hover:opacity-80 transition-opacity ${
+                    currentUser.role === 'Super Administrador'
+                      ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400'
+                      : currentUser.role === 'Administrador' 
+                      ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-950/30 dark:text-purple-400' 
+                      : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/30 dark:text-blue-400'
+                  }`}
+                  onClick={toggleUserRole}
+                  title="Click para cambiar rol (demo)"
+                >
+                  <Shield className="h-3 w-3 mr-1" />
+                  {currentUser.role}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground">Administra la información de tus clientes y sus mascotas</p>
+            </div>
+            <div className="flex gap-2">
+              {(currentUser.role === 'Super Administrador' || currentUser.role === 'Administrador') && (
+                <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
+                  <DialogTrigger asChild>
+                    <Button onClick={() => setEditingClient(null)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nuevo Cliente
+                    </Button>
+                  </DialogTrigger>
+                  <ClientDialog
+                    client={editingClient}
+                    vehicles={vehicles}
+                    currentUserRole={currentUser.role}
+                    onSave={handleSaveClient}
+                    onClose={() => {
+                      setShowNewClient(false);
+                      setEditingClient(null);
+                    }}
+                  />
+                </Dialog>
+              )}
+            </div>
           </div>
-          <p className="text-muted-foreground">Administra la información de tus clientes y sus mascotas</p>
-        </div>
-        <div className="flex gap-2">
-          {(currentUser.role === 'Super Administrador' || currentUser.role === 'Administrador') && (
-            <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
-              <DialogTrigger asChild>
-                <Button onClick={() => setEditingClient(null)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nuevo Cliente
-                </Button>
-              </DialogTrigger>
-            <ClientDialog
-              client={editingClient}
-              vehicles={vehicles}
-              currentUserRole={currentUser.role}
-              onSave={handleSaveClient}
-              onClose={() => {
-                setShowNewClient(false);
-                setEditingClient(null);
-              }}
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder="Buscar por nombre, email, documento o mascota..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
             />
-            </Dialog>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-        <Input
-          placeholder="Buscar por nombre, email, documento o mascota..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
-      </div>
+          {/* Clients List */}
+          <div className="space-y-4">
+            {filteredClients.map((client) => {
+              const pets = client.pets || [];
+              const safeRegistrationDate = (() => {
+                try {
+                  const d = client.registrationDate ? new Date(client.registrationDate) : null;
+                  return d && !isNaN(d.getTime()) ? d.toLocaleDateString('es-PE') : '—';
+                } catch {
+                  return '—';
+                }
+              })();
 
-      {/* Clients List */}
-      <div className="space-y-4">
-          {filteredClients.map((client) => (
-            <Card 
-              key={client.id} 
-              className={`p-6 cursor-pointer transition-all hover:shadow-xl bg-gradient-to-br from-white via-blue-50/50 to-purple-50/50 dark:from-gray-900 dark:via-blue-950/20 dark:to-purple-950/20 border-l-4 ${
-                selectedClient?.id === client.id ? 'border-l-primary shadow-xl ring-2 ring-primary/20' : 'border-l-blue-200 dark:border-l-blue-800'
-              }`}
-              onClick={() => setSelectedClient(client)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-4 flex-1">
-                  <div className="h-16 w-16 bg-gradient-to-br from-primary via-blue-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg ring-4 ring-primary/10">
-                    <Users className="h-8 w-8 text-white" />
+              return (
+                <Card 
+                  key={client.id} 
+                  className={`p-6 cursor-pointer transition-all hover:shadow-xl bg-gradient-to-br from-white via-blue-50/50 to-purple-50/50 dark:from-gray-900 dark:via-blue-950/20 dark:to-purple-950/20 border-l-4 ${
+                    selectedClient?.id === client.id ? 'border-l-primary shadow-xl ring-2 ring-primary/20' : 'border-l-blue-200 dark:border-l-blue-800'
+                  }`}
+                  onClick={() => {
+                    setSelectedClient(client);
+                    setClientFichaTab('detalles');
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-4 flex-1">
+                      <div className="h-16 w-16 bg-gradient-to-br from-primary via-blue-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg ring-4 ring-primary/10">
+                        <Users className="h-8 w-8 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <h3 className="font-bold text-lg">{client.fullName}</h3>
+                          <Badge className={`${getClientTypeColor(client.clientType)} border`}>
+                            {client.clientType}
+                          </Badge>
+                          <Badge className={`${getStatusColor(client.status)} border`}>
+                            {client.status}
+                          </Badge>
+                          {client.level && (
+                            <Badge className="bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-900 dark:from-yellow-950/50 dark:to-amber-950/50 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700">
+                              ⭐ {client.level}
+                            </Badge>
+                          )}
+                          {client.isFixedSchedule && (
+                            <Badge className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-900 dark:from-blue-950/50 dark:to-indigo-950/50 dark:text-blue-200 border border-blue-300 dark:border-blue-700">
+                              🔁 Cliente Fijo {client.appointmentFrequency && `· ${client.appointmentFrequency.charAt(0).toUpperCase() + client.appointmentFrequency.slice(1)}`}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground mb-2">
+                          <span>Registro cliente: {safeRegistrationDate}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                          <div className="flex items-center space-x-2">
+                            <FileText className="h-4 w-4 text-blue-500" />
+                            <span>{client.documentType}: {client.documentNumber}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Phone className="h-4 w-4 text-green-500" />
+                            <span>{client.phone1}</span>
+                          </div>
+                          <div className="flex items-center space-x-2 col-span-2">
+                            <Mail className="h-4 w-4 text-purple-500" />
+                            <span className="truncate">{client.email}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="h-4 w-4 text-red-500" />
+                            <span>{client.district}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <PawPrint className="h-4 w-4 text-pink-500" />
+                            <span>{pets.length} mascota(s)</span>
+                          </div>
+                        </div>
+                        {pets.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {pets.map((pet: any) => {
+                              const petStatus = getPetStatus(pet, client.appointments);
+                              const petAppointments = client.appointments?.filter((app: any) => app.petName === pet.name) || [];
+                              const lastVisit = petAppointments.length > 0 
+                                ? new Date([...petAppointments].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date)
+                                : null;
+                              
+                              return (
+                                <div key={pet.id} className="flex items-center gap-2 flex-wrap">
+                                  <Badge 
+                                    variant="outline" 
+                                    className="bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950/30 dark:to-rose-950/30 border-pink-200 dark:border-pink-800 cursor-pointer hover:ring-2 hover:ring-pink-500/50 transition-all"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedPetId(pet.id);
+                                    }}
+                                  >
+                                    <Heart className="h-3 w-3 mr-1 text-pink-500" />
+                                    {pet.name}
+                                  </Badge>
+                                  {petStatus && (
+                                    <Badge className={`${petStatus.color} text-xs px-2 py-0.5`}>
+                                      {petStatus.status}
+                                    </Badge>
+                                  )}
+                                  {lastVisit && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Últ. visita: {lastVisit.toLocaleDateString('es-PE')}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right ml-4 flex flex-col gap-2">
+                      <Button 
+                        size="sm"
+                        className="w-full bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 dark:bg-fuchsia-950/30 dark:hover:bg-fuchsia-900/50 dark:text-fuchsia-300 border border-fuchsia-200 dark:border-fuchsia-800 h-8 text-xs font-bold uppercase tracking-wide px-4 transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedClient(client);
+                          setClientFichaTab('pacientes');
+                          setEditingPet(null);
+                          setShowNewPet(true);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1.5" />
+                        Nueva Mascota
+                      </Button>
+
+                      <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl border border-green-200 dark:border-green-800">
+                        <p className="font-bold text-2xl text-green-700 dark:text-green-300">{client.totalSpent} S/</p>
+                        <p className="text-xs text-green-600 dark:text-green-400">{client.totalAppointments} citas</p>
+                      </div>
+                      
+                      <Button 
+                        size="sm" 
+                        className="w-full bg-gradient-to-r from-primary to-blue-500 hover:from-primary/90 hover:to-blue-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedClient(client);
+                          setClientFichaTab('citas');
+                          setShowNewAppointment(true);
+                        }}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Nueva Cita
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <h3 className="font-bold text-lg">{client.fullName}</h3>
-                      <Badge className={`${getClientTypeColor(client.clientType)} border`}>
-                        {client.clientType}
+                </Card>
+              );
+            })}
+          </div>
+
+          {filteredClients.length === 0 && (
+            <EmptyState
+              icon="users"
+              title={searchTerm ? 'No se encontraron clientes' : 'Aún no hay clientes'}
+              description={searchTerm ? 'Intenta ajustar los términos de búsqueda' : 'Registra tu primer cliente para comenzar'}
+              actionLabel={!searchTerm ? 'Añadir cliente' : undefined}
+              onAction={!searchTerm ? () => setShowNewClient(true) : undefined}
+            />
+          )}
+        </>
+      ) : (
+        /* Ficha del cliente: vista tabulada */
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={() => {
+                  setSelectedClient(null);
+                  setClientFichaTab('detalles');
+                }}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver a lista
+              </Button>
+              <h2 className="text-xl font-semibold">Ficha del cliente</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Columna principal: ficha + pestañas */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* Cabecera ficha */}
+              <Card className="p-4 flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary via-blue-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
+                    {(selectedClient.fullName || '?').charAt(0)}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h3 className="text-lg font-semibold">{selectedClient.fullName}</h3>
+                      <Badge className={`${getClientTypeColor(selectedClient.clientType)} border`}>
+                        {selectedClient.clientType}
                       </Badge>
-                      <Badge className={`${getStatusColor(client.status)} border`}>
-                        {client.status}
+                      <Badge className={`${getStatusColor(selectedClient.status)} border`}>
+                        {selectedClient.status}
                       </Badge>
-                      {client.level && (
-                        <Badge className="bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-900 dark:from-yellow-950/50 dark:to-amber-950/50 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700">
-                          ⭐ {client.level}
-                        </Badge>
-                      )}
-                      {client.isFixedSchedule && (
-                        <Badge className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-900 dark:from-blue-950/50 dark:to-indigo-950/50 dark:text-blue-200 border border-blue-300 dark:border-blue-700">
-                          🔁 Cliente Fijo {client.appointmentFrequency && `· ${client.appointmentFrequency.charAt(0).toUpperCase() + client.appointmentFrequency.slice(1)}`}
-                        </Badge>
-                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground mb-2">
-                      <span>Registro cliente: {new Date(client.registrationDate).toLocaleDateString('es-PE')}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                      <div className="flex items-center space-x-2">
-                        <FileText className="h-4 w-4 text-blue-500" />
-                        <span>{client.documentType}: {client.documentNumber}</span>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5" />
+                        <span>{selectedClient.documentType} {selectedClient.documentNumber}</span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Phone className="h-4 w-4 text-green-500" />
-                        <span>{client.phone1}</span>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3.5 w-3.5" />
+                        <span>{selectedClient.phone1 || '—'}</span>
                       </div>
-                      <div className="flex items-center space-x-2 col-span-2">
-                        <Mail className="h-4 w-4 text-purple-500" />
-                        <span className="truncate">{client.email}</span>
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5" />
+                        <span>{selectedClient.email || '—'}</span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="h-4 w-4 text-red-500" />
-                        <span>{client.district}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <PawPrint className="h-4 w-4 text-pink-500" />
-                        <span>{client.pets.length} mascota(s)</span>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-3.5 w-3.5" />
+                        <span>{selectedClient.district || '—'}</span>
                       </div>
                     </div>
-                    {client.pets.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {client.pets.map(pet => {
-                          const petStatus = getPetStatus(pet, client.appointments);
-                          const petAppointments = client.appointments?.filter(app => app.petName === pet.name) || [];
-                          const lastVisit = petAppointments.length > 0 
-                            ? new Date([...petAppointments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date)
-                            : null;
-                          
-                          return (
-                            <div key={pet.id} className="flex items-center gap-2 flex-wrap">
-                              <Badge 
-                                variant="outline" 
-                                className="bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950/30 dark:to-rose-950/30 border-pink-200 dark:border-pink-800 cursor-pointer hover:ring-2 hover:ring-pink-500/50 transition-all"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedPetId(pet.id);
-                                }}
-                              >
-                                <Heart className="h-3 w-3 mr-1 text-pink-500" />
-                                {pet.name}
-                              </Badge>
-                              {petStatus && (
-                                <Badge className={`${petStatus.color} text-xs px-2 py-0.5`}>
-                                  {petStatus.status}
-                                </Badge>
-                              )}
-                              {lastVisit && (
-                                <span className="text-xs text-muted-foreground">
-                                  Últ. visita: {lastVisit.toLocaleDateString('es-PE')}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 </div>
-                <div className="text-right ml-4 flex flex-col gap-2">
-                  <Button 
+                <div className="flex flex-col gap-2 items-end">
+                  <Button
                     size="sm"
-                    className="w-full bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 dark:bg-fuchsia-950/30 dark:hover:bg-fuchsia-900/50 dark:text-fuchsia-300 border border-fuchsia-200 dark:border-fuchsia-800 h-8 text-xs font-bold uppercase tracking-wide px-4 transition-all"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedClient(client);
-                      setEditingPet(null);
-                      setShowNewPet(true);
+                    variant="outline"
+                    onClick={() => {
+                      setEditingClient(selectedClient);
+                      setShowNewClient(true);
                     }}
                   >
-                    <Plus className="h-3.5 w-3.5 mr-1.5" />
-                    Nueva Mascota
+                    <Edit2 className="h-4 w-4 mr-1" />
+                    Editar cliente
                   </Button>
-
-                  <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl border border-green-200 dark:border-green-800">
-                    <p className="font-bold text-2xl text-green-700 dark:text-green-300">{client.totalSpent} S/</p>
-                    <p className="text-xs text-green-600 dark:text-green-400">{client.totalAppointments} citas</p>
-                  </div>
-                  
-                  <Button 
-                    size="sm" 
-                    className="w-full bg-gradient-to-r from-primary to-blue-500 hover:from-primary/90 hover:to-blue-600"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedClient(client);
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingPet(null);
+                      setShowNewPet(true);
+                      setClientFichaTab('pacientes');
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Nueva mascota
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
                       setShowNewAppointment(true);
+                      setClientFichaTab('citas');
                     }}
                   >
                     <Calendar className="h-4 w-4 mr-1" />
-                    Nueva Cita
+                    Nueva cita
                   </Button>
                 </div>
-              </div>
-            </Card>
-          ))}
-      </div>
+              </Card>
 
-      {filteredClients.length === 0 && (
-        <EmptyState
-          icon="users"
-          title={searchTerm ? 'No se encontraron clientes' : 'Aún no hay clientes'}
-          description={searchTerm ? 'Intenta ajustar los términos de búsqueda' : 'Registra tu primer cliente para comenzar'}
-          actionLabel={!searchTerm ? 'Añadir cliente' : undefined}
-          onAction={!searchTerm ? () => setShowNewClient(true) : undefined}
-        />
+              {/* Tabs principales */}
+              <Tabs value={clientFichaTab} onValueChange={setClientFichaTab}>
+                <TabsList className="w-full flex flex-wrap justify-start">
+                  <TabsTrigger value="detalles">Detalles del cliente</TabsTrigger>
+                  <TabsTrigger value="pacientes">Pacientes</TabsTrigger>
+                  <TabsTrigger value="citas">Citas</TabsTrigger>
+                  <TabsTrigger value="facturacion">Facturación</TabsTrigger>
+                  <TabsTrigger value="recordatorios">Recordatorios</TabsTrigger>
+                  <TabsTrigger value="comunicacion">Comunicación</TabsTrigger>
+                  <TabsTrigger value="notas">Notas</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="detalles" className="mt-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-3">Detalles del cliente</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <div><span className="text-muted-foreground">Tipo documento:</span> {selectedClient.documentType}</div>
+                      <div><span className="text-muted-foreground">N° documento:</span> {selectedClient.documentNumber}</div>
+                      <div><span className="text-muted-foreground">Teléfono:</span> {selectedClient.phone1 || '—'}</div>
+                      <div><span className="text-muted-foreground">Teléfono 2:</span> {selectedClient.phone2 || '—'}</div>
+                      <div className="md:col-span-2"><span className="text-muted-foreground">Email:</span> {selectedClient.email || '—'}</div>
+                      <div className="md:col-span-2"><span className="text-muted-foreground">Dirección:</span> {selectedClient.street || selectedClient.address || '—'}</div>
+                      <div><span className="text-muted-foreground">Distrito:</span> {selectedClient.district || '—'}</div>
+                      <div><span className="text-muted-foreground">Provincia:</span> {selectedClient.province || 'Lima'}</div>
+                      <div><span className="text-muted-foreground">Tipo cliente:</span> {selectedClient.clientType}</div>
+                      <div><span className="text-muted-foreground">Nivel:</span> {selectedClient.level || '—'}</div>
+                    </div>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="pacientes" className="mt-4">
+                  <Card className="p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold">Pacientes (mascotas)</h3>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setEditingPet(null);
+                          setShowNewPet(true);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Añadir
+                      </Button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left p-2">Nombre</th>
+                            <th className="text-left p-2">Especie</th>
+                            <th className="text-left p-2">Raza</th>
+                            <th className="text-left p-2">F. Nacimiento</th>
+                            <th className="w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedClient.pets || []).map((pet: any) => (
+                            <tr key={pet.id} className="border-b hover:bg-muted/30">
+                              <td className="p-2">
+                                <button
+                                  type="button"
+                                  className="font-medium hover:underline"
+                                  onClick={() => setSelectedPetId(pet.id)}
+                                >
+                                  {pet.name}
+                                </button>
+                              </td>
+                              <td className="p-2">{pet.species || '—'}</td>
+                              <td className="p-2">{pet.breed || '—'}</td>
+                              <td className="p-2">
+                                {pet.birthDate ? new Date(pet.birthDate).toLocaleDateString('es-PE') : '—'}
+                              </td>
+                              <td className="p-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => {
+                                    setEditingPet(pet);
+                                    setShowNewPet(true);
+                                  }}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {(selectedClient.pets || []).length === 0 && (
+                        <p className="text-muted-foreground text-center py-6">
+                          Sin mascotas registradas. Añade una con el botón superior.
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="citas" className="mt-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-4">Citas</h3>
+                    <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+                      <Calendar className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                      <p>Las citas de este cliente se muestran en el módulo Citas.</p>
+                      <Button
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => setShowNewAppointment(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Nueva cita
+                      </Button>
+                    </div>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="facturacion" className="mt-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-4">Facturación</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <span className="text-muted-foreground block">Total citas</span>
+                        <span className="text-xl font-semibold">
+                          {selectedClient.totalAppointments ?? 0}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <span className="text-muted-foreground block">Total gastado</span>
+                        <span className="text-xl font-semibold">
+                          {selectedClient.totalSpent ?? 0} S/
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="recordatorios" className="mt-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-4">Recordatorios</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Sin recordatorios configurados.
+                    </p>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="comunicacion" className="mt-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-4">Comunicación</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Historial de comunicaciones (emails, SMS).
+                    </p>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="notas" className="mt-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-4">Notas</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Notas internas del cliente.
+                    </p>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* Sidebar derecha */}
+            <div className="space-y-4">
+              <Card className="p-4">
+                <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
+                  <StickyNote className="h-4 w-4" /> Nota crítica del cliente
+                </h4>
+                <p className="text-muted-foreground text-xs">Agregar nota</p>
+              </Card>
+              <Card className="p-4">
+                <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
+                  <StickyNote className="h-4 w-4" /> Nota crítica del paciente
+                </h4>
+                <p className="text-muted-foreground text-xs">Agregar nota</p>
+              </Card>
+              <Card className="p-4">
+                <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
+                  <Bell className="h-4 w-4" /> Recordatorios destacados
+                </h4>
+                <p className="text-muted-foreground text-xs">Sin recordatorios</p>
+              </Card>
+              <Card className="p-4">
+                <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
+                  <DollarSign className="h-4 w-4" /> Gastos
+                </h4>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>Último mes: 0,00</p>
+                  <p>Últimos 3 meses: 0,00</p>
+                  <p>Últimos 6 meses: 0,00</p>
+                </div>
+              </Card>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Pet Dialog */}
