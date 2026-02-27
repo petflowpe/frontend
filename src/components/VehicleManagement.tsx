@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -43,6 +43,8 @@ import {
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { MAINTENANCE_TYPES, CHART_OF_ACCOUNTS } from '../config/defaults';
 import { useVehicles } from '../hooks/useVehicles';
+import { apiClient } from '../utils/api/client';
+import { API } from '../utils/api/endpoints';
 
 // Catálogos de marcas/modelos (configuración UI)
 const DEFAULT_BRANDS = ['Mercedes', 'Ford', 'Volkswagen', 'Iveco', 'Renault', 'Fiat', 'Peugeot', 'Citroën'];
@@ -67,16 +69,18 @@ export function VehicleManagement() {
 
   // companyId 0 = no filtrar por empresa, listar todos los vehículos
 const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, deleteVehicle, reload: reloadVehicles } = useVehicles(0);
-  const vehiclesForUI = vehicles.map((v) => ({
-    ...v,
-    plate: v.plate ?? v.placa,
-    brand: v.brand ?? v.marca,
-    model: v.model ?? v.modelo,
-    year: v.year ?? v.anio,
-    lastService: v.lastService ?? v.fecha_ultimo_mantenimiento,
-    nextService: v.nextService ?? v.fecha_proximo_mantenimiento,
-    equipment: v.equipment ?? v.equipamiento ?? [],
-  }));
+  const vehiclesForUIBase = useMemo(() => {
+    return (vehicles || []).map((v: any) => ({
+      ...v,
+      plate: v.plate ?? v.placa,
+      brand: v.brand ?? v.marca,
+      model: v.model ?? v.modelo,
+      year: v.year ?? v.anio,
+      lastService: v.lastService ?? v.fecha_ultimo_mantenimiento,
+      nextService: v.nextService ?? v.fecha_proximo_mantenimiento,
+      equipment: v.equipment ?? v.equipamiento ?? [],
+    }));
+  }, [vehicles]);
 
   // Estados para configuraciones (catálogos locales)
   const [showBrandConfig, setShowBrandConfig] = useState(false);
@@ -97,6 +101,109 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
   const [maintenanceHistory, setMaintenanceHistory] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [upcomingServices, setUpcomingServices] = useState<any[]>([]);
+
+  const vehiclesForUI = useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+
+    const sumByVehicle = (vehicleId: any, mode: 'month' | 'all') => {
+      let sum = 0;
+      for (const e of expenses || []) {
+        if (String(e?.vehicleId) !== String(vehicleId)) continue;
+        if (mode === 'month') {
+          const d = e?.date ? new Date(e.date) : null;
+          if (!d || Number.isNaN(d.getTime())) continue;
+          if (d.getFullYear() !== year || d.getMonth() !== month) continue;
+        }
+        sum += Number(e?.amount) || 0;
+      }
+      return sum;
+    };
+
+    return (vehiclesForUIBase || []).map((v: any) => ({
+      ...v,
+      monthlyExpenses: sumByVehicle(v.id, 'month'),
+      totalExpenses: sumByVehicle(v.id, 'all'),
+    }));
+  }, [vehiclesForUIBase, expenses]);
+
+  const maintenanceFromBackend = useCallback((row: any) => ({
+    id: row.id,
+    vehicleId: row.vehicle_id ?? row.vehicleId,
+    type: row.type,
+    status: row.status,
+    description: row.description || '',
+    date: row.date,
+    cost: Number(row.cost ?? 0),
+    workshopRuc: row.workshop_ruc ?? row.workshopRuc ?? '',
+    workshop: row.workshop_name ?? row.workshop ?? '',
+    workshopAddress: row.workshop_address ?? row.workshopAddress ?? '',
+    workshopPhone: row.workshop_phone ?? row.workshopPhone ?? '',
+    nextDue: row.next_due ?? row.nextDue ?? '',
+    accountCode: row.account_code ?? row.accountCode ?? '',
+  }), []);
+
+  const expenseFromBackend = useCallback((row: any) => ({
+    id: row.id,
+    vehicleId: row.vehicle_id ?? row.vehicleId,
+    category: row.category,
+    amount: Number(row.amount ?? 0),
+    date: row.date,
+    description: row.description || '',
+    accountCode: row.account_code ?? row.accountCode ?? '',
+  }), []);
+
+  const serviceFromBackend = useCallback((row: any) => ({
+    id: row.id,
+    vehicleId: row.vehicle_id ?? row.vehicleId,
+    type: row.type,
+    description: row.description || '',
+    dueDate: row.due_date ?? row.dueDate,
+    priority: row.priority,
+    estimatedCost: Number(row.estimated_cost ?? row.estimatedCost ?? 0),
+    status: row.status,
+  }), []);
+
+  const fetchMaintenances = useCallback(async () => {
+    try {
+      const res = await apiClient.get(API.vehicles.maintenances.list, { per_page: 500 });
+      const raw = Array.isArray(res) ? res : res?.data;
+      setMaintenanceHistory((Array.isArray(raw) ? raw : []).map(maintenanceFromBackend));
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo cargar el historial de mantenimiento');
+      setMaintenanceHistory([]);
+    }
+  }, [maintenanceFromBackend]);
+
+  const fetchExpenses = useCallback(async () => {
+    try {
+      const res = await apiClient.get(API.vehicles.expenses.list, { per_page: 500 });
+      const raw = Array.isArray(res) ? res : res?.data;
+      setExpenses((Array.isArray(raw) ? raw : []).map(expenseFromBackend));
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo cargar el historial de gastos');
+      setExpenses([]);
+    }
+  }, [expenseFromBackend]);
+
+  const fetchServices = useCallback(async () => {
+    try {
+      const res = await apiClient.get(API.vehicles.services.list, { per_page: 500, status: 'pending' });
+      const raw = Array.isArray(res) ? res : res?.data;
+      setUpcomingServices((Array.isArray(raw) ? raw : []).map(serviceFromBackend));
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo cargar los próximos servicios');
+      setUpcomingServices([]);
+    }
+  }, [serviceFromBackend]);
+
+  useEffect(() => {
+    // Cargar datos persistidos al abrir el módulo
+    fetchMaintenances();
+    fetchExpenses();
+    fetchServices();
+  }, [fetchMaintenances, fetchExpenses, fetchServices]);
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -206,66 +313,141 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
     } catch (_e) {}
   };
 
-  const handleSaveMaintenance = (maintenanceData: any) => {
-    if (editingMaintenance) {
-      setMaintenanceHistory(maintenanceHistory.map(m => 
-        m.id === editingMaintenance.id ? { ...maintenanceData, id: editingMaintenance.id } : m
-      ));
+  const handleSaveMaintenance = async (maintenanceData: any) => {
+    try {
+      const vehicleId = maintenanceData?.vehicleId;
+      if (!vehicleId) {
+        toast.error('Seleccione un vehículo');
+        return;
+      }
+
+      const payload = {
+        type: maintenanceData.type,
+        status: maintenanceData.status,
+        description: maintenanceData.description,
+        date: maintenanceData.date,
+        cost: maintenanceData.cost,
+        workshopRuc: maintenanceData.workshopRuc,
+        workshop: maintenanceData.workshop,
+        workshopAddress: maintenanceData.workshopAddress,
+        workshopPhone: maintenanceData.workshopPhone,
+        nextDue: maintenanceData.nextDue || null,
+        accountCode: maintenanceData.accountCode,
+      };
+
+      if (editingMaintenance?.id) {
+        await apiClient.put(API.vehicles.maintenances.byId(editingMaintenance.id), payload);
+        toast.success('Mantenimiento actualizado');
+      } else {
+        await apiClient.post(API.vehicles.maintenances.byVehicle(vehicleId), payload);
+        toast.success('Mantenimiento registrado');
+      }
+
+      setShowNewMaintenance(false);
       setEditingMaintenance(null);
-    } else {
-      setMaintenanceHistory([...maintenanceHistory, { ...maintenanceData, id: Date.now() }]);
+      await fetchMaintenances();
+      await reloadVehicles?.();
+    } catch (e: any) {
+      const msg = e?.message || 'No se pudo guardar el mantenimiento';
+      toast.error(msg);
     }
-    setShowNewMaintenance(false);
   };
 
-  const handleDeleteMaintenance = (id: number) => {
-    setMaintenanceHistory(maintenanceHistory.filter(m => m.id !== id));
+  const handleDeleteMaintenance = async (id: number) => {
+    try {
+      await apiClient.delete(API.vehicles.maintenances.byId(id));
+      toast.success('Mantenimiento eliminado');
+      await fetchMaintenances();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el mantenimiento');
+    }
   };
 
-  const handleSaveExpense = (expenseData: any) => {
-    if (editingExpense) {
-      setExpenses(expenses.map(e => 
-        e.id === editingExpense.id ? { ...expenseData, id: editingExpense.id } : e
-      ));
+  const handleSaveExpense = async (expenseData: any) => {
+    try {
+      const vehicleId = expenseData?.vehicleId;
+      if (!vehicleId) {
+        toast.error('Seleccione un vehículo');
+        return;
+      }
+
+      const payload = {
+        category: expenseData.category,
+        amount: expenseData.amount,
+        date: expenseData.date,
+        description: expenseData.description,
+        accountCode: expenseData.accountCode,
+      };
+
+      if (editingExpense?.id) {
+        await apiClient.put(API.vehicles.expenses.byId(editingExpense.id), payload);
+        toast.success('Gasto actualizado');
+      } else {
+        await apiClient.post(API.vehicles.expenses.byVehicle(vehicleId), payload);
+        toast.success('Gasto registrado');
+      }
+
+      setShowNewExpense(false);
       setEditingExpense(null);
-    } else {
-      setExpenses([...expenses, { ...expenseData, id: Date.now() }]);
-    }
-    setShowNewExpense(false);
-  };
-
-  const handleDeleteExpense = (id: number) => {
-    setExpenses(expenses.filter(e => e.id !== id));
-  };
-
-  const handleSaveService = (serviceData: any) => {
-    setUpcomingServices([...upcomingServices, { ...serviceData, id: Date.now(), status: 'pending' }]);
-    setShowNewService(false);
-  };
-
-  const handleCompleteService = (id: number) => {
-    const service = upcomingServices.find(s => s.id === id);
-    if (service) {
-      // Agregar al historial de mantenimiento
-      setMaintenanceHistory([...maintenanceHistory, {
-        id: Date.now(),
-        vehicleId: service.vehicleId,
-        type: service.type,
-        description: service.description,
-        date: new Date().toISOString().split('T')[0],
-        cost: service.estimatedCost,
-        workshop: 'Taller Principal',
-        nextDue: null,
-        status: 'completed',
-        accountCode: '63102000'
-      }]);
-      // Eliminar de próximos servicios
-      setUpcomingServices(upcomingServices.filter(s => s.id !== id));
+      await fetchExpenses();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo guardar el gasto');
     }
   };
 
-  const handleDeleteService = (id: number) => {
-    setUpcomingServices(upcomingServices.filter(s => s.id !== id));
+  const handleDeleteExpense = async (id: number) => {
+    try {
+      await apiClient.delete(API.vehicles.expenses.byId(id));
+      toast.success('Gasto eliminado');
+      await fetchExpenses();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el gasto');
+    }
+  };
+
+  const handleSaveService = async (serviceData: any) => {
+    try {
+      const vehicleId = serviceData?.vehicleId;
+      if (!vehicleId) {
+        toast.error('Seleccione un vehículo');
+        return;
+      }
+      const payload = {
+        type: serviceData.type,
+        description: serviceData.description,
+        dueDate: serviceData.dueDate,
+        priority: serviceData.priority,
+        estimatedCost: serviceData.estimatedCost,
+      };
+      await apiClient.post(API.vehicles.services.byVehicle(vehicleId), payload);
+      toast.success('Servicio programado');
+      setShowNewService(false);
+      await fetchServices();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo programar el servicio');
+    }
+  };
+
+  const handleCompleteService = async (id: number) => {
+    try {
+      await apiClient.post(API.vehicles.services.complete(id), {});
+      toast.success('Servicio completado');
+      await fetchServices();
+      await fetchMaintenances();
+      await reloadVehicles?.();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo completar el servicio');
+    }
+  };
+
+  const handleDeleteService = async (id: number) => {
+    try {
+      await apiClient.delete(API.vehicles.services.byId(id));
+      toast.success('Servicio eliminado');
+      await fetchServices();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el servicio');
+    }
   };
 
   const filteredVehicles = vehiclesForUI.filter(vehicle => {
@@ -448,7 +630,12 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
               <DollarSign className="h-6 w-6 text-white" />
             </div>
             <div>
-              <p className="text-xl font-bold text-red-900 dark:text-red-100">{formatCurrency(vehicles.reduce((sum, v) => sum + v.monthlyExpenses, 0))}</p>
+              <p className="text-xl font-bold text-red-900 dark:text-red-100">
+                {formatCurrency(
+                  vehiclesForUI.reduce((sum: number, v: any) => sum + (Number(v?.monthlyExpenses) || 0), 0),
+                  'PEN'
+                )}
+              </p>
               <p className="text-sm text-red-700 dark:text-red-300">Gasto Mensual</p>
             </div>
           </div>
@@ -545,11 +732,13 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                 const vehicle = vehiclesForUI.find(v => v.id === maintenance.vehicleId);
                 const account = CHART_OF_ACCOUNTS.find(a => a.code === maintenance.accountCode);
                 const isCompleted = maintenance.status === 'completed';
-                const vehicleType = vehicle?.type === 'furgoneta_grande' ? 'Furgoneta' : 
-                                  vehicle?.type === 'auto_compacto' ? 'Auto compacto' :
-                                  vehicle?.type === 'camioneta' ? 'Camioneta' :
-                                  vehicle?.type === 'moto' ? 'Moto' : 'Vehículo';
-                const vehicleNumber = vehicle?.id ? `#${String(vehicle.id).padStart(3, '0')}` : '';
+                const vehicleTitle = (() => {
+                  const base = String(vehicle?.name || 'Vehículo').trim();
+                  const idTag = vehicle?.id != null ? `#${String(vehicle.id).padStart(3, '0')}` : '';
+                  const hasTag = /#\d{3,}/.test(base);
+                  if (hasTag || !idTag) return base;
+                  return `${base} ${idTag}`.trim();
+                })();
                 
                 return (
                   <Card key={maintenance.id} className="p-5 hover:shadow-lg transition-all border border-border/50 dark:border-border/30 bg-card">
@@ -568,7 +757,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                           {/* Fila 1: Vehículo + Tags */}
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <h4 className="font-bold text-base text-foreground">
-                              {vehicleType} {vehicle?.name || 'Sin nombre'} {vehicleNumber}
+                              {vehicleTitle}
                             </h4>
                             <Badge variant="outline" className="bg-background border-border text-foreground">
                               {maintenance.type}
@@ -578,7 +767,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                               'bg-green-500 text-white border-green-600' :
                               'bg-orange-500 text-white border-orange-600'
                             }>
-                              {isCompleted ? 'Completado' : 'En proceso'}
+                              {isCompleted ? 'Completado' : 'En Proceso'}
                             </Badge>
                           </div>
                           
@@ -665,7 +854,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
               </DialogTrigger>
               <ExpenseDialog
                 expense={editingExpense}
-                vehicles={vehicles}
+                vehicles={vehiclesForUI}
                 onSave={handleSaveExpense}
                 onClose={() => {
                   setShowNewExpense(false);
@@ -684,7 +873,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                   <div key={cat.category}>
                     <div className="flex justify-between mb-2">
                       <span className="text-sm font-medium">{cat.category}</span>
-                      <span className="text-sm font-semibold">{formatCurrency(cat.amount)} ({cat.percentage.toFixed(1)}%)</span>
+                      <span className="text-sm font-semibold">{formatCurrency(cat.amount, 'PEN')} ({cat.percentage.toFixed(1)}%)</span>
                     </div>
                     <Progress value={cat.percentage} className="h-2" />
                   </div>
@@ -694,7 +883,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
 
             <Card className="p-6 bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/5 border-primary/20">
               <h4 className="font-semibold mb-4">Total Gastos</h4>
-              <p className="text-4xl font-bold text-primary mb-2">{formatCurrency(totalExpenses)}</p>
+              <p className="text-4xl font-bold text-primary mb-2">{formatCurrency(totalExpenses, 'PEN')}</p>
               <p className="text-sm text-muted-foreground">Suma de todos los gastos registrados</p>
             </Card>
           </div>
@@ -727,7 +916,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-lg">{formatCurrency(expense.amount)}</span>
+                      <span className="font-bold text-lg">{formatCurrency(expense.amount, 'PEN')}</span>
                       <Button 
                         size="sm" 
                         variant="outline"
@@ -766,7 +955,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                 </Button>
               </DialogTrigger>
               <ServiceDialog
-                vehicles={vehicles}
+                vehicles={vehiclesForUI}
                 maintenanceTypes={maintenanceTypes}
                 onSave={handleSaveService}
                 onClose={() => setShowNewService(false)}
@@ -798,7 +987,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                         <p className="text-sm text-muted-foreground mb-2">{service.description}</p>
                         <div className="text-xs text-muted-foreground space-x-4">
                           <span>Vence: {formatDate(service.dueDate)}</span>
-                          <span>Coste estimado: {formatCurrency(service.estimatedCost)}</span>
+                          <span>Coste estimado: {formatCurrency(service.estimatedCost, 'PEN')}</span>
                         </div>
                       </div>
                     </div>
@@ -861,6 +1050,16 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
 function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
   const statusConfig = getStatusConfig(vehicle.status);
   const StatusIcon = statusConfig.icon;
+  const safeDate = (value: any) => {
+    if (!value) return '—';
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      return formatDate(d);
+    } catch {
+      return '—';
+    }
+  };
 
   return (
     <Card className="p-6 hover:shadow-xl transition-all bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border-2 hover:border-primary/30">
@@ -907,15 +1106,15 @@ function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
         <div className="space-y-2">
           <div className="flex items-center space-x-2">
             <Fuel className="h-4 w-4 text-primary" />
-            <span>Combustible: {vehicle.fuelLevel}%</span>
+            <span>Combustible: {vehicle.fuelLevel != null ? `${vehicle.fuelLevel}%` : '—'}</span>
           </div>
           <div className="flex items-center space-x-2">
             <Calendar className="h-4 w-4 text-primary" />
-            <span className="truncate">Próximo: {formatDate(vehicle.nextService)}</span>
+            <span className="truncate">Próximo: {safeDate(vehicle.nextService)}</span>
           </div>
           <div className="flex items-center space-x-2">
             <DollarSign className="h-4 w-4 text-primary" />
-            <span>{formatCurrency(vehicle.monthlyExpenses)}/mes</span>
+            <span>{formatCurrency(Number(vehicle.monthlyExpenses) || 0, 'PEN')}/mes</span>
           </div>
         </div>
       </div>
@@ -985,6 +1184,18 @@ function getStatusConfig(status: string) {
 
 // Componente de vista de detalles del vehículo
 function VehicleDetailsView({ vehicle }: any) {
+  const safeDate = (value: any) => {
+    if (!value) return '—';
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      return formatDate(d);
+    } catch {
+      return '—';
+    }
+  };
+  const safeText = (value: any) => (value == null || value === '' ? '—' : String(value));
+
   return (
     <div className="space-y-4">
       <Tabs defaultValue="general" className="w-full">
@@ -998,19 +1209,19 @@ function VehicleDetailsView({ vehicle }: any) {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">Marca/Modelo</span>
-              <p className="font-semibold mt-1">{vehicle.brand} {vehicle.model}</p>
+              <p className="font-semibold mt-1">{safeText(vehicle.brand)} {safeText(vehicle.model)}</p>
             </div>
             <div className="p-3 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/30 dark:to-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
               <span className="text-xs text-green-700 dark:text-green-300 font-medium">Año</span>
-              <p className="font-semibold mt-1">{vehicle.year}</p>
+              <p className="font-semibold mt-1">{safeText(vehicle.year)}</p>
             </div>
             <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
               <span className="text-xs text-purple-700 dark:text-purple-300 font-medium">Matrícula</span>
-              <p className="font-semibold mt-1">{vehicle.plate}</p>
+              <p className="font-semibold mt-1">{safeText(vehicle.plate)}</p>
             </div>
             <div className="p-3 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/30 dark:to-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
               <span className="text-xs text-orange-700 dark:text-orange-300 font-medium">VIN</span>
-              <p className="font-semibold mt-1 text-xs">{vehicle.vin}</p>
+              <p className="font-semibold mt-1 text-xs">{safeText(vehicle.vin)}</p>
             </div>
             <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
               <span className="text-xs text-red-700 dark:text-red-300 font-medium">Kilometraje</span>
@@ -1018,15 +1229,15 @@ function VehicleDetailsView({ vehicle }: any) {
             </div>
             <div className="p-3 bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-950/30 dark:to-cyan-900/20 rounded-lg border border-cyan-200 dark:border-cyan-800">
               <span className="text-xs text-cyan-700 dark:text-cyan-300 font-medium">Conductor</span>
-              <p className="font-semibold mt-1">{vehicle.driver}</p>
+              <p className="font-semibold mt-1">{safeText(vehicle.driver)}</p>
             </div>
             <div className="p-3 bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-950/30 dark:to-pink-900/20 rounded-lg border border-pink-200 dark:border-pink-800">
               <span className="text-xs text-pink-700 dark:text-pink-300 font-medium">Ubicación</span>
-              <p className="font-semibold mt-1">{vehicle.location}</p>
+              <p className="font-semibold mt-1">{safeText(vehicle.location)}</p>
             </div>
             <div className="p-3 bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950/30 dark:to-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
               <span className="text-xs text-yellow-700 dark:text-yellow-300 font-medium">Nivel de Combustible</span>
-              <p className="font-semibold mt-1">{vehicle.fuelLevel}%</p>
+              <p className="font-semibold mt-1">{vehicle.fuelLevel != null ? `${vehicle.fuelLevel}%` : '—'}</p>
             </div>
           </div>
         </TabsContent>
@@ -1049,28 +1260,28 @@ function VehicleDetailsView({ vehicle }: any) {
                 <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 <span className="font-medium">Seguro</span>
               </div>
-              <p className="text-sm text-muted-foreground">Vence: {formatDate(vehicle.insurance)}</p>
+              <p className="text-sm text-muted-foreground">Vence: {safeDate(vehicle.insurance)}</p>
             </div>
             <div className="p-4 border rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20 border-purple-200 dark:border-purple-700">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 <span className="font-medium">ITV</span>
               </div>
-              <p className="text-sm text-muted-foreground">Vence: {formatDate(vehicle.itv)}</p>
+              <p className="text-sm text-muted-foreground">Vence: {safeDate(vehicle.itv)}</p>
             </div>
             <div className="p-4 border rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/30 dark:to-green-900/20 border-green-200 dark:border-green-700">
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="h-5 w-5 text-green-600 dark:text-green-400" />
                 <span className="font-medium">Último Servicio</span>
               </div>
-              <p className="text-sm text-muted-foreground">{formatDate(vehicle.lastService)}</p>
+              <p className="text-sm text-muted-foreground">{safeDate(vehicle.lastService)}</p>
             </div>
             <div className="p-4 border rounded-lg bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/30 dark:to-orange-900/20 border-orange-200 dark:border-orange-700">
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                 <span className="font-medium">Próximo Servicio</span>
               </div>
-              <p className="text-sm text-muted-foreground">{formatDate(vehicle.nextService)}</p>
+              <p className="text-sm text-muted-foreground">{safeDate(vehicle.nextService)}</p>
             </div>
           </div>
         </TabsContent>
@@ -1126,6 +1337,17 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
   });
 
   const [newEquipment, setNewEquipment] = useState('');
+  const sanitizeIsoDateInput = (value: string) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    const parts = raw.split('-');
+    const y = (parts[0] || '').replace(/\D/g, '').slice(0, 4);
+    const m = (parts[1] || '').replace(/\D/g, '').slice(0, 2);
+    const d = (parts[2] || '').replace(/\D/g, '').slice(0, 2);
+    if (!m) return y;
+    if (!d) return `${y}-${m}`;
+    return `${y}-${m}-${d}`;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1199,29 +1421,39 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Marca *</Label>
-                <select
-                  className="w-full p-2 border rounded-md"
+                <Select
                   value={formData.brand}
-                  onChange={(e) => setFormData({ ...formData, brand: e.target.value, model: '' })}
+                  onValueChange={(brand) => setFormData({ ...formData, brand, model: '' })}
                 >
-                  {brands.map((brand: string) => (
-                    <option key={brand} value={brand}>{brand}</option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccione marca" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brands.map((brand: string) => (
+                      <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Modelo *</Label>
-                <select
-                  className="w-full p-2 border rounded-md"
+                <Select
                   value={formData.model}
-                  onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                  required
+                  onValueChange={(model) => setFormData({ ...formData, model })}
                 >
-                  <option value="">Seleccionar modelo</option>
-                  {availableModels.map((model: string) => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModels.length === 0 ? (
+                      <SelectItem value="__none__" disabled>Sin modelos</SelectItem>
+                    ) : (
+                      availableModels.map((model: string) => (
+                        <SelectItem key={model} value={model}>{model}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1231,7 +1463,13 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
                   type="number"
                   placeholder="2024"
                   value={formData.year}
-                  onChange={(e) => setFormData({ ...formData, year: Number(e.target.value) })}
+                  min={1900}
+                  max={new Date().getFullYear()}
+                  step={1}
+                  onChange={(e) => {
+                    const digits = String(e.target.value || '').replace(/\D/g, '').slice(0, 4);
+                    setFormData({ ...formData, year: digits ? Number(digits) : '' });
+                  }}
                   required
                 />
               </div>
@@ -1270,15 +1508,19 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
             </div>
             <div>
               <Label>Estado</Label>
-              <select
-                className="w-full p-2 border rounded-md"
+              <Select
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                onValueChange={(status) => setFormData({ ...formData, status })}
               >
-                <option value="active">Activo</option>
-                <option value="maintenance">Mantenimiento</option>
-                <option value="out_of_service">Fuera de Servicio</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="maintenance">Mantenimiento</SelectItem>
+                  <SelectItem value="out_of_service">Fuera de Servicio</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1286,7 +1528,7 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
                 <Input
                   type="date"
                   value={formData.insurance}
-                  onChange={(e) => setFormData({ ...formData, insurance: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, insurance: sanitizeIsoDateInput(e.target.value) })}
                 />
               </div>
               <div>
@@ -1294,7 +1536,7 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
                 <Input
                   type="date"
                   value={formData.itv}
-                  onChange={(e) => setFormData({ ...formData, itv: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, itv: sanitizeIsoDateInput(e.target.value) })}
                 />
               </div>
             </div>
@@ -1304,7 +1546,7 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
                 <Input
                   type="date"
                   value={formData.lastService}
-                  onChange={(e) => setFormData({ ...formData, lastService: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, lastService: sanitizeIsoDateInput(e.target.value) })}
                 />
               </div>
               <div>
@@ -1312,7 +1554,7 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
                 <Input
                   type="date"
                   value={formData.nextService}
-                  onChange={(e) => setFormData({ ...formData, nextService: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, nextService: sanitizeIsoDateInput(e.target.value) })}
                 />
               </div>
             </div>
@@ -1570,15 +1812,16 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
       <div className="space-y-4">
         <div>
           <Label>Seleccionar Marca</Label>
-          <select
-            className="w-full p-2 border rounded-md"
-            value={selectedBrand}
-            onChange={(e) => setSelectedBrand(e.target.value)}
-          >
-            {brands.map((brand: string) => (
-              <option key={brand} value={brand}>{brand}</option>
-            ))}
-          </select>
+          <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccione marca" />
+            </SelectTrigger>
+            <SelectContent>
+              {brands.map((brand: string) => (
+                <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex gap-2">
@@ -1747,6 +1990,10 @@ function MaintenanceTypeConfigDialog({ maintenanceTypes, onSave, onClose }: any)
 // Diálogo de mantenimiento
 function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops, onSave, onClose }: any) {
   const expenseAccounts = CHART_OF_ACCOUNTS.filter(a => a.type === 'expense' && a.category === 'Gastos de Vehículos');
+  const defaultExpenseAccountCode =
+    expenseAccounts.find((a) => a.code === '63102000')?.code ||
+    expenseAccounts[0]?.code ||
+    '';
 
   const normalize = (s: string) =>
     (s || '')
@@ -1758,7 +2005,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
 
   const suggestAccountCodeForType = (type: string): string => {
     const t = normalize(type);
-    if (!t) return '63102000';
+    if (!t) return defaultExpenseAccountCode;
 
     const exact = expenseAccounts.find(a => normalize(a.name) === t);
     if (exact) return exact.code;
@@ -1770,12 +2017,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
     });
     if (partial) return partial.code;
 
-    // Heurística mínima para términos típicos
-    if (t.includes('itv')) return '63105000';
-    if (t.includes('repar')) return '63103000';
-    if (t.includes('manten')) return '63102000';
-
-    return '63199000';
+    return defaultExpenseAccountCode;
   };
 
   const initialType = maintenance?.type || maintenanceTypes?.[0] || 'Mantenimiento Preventivo';
@@ -1802,30 +2044,40 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
   // Autocompletar datos del taller al ingresar RUC
   const handleRucChange = (ruc: string) => {
     const cleanRuc = ruc.replace(/\D/g, ''); // Solo números
-    setFormData({ ...formData, workshopRuc: cleanRuc });
+    const foundWorkshop = cleanRuc.length === 11
+      ? workshops.find((w: any) => w.ruc === cleanRuc)
+      : null;
+
+    setFormData((prev: any) => ({
+      ...prev,
+      workshopRuc: cleanRuc,
+      workshop: foundWorkshop ? foundWorkshop.name : prev.workshop,
+      workshopAddress: foundWorkshop ? (foundWorkshop.address || '') : prev.workshopAddress,
+      workshopPhone: foundWorkshop ? (foundWorkshop.phone || '') : prev.workshopPhone,
+    }));
     
-    if (cleanRuc.length === 11) {
-      const foundWorkshop = workshops.find((w: any) => w.ruc === cleanRuc);
-      if (foundWorkshop) {
-        setFormData({
-          ...formData,
-          workshopRuc: cleanRuc,
-          workshop: foundWorkshop.name,
-          workshopAddress: foundWorkshop.address || '',
-          workshopPhone: foundWorkshop.phone || ''
-        });
-        toast.success('Datos del taller autocompletados');
-      }
-    }
+    if (foundWorkshop) toast.success('Datos del taller autocompletados');
   };
 
   const handleTypeChange = (type: string) => {
     const suggested = suggestAccountCodeForType(type);
-    setFormData({
-      ...formData,
+    setFormData((prev: any) => ({
+      ...prev,
       type,
-      accountCode: accountTouched ? formData.accountCode : suggested
-    });
+      accountCode: accountTouched ? prev.accountCode : suggested
+    }));
+  };
+
+  const sanitizeIsoDateInput = (value: string) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    const parts = raw.split('-');
+    const y = (parts[0] || '').replace(/\D/g, '').slice(0, 4);
+    const m = (parts[1] || '').replace(/\D/g, '').slice(0, 2);
+    const d = (parts[2] || '').replace(/\D/g, '').slice(0, 2);
+    if (!m) return y;
+    if (!d) return `${y}-${m}`;
+    return `${y}-${m}-${d}`;
   };
 
   const isValidISODate = (value: string) => {
@@ -1849,11 +2101,11 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
     
     // Validaciones adicionales
     if (!isValidISODate(formData.date)) {
-      toast.error('Fecha inválida. Verifica que el año tenga 4 dígitos (YYYY-MM-DD).');
+      toast.error('Fecha inválida. Verifica que el año tenga 4 dígitos.');
       return;
     }
     if (formData.nextDue && !isValidISODate(formData.nextDue)) {
-      toast.error('Próximo mantenimiento inválido. Verifica que el año tenga 4 dígitos (YYYY-MM-DD).');
+      toast.error('Próximo mantenimiento inválido. Verifica que el año tenga 4 dígitos.');
       return;
     }
     if (formData.workshopRuc.length !== 11) {
@@ -1932,7 +2184,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="completed">Completado</SelectItem>
-                <SelectItem value="in_progress">En proceso</SelectItem>
+                <SelectItem value="in_progress">En Proceso</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1958,7 +2210,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
             <Input
               type="date"
               value={formData.date}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, date: sanitizeIsoDateInput(e.target.value) })}
               required
             />
           </div>
@@ -1981,7 +2233,7 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
             <Input
               type="date"
               value={formData.nextDue}
-              onChange={(e) => setFormData({ ...formData, nextDue: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, nextDue: sanitizeIsoDateInput(e.target.value) })}
               placeholder="dd/mm/aaaa"
             />
           </div>
@@ -2075,21 +2327,99 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
 
 // Diálogo de gastos
 function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
+  const expenseAccounts = CHART_OF_ACCOUNTS.filter(a => a.type === 'expense' && a.category === 'Gastos de Vehículos');
+  const sanitizeIsoDateInput = (value: string) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    const parts = raw.split('-');
+    const y = (parts[0] || '').replace(/\D/g, '').slice(0, 4);
+    const m = (parts[1] || '').replace(/\D/g, '').slice(0, 2);
+    const d = (parts[2] || '').replace(/\D/g, '').slice(0, 2);
+    if (!m) return y;
+    if (!d) return `${y}-${m}`;
+    return `${y}-${m}-${d}`;
+  };
+
+  const isValidISODate = (value: string) => {
+    if (!value) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [y, m, d] = value.split('-').map((n) => Number(n));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+    if (y < 1900 || y > 2100) return false;
+    if (m < 1 || m > 12) return false;
+    if (d < 1 || d > 31) return false;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (
+      dt.getUTCFullYear() === y &&
+      dt.getUTCMonth() === m - 1 &&
+      dt.getUTCDate() === d
+    );
+  };
+
+  const pad3 = (n: any) => String(n ?? '').padStart(3, '0');
+  const vehicleLabel = (v: any) => {
+    const idTag = v?.id != null ? `#${pad3(v.id)}` : '';
+    return `${v?.name || 'Vehículo'} ${idTag}`.trim();
+  };
+
+  const suggestedAccountByCategory = (category: string) => {
+    const map: Record<string, string> = {
+      'Combustible': '63101010',
+      'Mantenimiento': '63102000',
+      'Reparación': '63103000',
+      'Seguro': '63104000',
+      'ITV/Documentación': '63105000',
+      'Equipamiento': '63106000',
+      'Limpieza/Suministros': '63107000',
+      'Peajes': '63108000',
+      'Estacionamiento': '63109000',
+      'Otros': '63199000',
+    };
+    const desired = map[category] || '63199000';
+    return expenseAccounts.find(a => a.code === desired)?.code || expenseAccounts[0]?.code || '';
+  };
+
+  const initialAccount = expense?.accountCode || suggestedAccountByCategory(expense?.category || 'Combustible');
   const [formData, setFormData] = useState({
     vehicleId: expense?.vehicleId || vehicles[0]?.id || '',
     category: expense?.category || 'Combustible',
     amount: expense?.amount || 0,
     date: expense?.date || new Date().toISOString().split('T')[0],
     description: expense?.description || '',
-    accountCode: expense?.accountCode || '63101010'
+    accountCode: initialAccount
   });
+
+  const [accountTouched, setAccountTouched] = useState(Boolean(expense?.accountCode));
+
+  const handleCategoryChange = (category: string) => {
+    const suggested = suggestedAccountByCategory(category);
+    setFormData((prev: any) => ({
+      ...prev,
+      category,
+      accountCode: accountTouched ? prev.accountCode : suggested,
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.vehicleId) {
+      toast.error('Seleccione un vehículo');
+      return;
+    }
+    if (!isValidISODate(formData.date)) {
+      toast.error('Fecha inválida. Verifica que el año tenga 4 dígitos.');
+      return;
+    }
+    if (Number.isNaN(Number(formData.amount)) || Number(formData.amount) < 0) {
+      toast.error('El monto no puede ser negativo');
+      return;
+    }
+    if (!formData.accountCode) {
+      toast.error('Seleccione una cuenta contable');
+      return;
+    }
     onSave(formData);
   };
-
-  const expenseAccounts = CHART_OF_ACCOUNTS.filter(a => a.type === 'expense' && a.category === 'Gastos de Vehículos');
 
   return (
     <DialogContent className="max-w-lg">
@@ -2102,37 +2432,43 @@ function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label>Vehículo *</Label>
-          <select
-            className="w-full p-2 border rounded-md"
-            value={formData.vehicleId}
-            onChange={(e) => setFormData({ ...formData, vehicleId: Number(e.target.value) })}
-            required
+          <Select
+            value={String(formData.vehicleId)}
+            onValueChange={(value) => setFormData({ ...formData, vehicleId: Number(value) })}
           >
-            {vehiclesForUI.map((vehicle: any) => (
-              <option key={vehicle.id} value={vehicle.id}>{vehicle.name}</option>
-            ))}
-          </select>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccione un vehículo" />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicles.map((vehicle: any) => (
+                <SelectItem key={vehicle.id} value={String(vehicle.id)}>
+                  {vehicleLabel(vehicle)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Categoría *</Label>
-            <select
-              className="w-full p-2 border rounded-md"
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-            >
-              <option value="Combustible">Combustible</option>
-              <option value="Mantenimiento">Mantenimiento</option>
-              <option value="Reparación">Reparación</option>
-              <option value="Seguro">Seguro</option>
-              <option value="ITV/Documentación">ITV/Documentación</option>
-              <option value="Equipamiento">Equipamiento</option>
-              <option value="Limpieza/Suministros">Limpieza/Suministros</option>
-              <option value="Peajes">Peajes</option>
-              <option value="Estacionamiento">Estacionamiento</option>
-              <option value="Otros">Otros</option>
-            </select>
+            <Select value={formData.category} onValueChange={handleCategoryChange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Combustible">Combustible</SelectItem>
+                <SelectItem value="Mantenimiento">Mantenimiento</SelectItem>
+                <SelectItem value="Reparación">Reparación</SelectItem>
+                <SelectItem value="Seguro">Seguro</SelectItem>
+                <SelectItem value="ITV/Documentación">ITV/Documentación</SelectItem>
+                <SelectItem value="Equipamiento">Equipamiento</SelectItem>
+                <SelectItem value="Limpieza/Suministros">Limpieza/Suministros</SelectItem>
+                <SelectItem value="Peajes">Peajes</SelectItem>
+                <SelectItem value="Estacionamiento">Estacionamiento</SelectItem>
+                <SelectItem value="Otros">Otros</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -2153,28 +2489,31 @@ function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
           <Input
             type="date"
             value={formData.date}
-            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, date: sanitizeIsoDateInput(e.target.value) })}
             required
           />
         </div>
 
         <div>
           <Label>Cuenta Contable *</Label>
-          <select
-            className="w-full p-2 border rounded-md font-mono text-sm"
+          <Select
             value={formData.accountCode}
-            onChange={(e) => setFormData({ ...formData, accountCode: e.target.value })}
-            required
+            onValueChange={(value) => {
+              setAccountTouched(true);
+              setFormData({ ...formData, accountCode: value });
+            }}
           >
-            {expenseAccounts.map((account) => (
-              <option key={account.code} value={account.code}>
-                {account.code} - {account.name}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-muted-foreground mt-1">
-            Selecciona la cuenta contable correspondiente al tipo de gasto
-          </p>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccione cuenta" />
+            </SelectTrigger>
+            <SelectContent>
+              {expenseAccounts.map((account) => (
+                <SelectItem key={account.code} value={account.code}>
+                  <span className="font-mono">{account.code}</span> - {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div>
@@ -2202,6 +2541,40 @@ function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
 
 // Diálogo de servicios programados
 function ServiceDialog({ vehicles, maintenanceTypes, onSave, onClose }: any) {
+  const sanitizeIsoDateInput = (value: string) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    const parts = raw.split('-');
+    const y = (parts[0] || '').replace(/\D/g, '').slice(0, 4);
+    const m = (parts[1] || '').replace(/\D/g, '').slice(0, 2);
+    const d = (parts[2] || '').replace(/\D/g, '').slice(0, 2);
+    if (!m) return y;
+    if (!d) return `${y}-${m}`;
+    return `${y}-${m}-${d}`;
+  };
+
+  const isValidISODate = (value: string) => {
+    if (!value) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [y, m, d] = value.split('-').map((n) => Number(n));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+    if (y < 1900 || y > 2100) return false;
+    if (m < 1 || m > 12) return false;
+    if (d < 1 || d > 31) return false;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (
+      dt.getUTCFullYear() === y &&
+      dt.getUTCMonth() === m - 1 &&
+      dt.getUTCDate() === d
+    );
+  };
+
+  const pad3 = (n: any) => String(n ?? '').padStart(3, '0');
+  const vehicleLabel = (v: any) => {
+    const idTag = v?.id != null ? `#${pad3(v.id)}` : '';
+    return `${v?.name || 'Vehículo'} ${idTag}`.trim();
+  };
+
   const [formData, setFormData] = useState({
     vehicleId: vehicles[0]?.id || '',
     type: maintenanceTypes[0] || 'Mantenimiento',
@@ -2213,6 +2586,18 @@ function ServiceDialog({ vehicles, maintenanceTypes, onSave, onClose }: any) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.vehicleId) {
+      toast.error('Seleccione un vehículo');
+      return;
+    }
+    if (!isValidISODate(formData.dueDate)) {
+      toast.error('Fecha programada inválida. Verifica que el año tenga 4 dígitos.');
+      return;
+    }
+    if (Number.isNaN(Number(formData.estimatedCost)) || Number(formData.estimatedCost) < 0) {
+      toast.error('El costo estimado no puede ser negativo');
+      return;
+    }
     onSave(formData);
   };
 
@@ -2227,43 +2612,50 @@ function ServiceDialog({ vehicles, maintenanceTypes, onSave, onClose }: any) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label>Vehículo *</Label>
-          <select
-            className="w-full p-2 border rounded-md"
-            value={formData.vehicleId}
-            onChange={(e) => setFormData({ ...formData, vehicleId: Number(e.target.value) })}
-            required
+          <Select
+            value={String(formData.vehicleId)}
+            onValueChange={(value) => setFormData({ ...formData, vehicleId: Number(value) })}
           >
-            {vehiclesForUI.map((vehicle: any) => (
-              <option key={vehicle.id} value={vehicle.id}>{vehicle.name}</option>
-            ))}
-          </select>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccione un vehículo" />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicles.map((vehicle: any) => (
+                <SelectItem key={vehicle.id} value={String(vehicle.id)}>
+                  {vehicleLabel(vehicle)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Tipo de Servicio *</Label>
-            <select
-              className="w-full p-2 border rounded-md"
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-            >
-              {maintenanceTypes.map((type: string) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
+            <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {maintenanceTypes.map((type: string) => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
             <Label>Prioridad *</Label>
-            <select
-              className="w-full p-2 border rounded-md"
-              value={formData.priority}
-              onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-            >
-              <option value="low">Baja</option>
-              <option value="medium">Media</option>
-              <option value="high">Alta</option>
-            </select>
+            <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Baja</SelectItem>
+                <SelectItem value="medium">Media</SelectItem>
+                <SelectItem value="high">Alta</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -2284,7 +2676,7 @@ function ServiceDialog({ vehicles, maintenanceTypes, onSave, onClose }: any) {
             <Input
               type="date"
               value={formData.dueDate}
-              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, dueDate: sanitizeIsoDateInput(e.target.value) })}
               required
             />
           </div>

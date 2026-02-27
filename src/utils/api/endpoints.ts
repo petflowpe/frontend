@@ -175,6 +175,22 @@ export const API = {
   vehicles: {
     list: '/vehicles',
     byId: (id: string | number) => `/vehicles/${id}`,
+    maintenances: {
+      list: '/vehicle-maintenances',
+      byId: (id: string | number) => `/vehicle-maintenances/${id}`,
+      byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/maintenances`,
+    },
+    expenses: {
+      list: '/vehicle-expenses',
+      byId: (id: string | number) => `/vehicle-expenses/${id}`,
+      byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/expenses`,
+    },
+    services: {
+      list: '/vehicle-services',
+      byId: (id: string | number) => `/vehicle-services/${id}`,
+      byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/services`,
+      complete: (id: string | number) => `/vehicle-services/${id}/complete`,
+    },
   },
   medicalRecords: {
     list: '/medical-records',
