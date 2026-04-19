@@ -5,23 +5,29 @@ export const formatDate = (
   date: string | Date,
   format: "short" | "long" | "time" = "short",
 ): string => {
+  if (!date) return "—";
   const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "—";
 
-  switch (format) {
-    case "long":
-      return d.toLocaleDateString("es-ES", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    case "time":
-      return d.toLocaleTimeString("es-ES", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    default:
-      return d.toLocaleDateString("es-ES");
+  try {
+    switch (format) {
+      case "long":
+        return d.toLocaleDateString("es-ES", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      case "time":
+        return d.toLocaleTimeString("es-ES", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      default:
+        return d.toLocaleDateString("es-ES");
+    }
+  } catch {
+    return "—";
   }
 };
 

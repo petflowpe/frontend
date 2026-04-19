@@ -11,6 +11,7 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Progress } from './ui/progress';
 import { Switch } from './ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { 
   Truck, 
   Settings, 
@@ -41,23 +42,50 @@ import {
   Pencil
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../utils/helpers';
-import { MAINTENANCE_TYPES, CHART_OF_ACCOUNTS } from '../config/defaults';
+import { CHART_OF_ACCOUNTS } from '../config/defaults';
 import { useVehicles } from '../hooks/useVehicles';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { API_BASE_URL } from '../utils/api/config';
 
-// Catálogos de marcas/modelos (configuración UI)
-const DEFAULT_BRANDS = ['Mercedes', 'Ford', 'Volkswagen', 'Iveco', 'Renault', 'Fiat', 'Peugeot', 'Citroën'];
-const DEFAULT_MODELS: Record<string, string[]> = {
-  Mercedes: ['Sprinter', 'Vito', 'eVito', 'eSprinter'],
-  Ford: ['Transit', 'Transit Custom', 'Ranger', 'Transit Connect'],
-  Volkswagen: ['Crafter', 'Transporter', 'Caddy', 'Amarok'],
-  Iveco: ['Daily', 'Daily Electric', 'Eurocargo'],
-  Renault: ['Master', 'Trafic', 'Kangoo', 'Master ZE'],
-  Fiat: ['Ducato', 'Doblò', 'Scudo', 'eDucato'],
-  Peugeot: ['Boxer', 'Expert', 'Partner', 'e-Boxer'],
-  Citroën: ['Jumper', 'Jumpy', 'Berlingo', 'ë-Jumpy']
-};
+// Configuración de vehículos (persistida en BD).
+// IMPORTANTE: no inyectar defaults "demo" automáticamente. Si el backend devuelve vacío,
+// la UI debe mostrar vacío (para cumplir “sin datos de prueba”).
+
+function normalizeKey(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function dedupeStrings(values: unknown[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of values || []) {
+    const s = normalizeKey(v);
+    if (!s) continue;
+    const k = s.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+  }
+  return out;
+}
+
+function findKeyCaseInsensitive(obj: Record<string, unknown>, key: string): string | null {
+  const target = normalizeKey(key).toLowerCase();
+  if (!target) return null;
+  for (const k of Object.keys(obj || {})) {
+    if (normalizeKey(k).toLowerCase() === target) return k;
+  }
+  return null;
+}
+
+function getModelsForBrand(modelsByBrand: Record<string, string[]>, brand: string): string[] {
+  const b = normalizeKey(brand);
+  if (!b) return [];
+  if (Array.isArray(modelsByBrand?.[b])) return modelsByBrand[b];
+  const match = findKeyCaseInsensitive(modelsByBrand as any, b);
+  return match && Array.isArray((modelsByBrand as any)[match]) ? (modelsByBrand as any)[match] : [];
+}
 
 export function VehicleManagement() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,10 +115,33 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
   const [showModelConfig, setShowModelConfig] = useState(false);
   const [showMaintenanceTypeConfig, setShowMaintenanceTypeConfig] = useState(false);
   const [showWorkshopConfig, setShowWorkshopConfig] = useState(false);
-  const [brands, setBrands] = useState([...DEFAULT_BRANDS]);
-  const [models, setModels] = useState<Record<string, string[]>>({ ...DEFAULT_MODELS });
-  const [maintenanceTypes, setMaintenanceTypes] = useState([...MAINTENANCE_TYPES]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [models, setModels] = useState<Record<string, string[]>>({});
+  const [maintenanceTypes, setMaintenanceTypes] = useState<string[]>([]);
   const [workshops, setWorkshops] = useState<{ id: number; name: string; ruc?: string; address?: string; phone?: string }[]>([]);
+  const [loadingVehicleConfigs, setLoadingVehicleConfigs] = useState(true);
+
+  const runVehicleConfigDiagnostics = useCallback(async () => {
+    try {
+      const token = apiClient.getToken?.() ?? null;
+      const res = await apiClient.get(API.vehicleConfigurations.all);
+      const payload = res && typeof res === 'object' && 'data' in (res as any) ? (res as any).data : res;
+
+      const brandsCount = Array.isArray(payload?.brands) ? payload.brands.length : 0;
+      const modelsKeys = payload?.models_by_brand && typeof payload.models_by_brand === 'object' ? Object.keys(payload.models_by_brand).length : 0;
+
+      // Alta señal sin saturar la UI.
+      toast.success(`API OK (${API_BASE_URL}) · token=${token ? 'sí' : 'no'} · brands=${brandsCount} · modelsBrands=${modelsKeys}`);
+      // Evidencia para depurar si "desaparece": aquí queda la respuesta real.
+      // eslint-disable-next-line no-console
+      console.log('[VehicleConfigDiagnostics] API_BASE_URL=', API_BASE_URL, 'token?', !!token, 'payload=', payload);
+    } catch (e: any) {
+      const msg = e?.message || 'Error consultando configuraciones de vehículos';
+      toast.error(`Diagnóstico falló: ${msg}`);
+      // eslint-disable-next-line no-console
+      console.error('[VehicleConfigDiagnostics] error', e);
+    }
+  }, []);
 
   const [showNewMaintenance, setShowNewMaintenance] = useState(false);
   const [showNewExpense, setShowNewExpense] = useState(false);
@@ -198,12 +249,83 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
     }
   }, [serviceFromBackend]);
 
+  const loadVehicleConfigurations = useCallback(async () => {
+    setLoadingVehicleConfigs(true);
+    try {
+      const res = await apiClient.get(API.vehicleConfigurations.all);
+      const payload = res && typeof res === 'object' && 'data' in (res as any) ? (res as any).data : res;
+
+      const apiBrands = Array.isArray(payload?.brands) ? payload.brands : [];
+      const apiModels = payload?.models_by_brand && typeof payload.models_by_brand === 'object' ? payload.models_by_brand as Record<string, string[]> : {};
+      const apiMaintenanceTypes = Array.isArray(payload?.maintenance_types) ? payload.maintenance_types : [];
+      const apiWorkshops = Array.isArray(payload?.workshops) ? payload.workshops : [];
+
+      // Si el backend devuelve vacío, respetarlo (no rellenar con datos demo).
+      const nextBrands = dedupeStrings(apiBrands);
+
+      const cleanedModelsRaw: Record<string, string[]> = {};
+      for (const [rawBrand, rawModels] of Object.entries(apiModels || {})) {
+        const key = normalizeKey(rawBrand);
+        if (!key) continue;
+        cleanedModelsRaw[key] = dedupeStrings(Array.isArray(rawModels) ? rawModels : []);
+      }
+
+      // Alinear claves de modelos con la lista de marcas (evita que el Select de "Modelo" quede vacío por mismatch de espacios/case)
+      const nextModels: Record<string, string[]> = {};
+      for (const brand of nextBrands) {
+        const exact = cleanedModelsRaw[brand];
+        if (exact) {
+          nextModels[brand] = exact;
+          continue;
+        }
+        const match = findKeyCaseInsensitive(cleanedModelsRaw as any, brand);
+        nextModels[brand] = match ? cleanedModelsRaw[match] : [];
+      }
+
+      setBrands(nextBrands);
+      // Si no hay marcas, igual permitir que el objeto venga vacío
+      setModels(Object.keys(nextModels).length ? nextModels : cleanedModelsRaw);
+      setMaintenanceTypes(dedupeStrings(apiMaintenanceTypes));
+      setWorkshops(apiWorkshops);
+    } catch (e: any) {
+      console.error('Error cargando configuraciones de vehículos', e);
+      toast.error(e?.message || 'No se pudieron cargar las configuraciones de vehículos');
+      // No inyectar defaults demo en caso de error. Mantener lo que haya en estado o vaciar.
+      setBrands((prev) => (Array.isArray(prev) ? prev : []));
+      setModels((prev) => (prev && typeof prev === 'object' ? prev : {}));
+      setMaintenanceTypes((prev) => (Array.isArray(prev) ? prev : []));
+      setWorkshops((prev) => (Array.isArray(prev) ? prev : []));
+    } finally {
+      setLoadingVehicleConfigs(false);
+    }
+  }, []);
+
+  const saveVehicleConfigurations = useCallback(async (payload: any, options?: { silent?: boolean }) => {
+    // No enviar company_id desde el frontend: el backend toma el scope efectivo (EnsureUserCompanyScope)
+    // o usa NULL si el usuario no tiene empresa (global).
+    try {
+      await apiClient.post(API.vehicleConfigurations.store, payload);
+      if (!options?.silent) toast.success('Configuración guardada');
+      await loadVehicleConfigurations();
+    } catch (e: any) {
+      const msg = e?.message || 'No se pudo guardar la configuración';
+      toast.error(msg);
+      // eslint-disable-next-line no-console
+      console.error('[saveVehicleConfigurations] error', e, 'payload=', payload);
+      throw e;
+    }
+  }, [loadVehicleConfigurations]);
+
   useEffect(() => {
     // Cargar datos persistidos al abrir el módulo
     fetchMaintenances();
     fetchExpenses();
     fetchServices();
   }, [fetchMaintenances, fetchExpenses, fetchServices]);
+
+  useEffect(() => {
+    loadVehicleConfigurations();
+  }, [loadVehicleConfigurations]);
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -294,6 +416,8 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       } else {
         await createVehicle(vehicleData);
       }
+      // Importante: refrescar lista para que aparezca en selects (gastos/mantenimientos/etc.)
+      await reloadVehicles?.();
       setShowNewVehicle(false);
       if (selectedVehicle && editingVehicle && String(selectedVehicle.id) === String(editingVehicle.id)) {
         setSelectedVehicle(null);
@@ -440,6 +564,19 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
     }
   };
 
+  const handleSendServiceToMaintenance = async (id: number) => {
+    try {
+      await apiClient.post(API.vehicles.services.sendToMaintenance(id), {});
+      toast.success('Enviado a mantenimiento');
+      await fetchServices();
+      await fetchMaintenances();
+      await reloadVehicles?.();
+      setActiveTab('maintenance');
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo enviar a mantenimiento');
+    }
+  };
+
   const handleDeleteService = async (id: number) => {
     try {
       await apiClient.delete(API.vehicles.services.byId(id));
@@ -486,70 +623,125 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
         </div>
         <div className="flex gap-2">
           {/* Configuración de Marcas */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (loadingVehicleConfigs) {
+                toast.info('Cargando configuraciones...');
+                return;
+              }
+              setShowBrandConfig(true);
+            }}
+          >
+            <Car className="h-4 w-4 mr-2" />
+            Config. Marcas
+          </Button>
           <Dialog open={showBrandConfig} onOpenChange={setShowBrandConfig}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Car className="h-4 w-4 mr-2" />
-                Config. Marcas
-              </Button>
-            </DialogTrigger>
-            <BrandConfigDialog
-              brands={brands}
-              onSave={setBrands}
-              onClose={() => setShowBrandConfig(false)}
-            />
+            {showBrandConfig && (
+              <BrandConfigDialog
+                brands={brands}
+                onSave={async (nextBrands: string[]) => {
+                  setBrands(nextBrands);
+                  await saveVehicleConfigurations({ type: 'brands', items: nextBrands });
+                }}
+                onClose={() => setShowBrandConfig(false)}
+              />
+            )}
           </Dialog>
 
           {/* Configuración de Modelos */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (!Array.isArray(brands) || brands.length === 0) {
+                toast.info('Primero crea al menos una marca (Config. Marcas).');
+                setShowBrandConfig(true);
+                return;
+              }
+              setShowModelConfig(true);
+            }}
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Config. Modelos
+          </Button>
           <Dialog open={showModelConfig} onOpenChange={setShowModelConfig}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Settings className="h-4 w-4 mr-2" />
-                Config. Modelos
-              </Button>
-            </DialogTrigger>
-            <ModelConfigDialog
-              models={models}
-              brands={brands}
-              onSave={setModels}
-              onClose={() => setShowModelConfig(false)}
-            />
+            {showModelConfig && (
+              <ModelConfigDialog
+                models={models}
+                brands={brands}
+                onSave={async (nextModels: Record<string, string[]>) => {
+                  setModels(nextModels);
+                  await saveVehicleConfigurations({ type: 'models_by_brand', models_by_brand: nextModels });
+                }}
+                onClose={() => setShowModelConfig(false)}
+              />
+            )}
           </Dialog>
 
           {/* Configuración de Tipos de Mantenimiento */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (loadingVehicleConfigs) {
+                toast.info('Cargando configuraciones...');
+                return;
+              }
+              setShowMaintenanceTypeConfig(true);
+            }}
+          >
+            <Cog className="h-4 w-4 mr-2" />
+            Config. Tipos Mantenimiento
+          </Button>
           <Dialog open={showMaintenanceTypeConfig} onOpenChange={setShowMaintenanceTypeConfig}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Cog className="h-4 w-4 mr-2" />
-                Config. Tipos Mantenimiento
-              </Button>
-            </DialogTrigger>
-            <MaintenanceTypeConfigDialog
-              maintenanceTypes={maintenanceTypes}
-              onSave={setMaintenanceTypes}
-              onClose={() => setShowMaintenanceTypeConfig(false)}
-            />
+            {showMaintenanceTypeConfig && (
+              <MaintenanceTypeConfigDialog
+                maintenanceTypes={maintenanceTypes}
+                onSave={async (nextTypes: string[]) => {
+                  setMaintenanceTypes(nextTypes);
+                  await saveVehicleConfigurations({ type: 'maintenance_types', items: nextTypes });
+                }}
+                onClose={() => setShowMaintenanceTypeConfig(false)}
+              />
+            )}
           </Dialog>
 
           {/* Configuración de Talleres/Proveedores */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (loadingVehicleConfigs) {
+                toast.info('Cargando configuraciones...');
+                return;
+              }
+              setShowWorkshopConfig(true);
+            }}
+          >
+            <Wrench className="h-4 w-4 mr-2" />
+            Config. Talleres
+          </Button>
           <Dialog open={showWorkshopConfig} onOpenChange={setShowWorkshopConfig}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Wrench className="h-4 w-4 mr-2" />
-                Config. Talleres
-              </Button>
-            </DialogTrigger>
-            <WorkshopConfigDialog
-              workshops={workshops}
-              onSave={setWorkshops}
-              onClose={() => setShowWorkshopConfig(false)}
-            />
+            {showWorkshopConfig && (
+              <WorkshopConfigDialog
+                workshops={workshops}
+                onSave={async (nextWorkshops: any[]) => {
+                  setWorkshops(nextWorkshops);
+                  await saveVehicleConfigurations({ type: 'workshops', items: nextWorkshops });
+                }}
+                onClose={() => setShowWorkshopConfig(false)}
+              />
+            )}
           </Dialog>
 
           {/* Botón Exportar */}
           <Button variant="outline" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Exportar
+          </Button>
+
+          {/* Diagnóstico rápido (para validar persistencia/API real en el navegador) */}
+          <Button variant="outline" onClick={runVehicleConfigDiagnostics}>
+            <Settings className="h-4 w-4 mr-2" />
+            Diagnóstico
           </Button>
 
           {/* Botón Nuevo Vehículo */}
@@ -560,16 +752,19 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                 Nuevo Vehículo
               </Button>
             </DialogTrigger>
-            <VehicleDialog
-              vehicle={editingVehicle}
-              brands={brands}
-              models={models}
-              onSave={handleSaveVehicle}
-              onClose={() => {
-                setShowNewVehicle(false);
-                setEditingVehicle(null);
-              }}
-            />
+            {showNewVehicle && (
+              <VehicleDialog
+                key={editingVehicle?.id ?? 'new'}
+                vehicle={editingVehicle}
+                brands={brands}
+                models={models}
+                onSave={handleSaveVehicle}
+                onClose={() => {
+                  setShowNewVehicle(false);
+                  setEditingVehicle(null);
+                }}
+              />
+            )}
           </Dialog>
         </div>
       </div>
@@ -707,17 +902,20 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                   Nuevo Mantenimiento
                 </Button>
               </DialogTrigger>
-              <MaintenanceDialog
-                maintenance={editingMaintenance}
-                vehicles={vehiclesForUI}
-                maintenanceTypes={maintenanceTypes}
-                workshops={workshops}
-                onSave={handleSaveMaintenance}
-                onClose={() => {
-                  setShowNewMaintenance(false);
-                  setEditingMaintenance(null);
-                }}
-              />
+              {showNewMaintenance && (
+                <MaintenanceDialog
+                  key={editingMaintenance?.id ?? 'new'}
+                  maintenance={editingMaintenance}
+                  vehicles={vehiclesForUI}
+                  maintenanceTypes={maintenanceTypes}
+                  workshops={workshops}
+                  onSave={handleSaveMaintenance}
+                  onClose={() => {
+                    setShowNewMaintenance(false);
+                    setEditingMaintenance(null);
+                  }}
+                />
+              )}
             </Dialog>
           </div>
 
@@ -728,115 +926,104 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                 <p className="text-muted-foreground">No hay registros de mantenimiento. Agrega uno nuevo para comenzar.</p>
               </Card>
             ) : (
-              maintenanceHistory.map((maintenance) => {
-                const vehicle = vehiclesForUI.find(v => v.id === maintenance.vehicleId);
-                const account = CHART_OF_ACCOUNTS.find(a => a.code === maintenance.accountCode);
-                const isCompleted = maintenance.status === 'completed';
-                const vehicleTitle = (() => {
-                  const base = String(vehicle?.name || 'Vehículo').trim();
-                  const idTag = vehicle?.id != null ? `#${String(vehicle.id).padStart(3, '0')}` : '';
-                  const hasTag = /#\d{3,}/.test(base);
-                  if (hasTag || !idTag) return base;
-                  return `${base} ${idTag}`.trim();
-                })();
-                
-                return (
-                  <Card key={maintenance.id} className="p-5 hover:shadow-lg transition-all border border-border/50 dark:border-border/30 bg-card">
-                    <div className="flex items-start justify-between gap-4">
-                      {/* Lado izquierdo: Icono + Info principal */}
-                      <div className="flex items-start gap-4 flex-1 min-w-0">
-                        {/* Icono por estado */}
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center shadow-md shrink-0 ${
-                          isCompleted ? 'bg-green-500 dark:bg-green-600' : 'bg-orange-500 dark:bg-orange-600'
-                        }`}>
-                          <Wrench className="h-6 w-6 text-white" />
-                        </div>
-                        
-                        {/* Información principal */}
-                        <div className="flex-1 min-w-0">
-                          {/* Fila 1: Vehículo + Tags */}
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <h4 className="font-bold text-base text-foreground">
-                              {vehicleTitle}
-                            </h4>
-                            <Badge variant="outline" className="bg-background border-border text-foreground">
-                              {maintenance.type}
-                            </Badge>
-                            <Badge className={
-                              isCompleted ? 
-                              'bg-green-500 text-white border-green-600' :
-                              'bg-orange-500 text-white border-orange-600'
-                            }>
-                              {isCompleted ? 'Completado' : 'En Proceso'}
-                            </Badge>
-                          </div>
-                          
-                          {/* Descripción */}
-                          <p className="text-sm text-muted-foreground mb-3">{maintenance.description}</p>
-                          
-                          {/* Fechas y taller */}
-                          <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-4 flex-wrap">
-                              <div className="flex items-center gap-1.5">
-                                <Calendar className="h-3.5 w-3.5" />
-                                <span>{formatDate(maintenance.date)}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Check className="h-3.5 w-3.5" />
-                                <span>{maintenance.workshop || '—'}</span>
-                              </div>
-                              {maintenance.nextDue && (
-                                <div className="flex items-center gap-1.5">
-                                  <MapPin className="h-3.5 w-3.5" />
-                                  <span>Próximo: {formatDate(maintenance.nextDue)}</span>
+              <Card className="p-0 overflow-hidden border border-border/60 bg-card">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead className="px-4">Vehículo</TableHead>
+                      <TableHead className="px-4">Detalle</TableHead>
+                      <TableHead className="px-4">Estado</TableHead>
+                      <TableHead className="px-4">Taller / Fecha</TableHead>
+                      <TableHead className="px-4 text-right">Costo</TableHead>
+                      <TableHead className="px-4 text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {maintenanceHistory.map((maintenance) => {
+                      const vehicle = vehiclesForUI.find(v => String(v.id) === String(maintenance.vehicleId));
+                      const isCompleted = maintenance.status === 'completed';
+                      const vehicleTitle = (() => {
+                        const base = String(vehicle?.name || 'Vehículo').trim();
+                        const idTag = vehicle?.id != null ? `#${String(vehicle.id).padStart(3, '0')}` : '';
+                        const hasTag = /#\d{3,}/.test(base);
+                        if (hasTag || !idTag) return base;
+                        return `${base} ${idTag}`.trim();
+                      })();
+
+                      return (
+                        <TableRow key={maintenance.id} className="hover:bg-muted/20">
+                          <TableCell className="px-4 py-4 whitespace-normal">
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-1 h-2.5 w-2.5 rounded-full ${isCompleted ? 'bg-green-500' : 'bg-orange-500'}`} />
+                              <div className="min-w-0">
+                                <div className="font-semibold text-foreground truncate">{vehicleTitle}</div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {vehicle?.plate ? `${vehicle.plate}` : '—'}
                                 </div>
-                              )}
-                            </div>
-                            
-                            {/* Código y tipo detallado */}
-                            {account && (
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded border border-border">
-                                  {account.code}
-                                </span>
-                                <span className="text-xs">{account.name}</span>
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Lado derecho: Costo + Acciones */}
-                      <div className="text-right shrink-0 flex flex-col items-end gap-3">
-                        <p className="font-semibold text-lg text-foreground">
-                          {formatCurrency(maintenance.cost, 'PEN')}
-                        </p>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            className="h-8 w-8 p-0"
-                            onClick={() => {
-                              setEditingMaintenance(maintenance);
-                              setShowNewMaintenance(true);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteMaintenance(maintenance.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="px-4 py-4 whitespace-normal">
+                            <div className="min-w-0">
+                              <div className="font-medium text-foreground truncate">{maintenance.type}</div>
+                              <div className="text-xs text-muted-foreground line-clamp-2">
+                                {maintenance.description || '—'}
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="px-4 py-4">
+                            <Badge className={isCompleted
+                              ? 'bg-green-500 text-white border-green-600'
+                              : 'bg-orange-500 text-white border-orange-600'
+                            }>
+                              {isCompleted ? 'Completado' : 'En Progreso'}
+                            </Badge>
+                          </TableCell>
+
+                          <TableCell className="px-4 py-4 whitespace-normal">
+                            <div className="text-sm text-foreground">{formatDate(maintenance.date)}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {maintenance.workshop || '—'}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="px-4 py-4 text-right font-semibold text-foreground">
+                            {formatCurrency(maintenance.cost, 'PEN')}
+                          </TableCell>
+
+                          <TableCell className="px-4 py-4">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0"
+                                onClick={() => {
+                                  setEditingMaintenance(maintenance);
+                                  setShowNewMaintenance(true);
+                                }}
+                                aria-label="Editar mantenimiento"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteMaintenance(maintenance.id)}
+                                aria-label="Eliminar mantenimiento"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
             )}
           </div>
         </TabsContent>
@@ -852,15 +1039,18 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                   Nuevo Gasto
                 </Button>
               </DialogTrigger>
-              <ExpenseDialog
-                expense={editingExpense}
-                vehicles={vehiclesForUI}
-                onSave={handleSaveExpense}
-                onClose={() => {
-                  setShowNewExpense(false);
-                  setEditingExpense(null);
-                }}
-              />
+              {showNewExpense && (
+                <ExpenseDialog
+                  key={editingExpense?.id ?? 'new'}
+                  expense={editingExpense}
+                  vehicles={vehiclesForUI}
+                  onSave={handleSaveExpense}
+                  onClose={() => {
+                    setShowNewExpense(false);
+                    setEditingExpense(null);
+                  }}
+                />
+              )}
             </Dialog>
           </div>
 
@@ -954,12 +1144,15 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                   Programar Servicio
                 </Button>
               </DialogTrigger>
-              <ServiceDialog
-                vehicles={vehiclesForUI}
-                maintenanceTypes={maintenanceTypes}
-                onSave={handleSaveService}
-                onClose={() => setShowNewService(false)}
-              />
+              {showNewService && (
+                <ServiceDialog
+                  key="new"
+                  vehicles={vehiclesForUI}
+                  maintenanceTypes={maintenanceTypes}
+                  onSave={handleSaveService}
+                  onClose={() => setShowNewService(false)}
+                />
+              )}
             </Dialog>
           </div>
 
@@ -1007,11 +1200,11 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => handleCompleteService(service.id)}
-                          className="bg-green-50 hover:bg-green-100 dark:bg-green-950/30 dark:hover:bg-green-950/50"
+                          onClick={() => handleSendServiceToMaintenance(service.id)}
+                          className="bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/30 dark:hover:bg-orange-950/50 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-900/50"
                         >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                          Completar
+                          <Wrench className="h-4 w-4 mr-1" />
+                          Enviar a Mantenimiento
                         </Button>
                         <Button 
                           variant="outline" 
@@ -1060,6 +1253,13 @@ function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
       return '—';
     }
   };
+  const safePercent = (value: any) => {
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  };
+  const efficiencyPct = safePercent(vehicle.efficiency);
+  const fuelPct = safePercent(vehicle.fuelLevel);
 
   return (
     <Card className="p-6 hover:shadow-xl transition-all bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border-2 hover:border-primary/30">
@@ -1081,8 +1281,10 @@ function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
             {statusConfig.label}
           </Badge>
           <div className="text-right text-xs">
-            <p className="text-muted-foreground font-medium">Eficiencia: {vehicle.efficiency}%</p>
-            <Progress value={vehicle.efficiency} className="w-16 h-2 mt-1" />
+            <p className="text-muted-foreground font-medium">
+              Eficiencia: {efficiencyPct != null ? `${efficiencyPct}%` : '—'}
+            </p>
+            <Progress value={efficiencyPct ?? 0} className="w-16 h-2 mt-1" />
           </div>
         </div>
       </div>
@@ -1106,7 +1308,7 @@ function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
         <div className="space-y-2">
           <div className="flex items-center space-x-2">
             <Fuel className="h-4 w-4 text-primary" />
-            <span>Combustible: {vehicle.fuelLevel != null ? `${vehicle.fuelLevel}%` : '—'}</span>
+            <span>Combustible: {fuelPct != null ? `${fuelPct}%` : '—'}</span>
           </div>
           <div className="flex items-center space-x-2">
             <Calendar className="h-4 w-4 text-primary" />
@@ -1320,7 +1522,9 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
     model: vehicle?.model || '',
     year: vehicle?.year || new Date().getFullYear(),
     vin: vehicle?.vin || '',
-    status: vehicle?.status || 'active',
+    status: vehicle?.status === 'maintenance'
+      ? 'maintenance'
+      : (vehicle?.status === 'out_of_service' || vehicle?.status === 'inactive' ? 'out_of_service' : 'active'),
     location: vehicle?.location || '',
     driver: vehicle?.driver || '',
     mileage: vehicle?.mileage || 0,
@@ -1371,7 +1575,15 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
     });
   };
 
-  const availableModels = models[formData.brand] || [];
+  const availableModels = getModelsForBrand(models || {}, formData.brand);
+
+  // Si la marca cambia (o se normaliza) y el modelo ya no existe, resetearlo para evitar selects "rotos"
+  useEffect(() => {
+    if (!formData.model) return;
+    if (availableModels.includes(formData.model)) return;
+    setFormData((prev: any) => ({ ...prev, model: '' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.brand, models]);
 
   return (
     <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1404,56 +1616,60 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
             </div>
             <div>
               <Label>Tipo de vehículo *</Label>
-              <Select
+              <select
                 value={formData.type}
-                onValueChange={(v) => setFormData({ ...formData, type: v })}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                required
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccione tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VEHICLE_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="" disabled>
+                  Seleccione tipo
+                </option>
+                {VEHICLE_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Marca *</Label>
-                <Select
+                <select
                   value={formData.brand}
-                  onValueChange={(brand) => setFormData({ ...formData, brand, model: '' })}
+                  onChange={(e) => setFormData({ ...formData, brand: e.target.value, model: '' })}
+                  disabled={!Array.isArray(brands) || brands.length === 0}
+                  className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                  required
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione marca" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {brands.map((brand: string) => (
-                      <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="" disabled>
+                    Seleccione marca
+                  </option>
+                  {brands.map((brand: string) => (
+                    <option key={brand} value={brand}>
+                      {brand}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <Label>Modelo *</Label>
-                <Select
+                <select
                   value={formData.model}
-                  onValueChange={(model) => setFormData({ ...formData, model })}
+                  onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                  disabled={!formData.brand || availableModels.length === 0}
+                  className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                  required
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar modelo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableModels.length === 0 ? (
-                      <SelectItem value="__none__" disabled>Sin modelos</SelectItem>
-                    ) : (
-                      availableModels.map((model: string) => (
-                        <SelectItem key={model} value={model}>{model}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                  <option value="" disabled>
+                    {formData.brand ? (availableModels.length ? 'Seleccionar modelo' : 'Sin modelos') : 'Seleccione marca primero'}
+                  </option>
+                  {availableModels.map((model: string) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1508,19 +1724,15 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
             </div>
             <div>
               <Label>Estado</Label>
-              <Select
+              <select
                 value={formData.status}
-                onValueChange={(status) => setFormData({ ...formData, status })}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Activo</SelectItem>
-                  <SelectItem value="maintenance">Mantenimiento</SelectItem>
-                  <SelectItem value="out_of_service">Fuera de Servicio</SelectItem>
-                </SelectContent>
-              </Select>
+                <option value="active">Activo</option>
+                <option value="maintenance">Mantenimiento</option>
+                <option value="out_of_service">Inactivo</option>
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1669,12 +1881,23 @@ function BrandConfigDialog({ brands, onSave, onClose }: any) {
   const [newBrand, setNewBrand] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleAdd = () => {
     if (newBrand.trim() && !localBrands.includes(newBrand.trim())) {
       setLocalBrands([...localBrands, newBrand.trim()]);
       setNewBrand('');
     }
+  };
+
+  const commitPendingBrand = (): string[] => {
+    const pending = newBrand.trim();
+    if (!pending) return localBrands;
+    if (localBrands.includes(pending)) return localBrands;
+    const next = [...localBrands, pending];
+    setLocalBrands(next);
+    setNewBrand('');
+    return next;
   };
 
   const handleEdit = (index: number) => {
@@ -1696,9 +1919,15 @@ function BrandConfigDialog({ brands, onSave, onClose }: any) {
     setLocalBrands(localBrands.filter((_, i) => i !== index));
   };
 
-  const handleSave = () => {
-    onSave(localBrands);
-    onClose();
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const next = commitPendingBrand();
+      await onSave(next);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1757,10 +1986,10 @@ function BrandConfigDialog({ brands, onSave, onClose }: any) {
         </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave}>
+          <Button onClick={handleSave} disabled={saving}>
             Guardar Configuración
           </Button>
         </div>
@@ -1774,18 +2003,42 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
   const [localModels, setLocalModels] = useState({ ...models });
   const [selectedBrand, setSelectedBrand] = useState(brands[0] || '');
   const [newModel, setNewModel] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const list = Array.isArray(brands) ? brands : [];
+    if (list.length === 0) {
+      if (selectedBrand) setSelectedBrand('');
+      return;
+    }
+    if (!selectedBrand || !list.includes(selectedBrand)) {
+      setSelectedBrand(list[0]);
+    }
+  }, [brands, selectedBrand]);
 
   const handleAddModel = () => {
-    if (newModel.trim() && selectedBrand) {
+    const pending = newModel.trim();
+    if (pending && selectedBrand) {
       const brandModels = localModels[selectedBrand] || [];
-      if (!brandModels.includes(newModel.trim())) {
+      if (!brandModels.includes(pending)) {
         setLocalModels({
           ...localModels,
-          [selectedBrand]: [...brandModels, newModel.trim()]
+          [selectedBrand]: [...brandModels, pending]
         });
         setNewModel('');
       }
     }
+  };
+
+  const buildNextModelsWithPending = (): Record<string, string[]> => {
+    const pending = newModel.trim();
+    if (!pending || !selectedBrand) return localModels;
+    const brandModels = localModels[selectedBrand] || [];
+    if (brandModels.includes(pending)) return localModels;
+    return {
+      ...localModels,
+      [selectedBrand]: [...brandModels, pending],
+    };
   };
 
   const handleDeleteModel = (brand: string, modelIndex: number) => {
@@ -1796,9 +2049,19 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
     });
   };
 
-  const handleSave = () => {
-    onSave(localModels);
-    onClose();
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const next = buildNextModelsWithPending();
+      if (next !== localModels) {
+        setLocalModels(next);
+        setNewModel('');
+      }
+      await onSave(next);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1810,18 +2073,29 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
+        {(!Array.isArray(brands) || brands.length === 0) && (
+          <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+            No hay marcas configuradas. Primero crea una marca en <b>Config. Marcas</b>.
+          </div>
+        )}
         <div>
           <Label>Seleccionar Marca</Label>
-          <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccione marca" />
-            </SelectTrigger>
-            <SelectContent>
-              {brands.map((brand: string) => (
-                <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Select nativo (evita problemas de z-index/portal dentro de Dialog) */}
+          <select
+            value={selectedBrand}
+            onChange={(e) => setSelectedBrand(e.target.value)}
+            disabled={!Array.isArray(brands) || brands.length === 0}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="" disabled>
+              Seleccione marca
+            </option>
+            {brands.map((brand: string) => (
+              <option key={brand} value={brand}>
+                {brand}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex gap-2">
@@ -1830,8 +2104,9 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
             onChange={(e) => setNewModel(e.target.value)}
             placeholder="Nuevo modelo..."
             onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddModel())}
+            disabled={!selectedBrand}
           />
-          <Button type="button" onClick={handleAddModel}>
+          <Button type="button" onClick={handleAddModel} disabled={!selectedBrand}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -1869,10 +2144,10 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
         </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave}>
+          <Button onClick={handleSave} disabled={saving}>
             Guardar Configuración
           </Button>
         </div>
@@ -1887,12 +2162,23 @@ function MaintenanceTypeConfigDialog({ maintenanceTypes, onSave, onClose }: any)
   const [newType, setNewType] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleAdd = () => {
     if (newType.trim() && !localTypes.includes(newType.trim())) {
       setLocalTypes([...localTypes, newType.trim()]);
       setNewType('');
     }
+  };
+
+  const commitPendingType = (): string[] => {
+    const pending = newType.trim();
+    if (!pending) return localTypes;
+    if (localTypes.includes(pending)) return localTypes;
+    const next = [...localTypes, pending];
+    setLocalTypes(next);
+    setNewType('');
+    return next;
   };
 
   const handleEdit = (index: number) => {
@@ -1914,9 +2200,15 @@ function MaintenanceTypeConfigDialog({ maintenanceTypes, onSave, onClose }: any)
     setLocalTypes(localTypes.filter((_, i) => i !== index));
   };
 
-  const handleSave = () => {
-    onSave(localTypes);
-    onClose();
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const next = commitPendingType();
+      await onSave(next);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1975,10 +2267,10 @@ function MaintenanceTypeConfigDialog({ maintenanceTypes, onSave, onClose }: any)
         </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave}>
+          <Button onClick={handleSave} disabled={saving}>
             Guardar Configuración
           </Button>
         </div>
@@ -2041,11 +2333,35 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
   // Si el usuario cambia manualmente la cuenta, no la sobreescribimos al cambiar tipo
   const [accountTouched, setAccountTouched] = useState(Boolean(maintenance?.accountCode));
 
+  const workshopsList: any[] = Array.isArray(workshops) ? workshops : [];
+  const [selectedWorkshopId, setSelectedWorkshopId] = useState<string>('');
+  const [workshopSelectionTouched, setWorkshopSelectionTouched] = useState(false);
+
+  // Preseleccionar taller si el mantenimiento ya tiene RUC que coincide con configuración.
+  useEffect(() => {
+    if (!maintenance?.workshopRuc) return;
+    const ruc = String(maintenance.workshopRuc).replace(/\D/g, '').slice(0, 11);
+    const match = workshopsList.find((w: any) => String(w?.ruc || '').replace(/\D/g, '').slice(0, 11) === ruc);
+    if (match) setSelectedWorkshopId(String(match.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Si cambian los vehículos (p.ej. acabas de crear uno), asegurar que haya un seleccionado válido.
+  useEffect(() => {
+    const list = Array.isArray(vehicles) ? vehicles : [];
+    if (list.length === 0) return;
+    const exists = list.some((v: any) => String(v?.id) === String(formData.vehicleId));
+    if (!formData.vehicleId || !exists) {
+      setFormData((prev: any) => ({ ...prev, vehicleId: list[0]?.id ?? '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles]);
+
   // Autocompletar datos del taller al ingresar RUC
   const handleRucChange = (ruc: string) => {
     const cleanRuc = ruc.replace(/\D/g, ''); // Solo números
     const foundWorkshop = cleanRuc.length === 11
-      ? workshops.find((w: any) => w.ruc === cleanRuc)
+      ? workshopsList.find((w: any) => String(w?.ruc || '').replace(/\D/g, '').slice(0, 11) === cleanRuc)
       : null;
 
     setFormData((prev: any) => ({
@@ -2056,7 +2372,37 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
       workshopPhone: foundWorkshop ? (foundWorkshop.phone || '') : prev.workshopPhone,
     }));
     
-    if (foundWorkshop) toast.success('Datos del taller autocompletados');
+    if (foundWorkshop) {
+      if (!workshopSelectionTouched) setSelectedWorkshopId(String(foundWorkshop.id));
+      toast.success('Datos del taller autocompletados');
+    } else if (!workshopSelectionTouched) {
+      setSelectedWorkshopId('');
+    }
+  };
+
+  const handleSelectWorkshop = (value: string) => {
+    setWorkshopSelectionTouched(true);
+    setSelectedWorkshopId(value);
+    if (!value) {
+      setFormData((prev: any) => ({
+        ...prev,
+        workshopRuc: '',
+        workshop: '',
+        workshopAddress: '',
+        workshopPhone: '',
+      }));
+      return;
+    }
+    const w = workshopsList.find((x: any) => String(x?.id) === String(value));
+    if (!w) return;
+    const cleanRuc = String(w?.ruc || '').replace(/\D/g, '').slice(0, 11);
+    setFormData((prev: any) => ({
+      ...prev,
+      workshopRuc: cleanRuc,
+      workshop: String(w?.name || ''),
+      workshopAddress: String(w?.address || ''),
+      workshopPhone: String(w?.phone || ''),
+    }));
   };
 
   const handleTypeChange = (type: string) => {
@@ -2134,59 +2480,52 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
         {/* Vehículo */}
         <div>
           <Label>Vehículo *</Label>
-          <Select
-            value={String(formData.vehicleId)}
-            onValueChange={(value) => setFormData({ ...formData, vehicleId: Number(value) })}
+          <select
+            value={String(formData.vehicleId || '')}
+            onChange={(e) => setFormData({ ...formData, vehicleId: Number(e.target.value) })}
+            disabled={!Array.isArray(vehicles) || vehicles.length === 0}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
             required
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccione un vehículo" />
-            </SelectTrigger>
-            <SelectContent>
-              {vehicles.map((vehicle: any) => (
-                <SelectItem key={vehicle.id} value={String(vehicle.id)}>
-                  {vehicle.name} {vehicle.plate ? `(${vehicle.plate})` : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="" disabled>
+              {Array.isArray(vehicles) && vehicles.length ? 'Seleccione un vehículo' : 'No hay vehículos'}
+            </option>
+            {(Array.isArray(vehicles) ? vehicles : []).map((vehicle: any) => (
+              <option key={vehicle.id} value={String(vehicle.id)}>
+                {vehicle.name} {vehicle.plate ? `(${vehicle.plate})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Tipo de Mantenimiento y Estado */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Tipo de Mantenimiento *</Label>
-            <Select
+            <select
               value={formData.type}
-              onValueChange={handleTypeChange}
+              onChange={(e) => handleTypeChange(e.target.value)}
+              className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
               required
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {maintenanceTypes.map((type: string) => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <option value="" disabled>Seleccione tipo</option>
+              {(Array.isArray(maintenanceTypes) ? maintenanceTypes : []).map((type: string) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
           </div>
 
           <div>
             <Label>Estado *</Label>
-            <Select
+            <select
               value={formData.status}
-              onValueChange={(value) => setFormData({ ...formData, status: value })}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
               required
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="completed">Completado</SelectItem>
-                <SelectItem value="in_progress">En Proceso</SelectItem>
-              </SelectContent>
-            </Select>
+              <option value="completed">Completado</option>
+              <option value="in_progress">En Proceso</option>
+            </select>
           </div>
         </div>
 
@@ -2237,6 +2576,28 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
               placeholder="dd/mm/aaaa"
             />
           </div>
+        </div>
+
+        {/* Taller guardado (opcional) */}
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">
+            Opcional: Cargar datos de taller guardado
+          </p>
+          <select
+            value={selectedWorkshopId}
+            onChange={(e) => handleSelectWorkshop(e.target.value)}
+            disabled={workshopsList.length === 0}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">
+              -- Ingresar Manualmente / Nuevo --
+            </option>
+            {workshopsList.map((w: any) => (
+              <option key={w.id} value={String(w.id)}>
+                {(w?.name || 'Taller').toString()} {w?.ruc ? `(${w.ruc})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* RUC y Taller/Proveedor */}
@@ -2290,25 +2651,22 @@ function MaintenanceDialog({ maintenance, vehicles, maintenanceTypes, workshops,
         {/* Cuenta Contable */}
         <div>
           <Label>Cuenta Contable *</Label>
-          <Select
+          <select
             value={formData.accountCode}
-            onValueChange={(value) => {
+            onChange={(e) => {
               setAccountTouched(true);
-              setFormData({ ...formData, accountCode: value });
+              setFormData({ ...formData, accountCode: e.target.value });
             }}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
             required
           >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {expenseAccounts.map((account) => (
-                <SelectItem key={account.code} value={account.code}>
-                  <span className="font-mono">{account.code}</span> - {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="" disabled>Seleccione cuenta</option>
+            {expenseAccounts.map((account) => (
+              <option key={account.code} value={account.code}>
+                {account.code} - {account.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Botones */}
@@ -2391,6 +2749,17 @@ function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
 
   const [accountTouched, setAccountTouched] = useState(Boolean(expense?.accountCode));
 
+  // Si cambian los vehículos (p.ej. acabas de crear uno), asegurar que haya un seleccionado válido.
+  useEffect(() => {
+    const list = Array.isArray(vehicles) ? vehicles : [];
+    if (list.length === 0) return;
+    const exists = list.some((v: any) => String(v?.id) === String(formData.vehicleId));
+    if (!formData.vehicleId || !exists) {
+      setFormData((prev: any) => ({ ...prev, vehicleId: list[0]?.id ?? '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles]);
+
   const handleCategoryChange = (category: string) => {
     const suggested = suggestedAccountByCategory(category);
     setFormData((prev: any) => ({
@@ -2432,43 +2801,44 @@ function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label>Vehículo *</Label>
-          <Select
-            value={String(formData.vehicleId)}
-            onValueChange={(value) => setFormData({ ...formData, vehicleId: Number(value) })}
+          <select
+            value={String(formData.vehicleId || '')}
+            onChange={(e) => setFormData({ ...formData, vehicleId: Number(e.target.value) })}
+            disabled={!Array.isArray(vehicles) || vehicles.length === 0}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+            required
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccione un vehículo" />
-            </SelectTrigger>
-            <SelectContent>
-              {vehicles.map((vehicle: any) => (
-                <SelectItem key={vehicle.id} value={String(vehicle.id)}>
-                  {vehicleLabel(vehicle)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="" disabled>
+              {Array.isArray(vehicles) && vehicles.length ? 'Seleccione un vehículo' : 'No hay vehículos'}
+            </option>
+            {(Array.isArray(vehicles) ? vehicles : []).map((vehicle: any) => (
+              <option key={vehicle.id} value={String(vehicle.id)}>
+                {vehicleLabel(vehicle)}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Categoría *</Label>
-            <Select value={formData.category} onValueChange={handleCategoryChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Combustible">Combustible</SelectItem>
-                <SelectItem value="Mantenimiento">Mantenimiento</SelectItem>
-                <SelectItem value="Reparación">Reparación</SelectItem>
-                <SelectItem value="Seguro">Seguro</SelectItem>
-                <SelectItem value="ITV/Documentación">ITV/Documentación</SelectItem>
-                <SelectItem value="Equipamiento">Equipamiento</SelectItem>
-                <SelectItem value="Limpieza/Suministros">Limpieza/Suministros</SelectItem>
-                <SelectItem value="Peajes">Peajes</SelectItem>
-                <SelectItem value="Estacionamiento">Estacionamiento</SelectItem>
-                <SelectItem value="Otros">Otros</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              value={formData.category}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+              className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+              required
+            >
+              <option value="Combustible">Combustible</option>
+              <option value="Mantenimiento">Mantenimiento</option>
+              <option value="Reparación">Reparación</option>
+              <option value="Seguro">Seguro</option>
+              <option value="ITV/Documentación">ITV/Documentación</option>
+              <option value="Equipamiento">Equipamiento</option>
+              <option value="Limpieza/Suministros">Limpieza/Suministros</option>
+              <option value="Peajes">Peajes</option>
+              <option value="Estacionamiento">Estacionamiento</option>
+              <option value="Otros">Otros</option>
+            </select>
           </div>
 
           <div>
@@ -2496,24 +2866,24 @@ function ExpenseDialog({ expense, vehicles, onSave, onClose }: any) {
 
         <div>
           <Label>Cuenta Contable *</Label>
-          <Select
+          <select
             value={formData.accountCode}
-            onValueChange={(value) => {
+            onChange={(e) => {
               setAccountTouched(true);
-              setFormData({ ...formData, accountCode: value });
+              setFormData({ ...formData, accountCode: e.target.value });
             }}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+            required
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccione cuenta" />
-            </SelectTrigger>
-            <SelectContent>
-              {expenseAccounts.map((account) => (
-                <SelectItem key={account.code} value={account.code}>
-                  <span className="font-mono">{account.code}</span> - {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="" disabled>
+              Seleccione cuenta
+            </option>
+            {expenseAccounts.map((account) => (
+              <option key={account.code} value={account.code}>
+                {account.code} - {account.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -2584,6 +2954,26 @@ function ServiceDialog({ vehicles, maintenanceTypes, onSave, onClose }: any) {
     estimatedCost: 0
   });
 
+  // Sincronizar defaults si cambia la lista (p.ej. creas un vehículo o configuras tipos).
+  useEffect(() => {
+    const list = Array.isArray(vehicles) ? vehicles : [];
+    if (list.length === 0) return;
+    const exists = list.some((v: any) => String(v?.id) === String(formData.vehicleId));
+    if (!formData.vehicleId || !exists) {
+      setFormData((prev: any) => ({ ...prev, vehicleId: list[0]?.id ?? '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles]);
+
+  useEffect(() => {
+    const types = Array.isArray(maintenanceTypes) ? maintenanceTypes : [];
+    if (types.length === 0) return;
+    if (!formData.type || !types.includes(formData.type)) {
+      setFormData((prev: any) => ({ ...prev, type: types[0] }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maintenanceTypes]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.vehicleId) {
@@ -2612,50 +3002,55 @@ function ServiceDialog({ vehicles, maintenanceTypes, onSave, onClose }: any) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label>Vehículo *</Label>
-          <Select
-            value={String(formData.vehicleId)}
-            onValueChange={(value) => setFormData({ ...formData, vehicleId: Number(value) })}
+          <select
+            value={String(formData.vehicleId || '')}
+            onChange={(e) => setFormData({ ...formData, vehicleId: Number(e.target.value) })}
+            disabled={!Array.isArray(vehicles) || vehicles.length === 0}
+            className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+            required
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccione un vehículo" />
-            </SelectTrigger>
-            <SelectContent>
-              {vehicles.map((vehicle: any) => (
-                <SelectItem key={vehicle.id} value={String(vehicle.id)}>
-                  {vehicleLabel(vehicle)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="" disabled>
+              {Array.isArray(vehicles) && vehicles.length ? 'Seleccione un vehículo' : 'No hay vehículos'}
+            </option>
+            {(Array.isArray(vehicles) ? vehicles : []).map((vehicle: any) => (
+              <option key={vehicle.id} value={String(vehicle.id)}>
+                {vehicleLabel(vehicle)}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Tipo de Servicio *</Label>
-            <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {maintenanceTypes.map((type: string) => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              disabled={!Array.isArray(maintenanceTypes) || maintenanceTypes.length === 0}
+              className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+              required
+            >
+              <option value="" disabled>
+                {Array.isArray(maintenanceTypes) && maintenanceTypes.length ? 'Seleccione tipo' : 'No hay tipos'}
+              </option>
+              {(Array.isArray(maintenanceTypes) ? maintenanceTypes : []).map((type: string) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
           </div>
 
           <div>
             <Label>Prioridad *</Label>
-            <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Baja</SelectItem>
-                <SelectItem value="medium">Media</SelectItem>
-                <SelectItem value="high">Alta</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              value={formData.priority}
+              onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+              className="border-input bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+              required
+            >
+              <option value="low">Baja</option>
+              <option value="medium">Media</option>
+              <option value="high">Alta</option>
+            </select>
           </div>
         </div>
 
@@ -2711,6 +3106,7 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
   const [localWorkshops, setLocalWorkshops] = useState([...workshops]);
   const [showNewWorkshop, setShowNewWorkshop] = useState(false);
   const [editingWorkshop, setEditingWorkshop] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     id: 0,
     name: '',
@@ -2733,12 +3129,43 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
 
   const handleSaveWorkshop = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanRuc = String(formData.ruc || '').replace(/\D/g, '').slice(0, 11);
+    const cleanName = String(formData.name || '').trim();
+    const cleanAddress = String(formData.address || '').trim();
+    const cleanPhone = String(formData.phone || '').trim();
+
+    if (!validateRuc(cleanRuc)) {
+      toast.error('El RUC debe tener 11 dígitos numéricos');
+      return;
+    }
+    if (!cleanName) {
+      toast.error('Ingrese el nombre del taller');
+      return;
+    }
+
+    const hasDuplicateRuc = localWorkshops.some((w: any) => {
+      if (editingWorkshop && String(w.id) === String(editingWorkshop.id)) return false;
+      const r = String(w?.ruc || '').replace(/\D/g, '').slice(0, 11);
+      return r === cleanRuc;
+    });
+    if (hasDuplicateRuc) {
+      toast.error('Ya existe un taller con ese RUC');
+      return;
+    }
+
+    const next = {
+      ...formData,
+      ruc: cleanRuc,
+      name: cleanName,
+      address: cleanAddress,
+      phone: cleanPhone,
+    };
     if (editingWorkshop) {
       setLocalWorkshops(localWorkshops.map((w: any) => 
-        w.id === editingWorkshop.id ? formData : w
+        w.id === editingWorkshop.id ? next : w
       ));
     } else {
-      setLocalWorkshops([...localWorkshops, { ...formData, id: Date.now() }]);
+      setLocalWorkshops([...localWorkshops, { ...next, id: Date.now() }]);
     }
     setShowNewWorkshop(false);
     setFormData({ id: 0, name: '', ruc: '', address: '', phone: '' });
@@ -2748,9 +3175,14 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
     setLocalWorkshops(localWorkshops.filter((w: any) => w.id !== id));
   };
 
-  const handleSave = () => {
-    onSave(localWorkshops);
-    onClose();
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await onSave(localWorkshops);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const validateRuc = (ruc: string) => {
@@ -2758,7 +3190,7 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
   };
 
   return (
-    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[min(96vw,72rem)] max-w-5xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Configurar Talleres y Proveedores</DialogTitle>
         <DialogDescription>
@@ -2775,51 +3207,59 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
         </div>
 
         {/* Lista de talleres */}
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-muted">
+        <div className="border rounded-lg overflow-hidden bg-background">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
               <tr>
-                <th className="text-left p-3">RUC</th>
-                <th className="text-left p-3">Nombre</th>
-                <th className="text-left p-3">Dirección</th>
-                <th className="text-left p-3">Teléfono</th>
-                <th className="text-right p-3">Acciones</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">RUC</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Nombre</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Dirección</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Teléfono</th>
+                <th className="text-right p-3 font-medium text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {localWorkshops.map((workshop: any, index: number) => (
-                <tr 
-                  key={workshop.id} 
-                  className={`border-t ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                >
-                  <td className="p-3 font-mono text-sm">{workshop.ruc}</td>
-                  <td className="p-3">{workshop.name}</td>
-                  <td className="p-3 text-sm text-muted-foreground">{workshop.address}</td>
-                  <td className="p-3 text-sm">{workshop.phone}</td>
-                  <td className="p-3 text-right">
-                    <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(workshop)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => handleDelete(workshop.id)}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+              {localWorkshops.length === 0 ? (
+                <tr className="border-t">
+                  <td className="p-6 text-center text-muted-foreground" colSpan={5}>
+                    No hay talleres registrados.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                localWorkshops.map((workshop: any, index: number) => (
+                  <tr
+                    key={workshop.id}
+                    className={`border-t ${index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}`}
+                  >
+                    <td className="p-3 font-mono">{workshop.ruc}</td>
+                    <td className="p-3">{workshop.name}</td>
+                    <td className="p-3 text-muted-foreground">{workshop.address}</td>
+                    <td className="p-3">{workshop.phone}</td>
+                    <td className="p-3 text-right">
+                      <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(workshop)}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(workshop.id)}
+                          className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Modal para nuevo/editar taller */}
         {showNewWorkshop && (
-          <div className="border rounded-lg p-6 bg-muted/30">
+          <div className="border rounded-lg p-6 bg-muted/20">
             <h3 className="font-semibold mb-4">
               {editingWorkshop ? 'Editar Taller' : 'Nuevo Taller'}
             </h3>
@@ -2829,7 +3269,7 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
                   <Label>RUC *</Label>
                   <Input
                     value={formData.ruc}
-                    onChange={(e) => setFormData({ ...formData, ruc: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, ruc: e.target.value.replace(/\D/g, '').slice(0, 11) })}
                     placeholder="20123456789"
                     maxLength={11}
                     required
@@ -2885,10 +3325,10 @@ function WorkshopConfigDialog({ workshops, onSave, onClose }: any) {
         )}
 
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave}>
+          <Button onClick={handleSave} disabled={saving}>
             Guardar Configuración
           </Button>
         </div>

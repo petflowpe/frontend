@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Progress } from './ui/progress';
 import { toast } from 'sonner';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { formatDate } from '../utils/helpers';
 
 interface Appointment {
   id: string;
@@ -277,126 +279,124 @@ export function AppointmentConfirmation() {
         </TabsList>
 
         <TabsContent value="appointments" className="space-y-4">
-          {appointments.map(appointment => (
-            <Card key={appointment.id}>
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-3 flex-1">
-                    <div className="flex items-center gap-3">
-                      <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      <div>
-                        <p className="font-medium text-slate-900 dark:text-white">
-                          {appointment.clientName} - {appointment.petName}
-                        </p>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          {appointment.service}
-                        </p>
-                      </div>
-                      {appointment.confirmed ? (
-                        <Badge className="bg-green-500">
-                          <Check className="w-3 h-3 mr-1" />
-                          Confirmada
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          <Clock className="w-3 h-3 mr-1" />
-                          Pendiente
-                        </Badge>
-                      )}
-                    </div>
+          <Card className="p-0 overflow-hidden">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableHead className="px-4">Cita</TableHead>
+                    <TableHead className="px-4">Cliente</TableHead>
+                    <TableHead className="px-4">Mascota</TableHead>
+                    <TableHead className="px-4">Servicio</TableHead>
+                    <TableHead className="px-4">Fecha</TableHead>
+                    <TableHead className="px-4">Hora</TableHead>
+                    <TableHead className="px-4">Teléfono</TableHead>
+                    <TableHead className="px-4">Email</TableHead>
+                    <TableHead className="px-4">Estado</TableHead>
+                    <TableHead className="px-4">Confirmación</TableHead>
+                    <TableHead className="px-4">Recordatorios</TableHead>
+                    <TableHead className="px-4 text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {appointments.map((appointment) => {
+                    const reminder24h = !!appointment.remindersSent?.reminder24h;
+                    const reminder2h = !!appointment.remindersSent?.reminder2h;
+                    const confirmationInfo = appointment.confirmed
+                      ? `Vía ${appointment.confirmationMethod || '—'} · ${appointment.confirmationDate ? formatDate(appointment.confirmationDate) : '—'}`
+                      : '—';
 
-                    <div className="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400">
-                      <span className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(appointment.date).toLocaleDateString('es-PE', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        {appointment.time}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Phone className="w-4 h-4" />
-                        {appointment.phone}
-                      </span>
-                      <span className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Mail className="w-4 h-4" />
-                        {appointment.email}
-                      </span>
-                    </div>
-
-                    {appointment.confirmed && appointment.confirmationDate && (
-                      <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                        <Check className="w-4 h-4" />
-                        <span>
-                          Confirmada vía {appointment.confirmationMethod} el{' '}
-                          {new Date(appointment.confirmationDate).toLocaleDateString('es-PE')}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <Badge variant={appointment.remindersSent.reminder24h ? 'default' : 'outline'}>
-                        {appointment.remindersSent.reminder24h ? (
-                          <Check className="w-3 h-3 mr-1" />
-                        ) : (
-                          <Clock className="w-3 h-3 mr-1" />
-                        )}
-                        Recordatorio 24h
-                      </Badge>
-                      <Badge variant={appointment.remindersSent.reminder2h ? 'default' : 'outline'}>
-                        {appointment.remindersSent.reminder2h ? (
-                          <Check className="w-3 h-3 mr-1" />
-                        ) : (
-                          <Clock className="w-3 h-3 mr-1" />
-                        )}
-                        Recordatorio 2h
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    {!appointment.confirmed && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={() => handleConfirm(appointment.id, 'whatsapp')}
-                        >
-                          <MessageSquare className="w-4 h-4 mr-2" />
-                          Confirmar por WhatsApp
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleConfirm(appointment.id, 'phone')}
-                        >
-                          <Phone className="w-4 h-4 mr-2" />
-                          Confirmar por Llamada
-                        </Button>
-                      </>
-                    )}
-                    {!appointment.remindersSent.reminder24h && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleSendReminder(appointment.id, '24h')}
-                      >
-                        <Bell className="w-4 h-4 mr-2" />
-                        Enviar Recordatorio 24h
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    return (
+                      <TableRow key={appointment.id} className="hover:bg-muted/20">
+                        <TableCell className="px-4 py-4 font-mono text-xs">
+                          {appointment.id}
+                        </TableCell>
+                        <TableCell className="px-4 py-4 whitespace-normal">
+                          <div className="font-medium text-foreground">{appointment.clientName}</div>
+                        </TableCell>
+                        <TableCell className="px-4 py-4 whitespace-normal">
+                          <div className="font-medium text-foreground">{appointment.petName}</div>
+                        </TableCell>
+                        <TableCell className="px-4 py-4 whitespace-normal">
+                          <div className="text-foreground">{appointment.service}</div>
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          {formatDate(appointment.date)}
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          {appointment.time}
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          <span className="inline-flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-foreground">{appointment.phone}</span>
+                          </span>
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          <span className="inline-flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-foreground">{appointment.email}</span>
+                          </span>
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          {appointment.confirmed ? (
+                            <Badge className="bg-green-500">
+                              <Check className="w-3 h-3 mr-1" />
+                              Confirmada
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Pendiente
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-4 whitespace-normal">
+                          <span className={appointment.confirmed ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}>
+                            {confirmationInfo}
+                          </span>
+                        </TableCell>
+                        <TableCell className="px-4 py-4 whitespace-normal">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={reminder24h ? 'default' : 'outline'}>
+                              {reminder24h ? <Check className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+                              24h
+                            </Badge>
+                            <Badge variant={reminder2h ? 'default' : 'outline'}>
+                              {reminder2h ? <Check className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+                              2h
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          <div className="flex justify-end gap-2 flex-wrap">
+                            {!appointment.confirmed && (
+                              <>
+                                <Button size="sm" onClick={() => handleConfirm(appointment.id, 'whatsapp')}>
+                                  <MessageSquare className="w-4 h-4 mr-2" />
+                                  WhatsApp
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => handleConfirm(appointment.id, 'phone')}>
+                                  <Phone className="w-4 h-4 mr-2" />
+                                  Llamada
+                                </Button>
+                              </>
+                            )}
+                            {!reminder24h && (
+                              <Button size="sm" variant="outline" onClick={() => handleSendReminder(appointment.id, '24h')}>
+                                <Bell className="w-4 h-4 mr-2" />
+                                Recordatorio 24h
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="policies" className="space-y-4">

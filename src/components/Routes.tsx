@@ -31,7 +31,7 @@ const api = {
       return Array.isArray(data) ? data : [];
     } catch (e) {
       console.error(`Error fetching ${endpoint}`, e);
-      return [];
+      return null;
     }
   },
   save: async (endpoint: string, data: any) => {
@@ -39,7 +39,7 @@ const api = {
       return await apiClient.post(endpoint, data);
     } catch (e) {
       console.error(`Error saving to ${endpoint}`, e);
-      throw e;
+      return null;
     }
   },
   delete: async (endpoint: string, id: string) => {
@@ -47,9 +47,13 @@ const api = {
       return await apiClient.delete(`${endpoint}/${id}`);
     } catch (e) {
       console.error(`Error deleting from ${endpoint}`, e);
-      throw e;
+      return null;
     }
-  }
+  },
+  // Alias: algunos flujos llaman api.get (antes faltaba y rompía silenciosamente)
+  get: async (endpoint: string) => {
+    return api.fetch(endpoint);
+  },
 };
 
 export function Routes({ onNavigate }: { onNavigate?: (tab: string) => void }) {
@@ -615,36 +619,32 @@ export function Routes({ onNavigate }: { onNavigate?: (tab: string) => void }) {
       // 1. ZONES
       try {
         const remoteZones = await api.fetch('/zones');
-        if (remoteZones.length > 0) {
-          setZones(remoteZones);
-        } else {
-          // Initialize DB with current local data (Seed)
+        if (Array.isArray(remoteZones) && remoteZones.length > 0) {
+          const normalized = remoteZones.map((z: any) => {
+            const coords = (z && typeof z === 'object' ? (z.coordinates ?? z.coords ?? null) : null);
+            const safeCoords = coords && typeof coords === 'object'
+              ? coords
+              : { center: null, radius: 0, polygon: null };
+            return {
+              ...z,
+              districts: Array.isArray(z?.districts) ? z.districts : [],
+              coordinates: safeCoords,
+            };
+          });
+          setZones(normalized);
+        } else if (remoteZones && Array.isArray(remoteZones) && remoteZones.length === 0) {
+          // Initialize DB with current local data (Seed) SOLO si el endpoint existe y respondió OK.
           console.log('Seeding Zones DB...');
-          zones.forEach(z => api.save('/zones', z));
+          for (const z of zones) {
+            // fire-and-forget, pero sin reventar la app si falla
+            void api.save('/zones', z);
+          }
         }
       } catch (e) { console.error('Sync error zones', e); }
 
-      // 2. VEHICLE CONFIGS
-      try {
-        const remoteVehicles = await api.fetch('/vehicle-configs');
-        if (remoteVehicles.length > 0) {
-          setVehicleZoneConfig(remoteVehicles);
-        } else {
-          console.log('Seeding Vehicle Configs DB...');
-          vehicleZoneConfig.forEach(v => api.save('/vehicle-configs', v));
-        }
-      } catch (e) { console.error('Sync error vehicles', e); }
-
-      // 3. ROUTES
-      try {
-        const remoteRoutes = await api.fetch('/routes');
-        if (remoteRoutes.length > 0) {
-          setRoutes(remoteRoutes);
-        } else {
-          console.log('Seeding Routes DB...');
-          routes.forEach(r => api.save('/routes', r));
-        }
-      } catch (e) { console.error('Sync error routes', e); }
+      // 2) VEHICLE CONFIGS + ROUTES
+      // Este módulo usa endpoints legacy (/vehicle-configs, /routes) que no existen en el backend actual.
+      // Mantenerlos deshabilitados evita 404 + reintentos + crashes de UI.
     };
 
     syncData();
@@ -1623,7 +1623,9 @@ export function Routes({ onNavigate }: { onNavigate?: (tab: string) => void }) {
                     <div className="p-2 bg-muted/30 rounded">
                       <p className="text-xs text-muted-foreground">Tipo de Zona</p>
                       <p className="font-semibold">
-                        {zone.coordinates.polygon ? 'Polígono (Distrital)' : `Radio ${zone.coordinates.radius} km`}
+                        {Array.isArray(zone?.coordinates?.polygon) && zone.coordinates.polygon.length > 0
+                          ? 'Polígono (Distrital)'
+                          : (typeof zone?.coordinates?.radius === 'number' ? `Radio ${zone.coordinates.radius} km` : 'Sin coordenadas')}
                       </p>
                     </div>
                     <div className="p-2 bg-muted/30 rounded">
