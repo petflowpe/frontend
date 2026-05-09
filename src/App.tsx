@@ -14,7 +14,7 @@ import { initSmartPetErrorMonitoring } from './services/sentry';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { PageSkeleton } from './components/PageSkeleton';
-import { isModuleAllowed } from './utils/permissions';
+import { canAccessModule } from './utils/permissions';
 import { getStoredTheme, applyTheme, setTheme, subscribeToSystemPreference } from './utils/theme';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { setI18nLanguage } from './i18n';
@@ -205,15 +205,27 @@ function AppContent() {
             if (cancelled) return;
 
             const userData = response.user || response.data || response;
-            const backendRole = userData.role?.name || userData.role || (typeof userData.role === 'string' ? userData.role : 'veterinario');
-            const finalRole = userData.email?.includes('admin') ? 'admin' : backendRole;
+            // Rol: preferimos el "slug" real (super_admin, company_admin, …) del backend.
+            // Aceptamos role como objeto {name, display_name} o string, o role_key.
+            const roleSlug = (
+              userData.role_key ||
+              (typeof userData.role === 'string' ? userData.role : userData.role?.name) ||
+              ''
+            );
+            const roleDisplay = (
+              userData.role_display ||
+              (typeof userData.role === 'string' ? userData.role : userData.role?.display_name) ||
+              'Sin rol'
+            );
 
             const user = {
               id: userData.id?.toString() || '',
               email: userData.email || '',
               name: userData.name || userData.email?.split('@')[0] || 'Usuario',
-              role: finalRole,
-              permissions: Array.isArray(userData.permissions) ? userData.permissions : ['all'],
+              role: roleSlug,
+              role_key: roleSlug,
+              role_display: roleDisplay,
+              permissions: Array.isArray(userData.permissions) ? userData.permissions : [],
               companyId: userData.company_id,
             };
             setIsAuthenticated(true);
@@ -423,17 +435,10 @@ function AppContent() {
   };
 
   const renderContent = () => {
-    const role = currentUser?.role || 'staff';
-    const permissions = currentUser?.permissions || [];
-    
-    // Si el usuario tiene permissions: ['all'], tiene acceso completo
-    const hasFullAccess = permissions.includes('all') || role === 'admin' || role === 'superadmin' || role === 'manager';
-    
-    // Verificar permisos centralizados (solo si no tiene acceso completo)
-    if (!hasFullAccess && !isModuleAllowed(role, activeTab)) {
-      // Redirigir al dashboard si no tiene permisos
-      // Nota: idealmente usaríamos useEffect para cambiar activeTab, 
-      // pero aquí renderizamos el Dashboard como fallback inmediato
+    // Verificación centralizada: sólo muestra el módulo si el usuario tiene acceso.
+    // Usa role_key (slug) + lista de permissions['*' | 'invoices.*' | 'invoices.view' | ...]
+    // Si no tiene acceso, cae a Dashboard.
+    if (!canAccessModule(currentUser, activeTab)) {
       return <Dashboard onNavigate={setActiveTab} />;
     }
 

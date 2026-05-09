@@ -1,26 +1,21 @@
 import { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
-  Shield, 
-  Eye,
-  EyeOff,
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Search,
+  Shield,
   CheckCircle,
-  XCircle,
   Lock,
   Unlock,
   Mail,
   Phone,
   Calendar,
   Settings as SettingsIcon,
-  AlertCircle,
-  Grid3x3,
   Save,
   X,
-  RefreshCw
+  RefreshCw,
+  Users,
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -32,94 +27,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Separator } from './ui/separator';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from './ui/dialog';
-import { Textarea } from './ui/textarea';
-import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
 import { useRoles, type Role } from '../hooks/useRoles';
-
-// Definición de permisos del sistema
-export const SYSTEM_MODULES = {
-  dashboard: { name: 'Dashboard', icon: '🏠', description: 'Vista general del sistema' },
-  appointments: { name: 'Citas', icon: '📅', description: 'Gestión de citas' },
-  clients: { name: 'Clientes', icon: '👥', description: 'Base de datos de clientes' },
-  services: { name: 'Servicios', icon: '✂️', description: 'Catálogo de servicios' },
-  products: { name: 'Productos', icon: '📦', description: 'Inventario de productos' },
-  purchases: { name: 'Compras', icon: '🛒', description: 'Compras a proveedores' },
-  medical: { name: 'Cuidado Médico', icon: '🏥', description: 'Vacunas y tratamientos' },
-  vehicles: { name: 'Vehículos', icon: '🚗', description: 'Gestión de flota' },
-  routes: { name: 'Rutas', icon: '🗺️', description: 'Planificación de rutas' },
-  invoicing: { name: 'Facturación', icon: '🧾', description: 'Emisión de facturas' },
-  payments: { name: 'Pagos', icon: '💳', description: 'Gestión de pagos' },
-  staff: { name: 'Personal', icon: '👨‍💼', description: 'Gestión de empleados' },
-  cashRegister: { name: 'Cierre de Caja', icon: '💰', description: 'Control diario de caja' },
-  kardex: { name: 'Kardex', icon: '📋', description: 'Movimientos de inventario' },
-  accounting: { name: 'Gestión Financiera', icon: '📊', description: 'Estados financieros y KPIs' },
-  exportsReports: { name: 'Informes y Exportaciones', icon: '📄', description: 'Descarga de reportes' },
-  reports: { name: 'Reportes', icon: '📈', description: 'Analytics y gráficos' },
-  notifications: { name: 'Notificaciones', icon: '🔔', description: 'Centro de notificaciones' },
-  settings: { name: 'Configuración', icon: '⚙️', description: 'Configuración del sistema' },
-  users: { name: 'Usuarios', icon: '👤', description: 'Gestión de usuarios' }
-};
-
-// Roles predefinidos del sistema
-export const SYSTEM_ROLES = {
-  superadmin: {
-    name: 'Super Administrador',
-    description: 'Acceso total al sistema sin restricciones',
-    color: 'red',
-    permissions: Object.keys(SYSTEM_MODULES)
-  },
-  admin: {
-    name: 'Administrador',
-    description: 'Acceso completo excepto configuración crítica',
-    color: 'purple',
-    permissions: Object.keys(SYSTEM_MODULES).filter(m => m !== 'users')
-  },
-  manager: {
-    name: 'Gerente',
-    description: 'Acceso a reportes, finanzas y operaciones',
-    color: 'blue',
-    permissions: ['dashboard', 'appointments', 'clients', 'services', 'products', 'medical', 'vehicles', 'routes', 'invoicing', 'payments', 'staff', 'accounting', 'exportsReports', 'reports', 'notifications']
-  },
-  accountant: {
-    name: 'Contador',
-    description: 'Acceso a módulos financieros y reportes',
-    color: 'green',
-    permissions: ['dashboard', 'invoicing', 'payments', 'cashRegister', 'kardex', 'accounting', 'exportsReports', 'reports', 'notifications', 'purchases']
-  },
-  groomer: {
-    name: 'Groomer/Peluquero',
-    description: 'Acceso a citas, clientes y servicios diarios',
-    color: 'teal',
-    permissions: ['dashboard', 'appointments', 'clients', 'services', 'products', 'medical', 'routes', 'cashRegister', 'notifications']
-  },
-  receptionist: {
-    name: 'Recepcionista',
-    description: 'Gestión de citas, clientes y facturación',
-    color: 'pink',
-    permissions: ['dashboard', 'appointments', 'clients', 'services', 'invoicing', 'payments', 'notifications']
-  },
-  driver: {
-    name: 'Conductor',
-    description: 'Acceso a rutas y cierre de caja',
-    color: 'orange',
-    permissions: ['dashboard', 'routes', 'appointments', 'cashRegister', 'notifications']
-  },
-  supervisor: {
-    name: 'Supervisor',
-    description: 'Monitoreo operativo y reportes',
-    color: 'indigo',
-    permissions: ['dashboard', 'appointments', 'clients', 'vehicles', 'routes', 'staff', 'reports', 'notifications']
-  },
-  viewer: {
-    name: 'Visualizador',
-    description: 'Solo lectura de reportes y dashboard',
-    color: 'gray',
-    permissions: ['dashboard', 'reports', 'notifications']
-  }
-};
+import { RolesManagementDialog } from './roles/RolesManagementDialog';
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
   super_admin: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
@@ -152,9 +64,7 @@ export function UserManagement({ currentUserId, currentUserRole }: { currentUser
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showUserModal, setShowUserModal] = useState(false);
   const [showRolesModal, setShowRolesModal] = useState(false);
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editingRoles, setEditingRoles] = useState({ ...SYSTEM_ROLES });
   
   // Loading states
   const [loading, setLoading] = useState(false);
@@ -188,9 +98,17 @@ export function UserManagement({ currentUserId, currentUserRole }: { currentUser
     lastLogin: row.last_login_at,
   });
 
-  const { roles: apiRoles, loading: rolesLoading, fetchRoles } = useRoles();
+  const {
+    roles: apiRoles,
+    loading: rolesLoading,
+    fetchRoles,
+    createRole,
+    updateRole,
+    toggleRole,
+    deleteRole,
+  } = useRoles();
   useEffect(() => {
-    fetchRoles();
+    fetchRoles({ include_inactive: '1' });
   }, [fetchRoles]);
 
   // Fetch Users (API devuelve { success, data[], meta })
@@ -282,11 +200,14 @@ export function UserManagement({ currentUserId, currentUserRole }: { currentUser
 
   const handleOpenNewUser = () => {
     setEditingUser(null);
+    // Rol por defecto: el primero "company_user" si existe, si no el primer rol disponible.
+    const defaultRole = (apiRoles as Role[]).find(r => r.name === 'company_user')
+      ?? (apiRoles as Role[])[0];
     setFormData({
       name: '',
       email: '',
       phone: '',
-      role: 'groomer',
+      role_id: defaultRole?.id ?? 0,
       status: 'active',
       password: '',
       confirmPassword: ''
@@ -300,7 +221,7 @@ export function UserManagement({ currentUserId, currentUserRole }: { currentUser
       name: user.name,
       email: user.email,
       phone: user.phone,
-      role: user.role,
+      role_id: user.role_id ?? 0,
       status: user.status,
       password: '',
       confirmPassword: ''
@@ -364,28 +285,6 @@ export function UserManagement({ currentUserId, currentUserRole }: { currentUser
     }
   };
 
-  const handleSaveRoles = () => {
-    toast.success('✅ Configuración de roles guardada correctamente');
-    setShowRolesModal(false);
-  };
-
-  const handleTogglePermissionInRole = (roleKey: string, moduleKey: string) => {
-    setEditingRoles(prev => {
-      const role = prev[roleKey as keyof typeof SYSTEM_ROLES];
-      const hasPermission = role.permissions.includes(moduleKey);
-      
-      return {
-        ...prev,
-        [roleKey]: {
-          ...role,
-          permissions: hasPermission
-            ? role.permissions.filter(p => p !== moduleKey)
-            : [...role.permissions, moduleKey]
-        }
-      };
-    });
-  };
-
   const stats = {
     total: users.length,
     active: users.filter(u => u.status === 'active').length,
@@ -414,138 +313,21 @@ export function UserManagement({ currentUserId, currentUserRole }: { currentUser
           </div>
         </div>
         <div className="flex gap-2">
-          <Dialog open={showRolesModal} onOpenChange={setShowRolesModal}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <SettingsIcon className="h-4 w-4 mr-2" />
-                Configurar Roles
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>⚙️ Configuración de Roles</DialogTitle>
-                <DialogDescription>
-                  Personaliza los roles del sistema y sus descripciones
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                {Object.entries(editingRoles).map(([roleKey, role]) => (
-                  <Card key={roleKey} className="p-4">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Badge className={getRoleBadgeColor(roleKey as keyof typeof SYSTEM_ROLES)}>
-                          {role.name}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {role.permissions.length} módulos
-                        </span>
-                      </div>
-                      <div>
-                        <Label>Nombre del Rol</Label>
-                        <Input 
-                          value={role.name}
-                          onChange={(e) => setEditingRoles({
-                            ...editingRoles,
-                            [roleKey]: { ...role, name: e.target.value }
-                          })}
-                        />
-                      </div>
-                      <div>
-                        <Label>Descripción</Label>
-                        <Textarea 
-                          value={role.description}
-                          onChange={(e) => setEditingRoles({
-                            ...editingRoles,
-                            [roleKey]: { ...role, description: e.target.value }
-                          })}
-                          rows={2}
-                        />
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowRolesModal(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleSaveRoles}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button variant="outline" onClick={() => setShowRolesModal(true)}>
+            <SettingsIcon className="h-4 w-4 mr-2" />
+            Configurar Roles
+          </Button>
 
-          <Dialog open={showPermissionsModal} onOpenChange={setShowPermissionsModal}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Grid3x3 className="h-4 w-4 mr-2" />
-                Matriz de Permisos
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>🔐 Matriz de Permisos por Rol</DialogTitle>
-                <DialogDescription>
-                  Configura qué módulos puede acceder cada rol
-                </DialogDescription>
-              </DialogHeader>
-              <div className="overflow-x-auto py-4">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-3 sticky left-0 bg-background z-10">Módulo</th>
-                      {Object.entries(editingRoles).map(([key, role]) => (
-                        <th key={key} className="text-center p-3 text-xs min-w-[100px]">
-                          <div className="flex flex-col items-center gap-1">
-                            <span>{role.name}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {role.permissions.length}
-                            </Badge>
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(SYSTEM_MODULES).map(([moduleKey, module]) => (
-                      <tr key={moduleKey} className="border-b hover:bg-muted/50">
-                        <td className="p-3 sticky left-0 bg-background">
-                          <div className="flex items-center gap-2">
-                            <span>{module.icon}</span>
-                            <div>
-                              <div className="font-medium">{module.name}</div>
-                              <div className="text-xs text-muted-foreground">{module.description}</div>
-                            </div>
-                          </div>
-                        </td>
-                        {Object.keys(editingRoles).map((roleKey) => (
-                          <td key={roleKey} className="text-center p-3">
-                            <div className="flex justify-center">
-                              <Checkbox
-                                checked={editingRoles[roleKey as keyof typeof SYSTEM_ROLES].permissions.includes(moduleKey)}
-                                onCheckedChange={() => handleTogglePermissionInRole(roleKey, moduleKey)}
-                              />
-                            </div>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowPermissionsModal(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleSaveRoles}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <RolesManagementDialog
+            open={showRolesModal}
+            onOpenChange={setShowRolesModal}
+            roles={apiRoles as Role[]}
+            loading={rolesLoading}
+            onCreate={createRole}
+            onUpdate={updateRole}
+            onToggle={toggleRole}
+            onDelete={deleteRole}
+          />
 
           <Dialog open={showUserModal} onOpenChange={setShowUserModal}>
             <DialogTrigger asChild>

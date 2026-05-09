@@ -334,6 +334,20 @@ export function NewAppointmentDialog({
     return false;
   };
 
+  const formatAppointmentDateTimeForSummary = () => {
+    try {
+      if (!appointmentDate || typeof appointmentDate !== 'string') return `-- - ${appointmentTime || '--:--'}`;
+      // Esperamos YYYY-MM-DD. Si viene vacío/parcial, no intentamos formatear con date-fns (evita RangeError).
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)) return `${appointmentDate} - ${appointmentTime || '--:--'}`;
+      const [y, m, d] = appointmentDate.split('-').map(Number);
+      const localDate = new Date(y, m - 1, d);
+      if (Number.isNaN(localDate.getTime())) return `${appointmentDate} - ${appointmentTime || '--:--'}`;
+      return `${format(localDate, 'dd MMM yyyy', { locale: es })} - ${appointmentTime || '--:--'}`;
+    } catch {
+      return `${appointmentDate || '--'} - ${appointmentTime || '--:--'}`;
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -585,11 +599,7 @@ export function NewAppointmentDialog({
                 <div>
                   <p className="text-muted-foreground">Fecha y Hora</p>
                   <p className="font-semibold">
-                    {(() => {
-                      const [y, m, d] = appointmentDate.split('-').map(Number);
-                      const localDate = new Date(y, m - 1, d);
-                      return format(localDate, 'dd MMM yyyy', { locale: es }) + ' - ' + appointmentTime;
-                    })()}
+                    {formatAppointmentDateTimeForSummary()}
                   </p>
                 </div>
                 <div>

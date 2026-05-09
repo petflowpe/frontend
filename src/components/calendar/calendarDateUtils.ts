@@ -8,7 +8,11 @@ export function parseAppointmentDate(dateStr: string): Date {
     const d = new Date(dateStr);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
-  const [y, m, d] = dateStr.split('-').map(Number);
+  // Aceptar "YYYY-MM-DD" y tolerar año con más dígitos (recortar a 4)
+  const [yRaw, mRaw, dRaw] = dateStr.split('-');
+  const y = Number((yRaw || '').slice(0, 4));
+  const m = Number(mRaw);
+  const d = Number(dRaw);
   if (isNaN(y)) return new Date(NaN);
   return new Date(y, (m || 1) - 1, d || 1);
 }
@@ -36,8 +40,10 @@ export function formatAppointmentTimeForDisplay(timeStr: string): string {
  */
 export function getAppointmentDateOnly(dateStr: string): string {
   if (!dateStr || typeof dateStr !== 'string') return '';
-  if (dateStr.includes('T')) return dateStr.slice(0, 10);
-  return dateStr.slice(0, 10);
+  const base = dateStr.includes('T') ? dateStr.slice(0, 10) : dateStr.slice(0, 10);
+  // Si vino con año > 4 dígitos: "YYYYY-.." → "YYYY-.."
+  const m = base.match(/^(\d{4})\d+-\d{2}-\d{2}$/);
+  return m ? `${m[1]}-${base.slice(base.indexOf('-') + 1)}` : base;
 }
 
 /**

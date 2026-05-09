@@ -7,14 +7,19 @@ import { apiClient } from '../utils/api/client';
 /** Formatea fecha y hora de cita para mensajes (evita ISO crudo y zona horaria) */
 function formatAppointmentDateTime(dateStr: string, timeStr?: string): string {
   if (!dateStr) return '';
+  // Normalizar: si llega "YYYYY-..." por input raro, recortar a 4 dígitos de año
+  if (/^\d{5,}-\d{2}-\d{2}/.test(dateStr)) dateStr = dateStr.slice(0, 4) + dateStr.slice(dateStr.indexOf('-'));
   let date: Date;
   if (dateStr.includes('T')) {
     date = new Date(dateStr);
   } else {
-    const [y, m, d] = dateStr.split('-').map(Number);
+    const [yRaw, mRaw, dRaw] = dateStr.split('-');
+    const y = Number((yRaw || '').slice(0, 4));
+    const m = Number(mRaw);
+    const d = Number(dRaw);
     date = new Date(y, m - 1, d);
   }
-  const dateFormatted = format(date, "d 'de' MMMM 'de' yyyy", { locale: es });
+  const dateFormatted = Number.isNaN(date.getTime()) ? dateStr.slice(0, 10) : format(date, "d 'de' MMMM 'de' yyyy", { locale: es });
   let timeFormatted = (timeStr || '').trim();
   if (timeFormatted.includes('T')) {
     const t = new Date(timeFormatted);

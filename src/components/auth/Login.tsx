@@ -291,13 +291,19 @@ export const Login = ({
           // Ignorar si localStorage no está disponible
         }
 
-        const roleFromBackend = (loggedUser as { role?: string }).role;
+        const roleSlug = (loggedUser as { role_key?: string; role?: string }).role_key
+          ?? (loggedUser as { role?: string }).role
+          ?? '';
+        const roleDisplay = (loggedUser as { role_display?: string }).role_display ?? 'Sin rol';
+        const permissions = (loggedUser as { permissions?: string[] }).permissions ?? [];
         const user = {
           id: loggedUser.id,
           email: loggedUser.email,
           name: `${loggedUser.firstName} ${loggedUser.lastName}`.trim() || email.split('@')[0],
-          role: roleFromBackend || 'veterinario',
-          permissions: (loggedUser as { permissions?: string[] }).permissions ?? ['all'],
+          role: roleSlug,
+          role_key: roleSlug,
+          role_display: roleDisplay,
+          permissions,
           companyId: (loggedUser as { companyId?: number }).companyId,
         };
 

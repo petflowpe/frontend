@@ -47,10 +47,9 @@ import {
   Beaker, // 🆕 Prueba
   PawPrint // 🆕 Mascotas
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
 import { useIsMobile } from './ui/use-mobile';
 import { X } from 'lucide-react';
+import { canAccessModule } from '../utils/permissions';
 
 interface SidebarProps {
   activeTab: string;
@@ -64,14 +63,7 @@ interface SidebarProps {
 export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser, mobileOpen, onMobileOpenChange }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const isMobile = useIsMobile();
-  
-  // DEBUG: Log para verificar el rol del usuario
-  useEffect(() => {
-    console.log('🔍 Sidebar - currentUser:', currentUser);
-    console.log('🔍 Sidebar - currentUser.role:', currentUser?.role);
-  }, [currentUser]);
-  
-  
+
   // Ref para guardar la posición del scroll del sidebar
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const sidebarScrollPosition = useRef<number>(0);
@@ -156,82 +148,13 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
     { id: 'users', label: 'Usuarios', icon: UsersIcon, color: 'text-purple-500', section: 'admin' },
   ];
 
-  // Filtrar items según rol
-  const filterMenuItems = (items: typeof menuItems) => {
-    // DEBUG: Log del filtro
-    console.log('🔍 filterMenuItems - currentUser:', currentUser);
-    console.log('🔍 filterMenuItems - currentUser?.role:', currentUser?.role);
-    console.log('🔍 filterMenuItems - total items:', items.length);
-    
-    // Si no hay usuario, mostrar todas las opciones (para desarrollo)
-    if (!currentUser) {
-      console.log('✅ No hay usuario - mostrando todas las opciones');
-      return items;
-    }
-    
-    // Normalizar el rol (puede venir como string o como objeto)
-    let userRole = typeof currentUser.role === 'string' 
-      ? currentUser.role 
-      : currentUser.role?.name || currentUser.role || 'staff';
-    
-    // TEMPORAL: Si el email contiene 'admin', forzar rol admin
-    const userEmail = currentUser.email || currentUser.user?.email || '';
-    if (userEmail && userEmail.includes('admin')) {
-      userRole = 'admin';
-      console.log('🔧 Rol forzado a admin por email:', userEmail);
-    }
-    
-    // TEMPORAL: Si el nombre contiene 'admin' o 'Admin', forzar rol admin
-    const userName = currentUser.name || currentUser.user?.name || '';
-    if (userName && (userName.toLowerCase().includes('admin') || userName.toLowerCase().includes('administrador'))) {
-      userRole = 'admin';
-      console.log('🔧 Rol forzado a admin por nombre:', userName);
-    }
-    
-    // TEMPORAL: Si tiene permissions: ['all'], tratar como admin
-    const userPermissions = currentUser.permissions || [];
-    if (userPermissions.includes('all') || userPermissions.length === 0) {
-      // Si tiene permisos 'all' o no tiene restricciones, mostrar todas las opciones
-      console.log('🔧 Usuario con permisos completos - mostrando todas las opciones');
-      return items;
-    }
-    
-    console.log('🔍 Rol normalizado:', userRole);
-    console.log('🔍 Email del usuario:', userEmail);
-    console.log('🔍 Nombre del usuario:', userName);
-    console.log('🔍 Permisos del usuario:', userPermissions);
-    
-    // Si es admin/superadmin/manager, mostrar TODAS las opciones
-    if (userRole === 'admin' || userRole === 'superadmin' || userRole === 'manager') {
-      console.log('✅ Usuario admin - mostrando todas las opciones');
-      return items;
-    }
-
-    if (userRole === 'veterinario') {
-      const allowedIds = [
-        'dashboard', 'calendar', 'appointments', 'confirmation', 'clients', 'pets',
-        'medical', 'services', 'loyalty', 'reviews', 'vet-clinic-portal',
-        'settings' // Perfil básico
-      ];
-      return items.filter(item => allowedIds.includes(item.id));
-    }
-
-    if (userRole === 'staff' || userRole === 'conductor' || userRole === 'groomer') {
-      const allowedIds = [
-        'dashboard', 'calendar', 'appointments', 'routes', 'vehicles', 
-        'services', 'products', 'operations-center' // Ver productos para usarlos, pero no kardex
-      ];
-      return items.filter(item => allowedIds.includes(item.id));
-    }
-
-    // Default: acceso mínimo - solo dashboard
-    return items.filter(item => ['dashboard'].includes(item.id));
-  };
-
-  // Memoizar los items filtrados para evitar recálculos innecesarios
+  // Filtrado real por permisos: usa el mapa MODULE_ACCESS + role_key + permissions[]
+  // devueltos por el backend en /auth/login y /auth/me.
+  // Si no hay usuario (dev), muestra todo.
   const filteredItems = useMemo(() => {
-    return filterMenuItems(menuItems);
-  }, [userPermissions, currentUser]);
+    if (!currentUser) return menuItems;
+    return menuItems.filter(item => canAccessModule(currentUser, item.id));
+  }, [currentUser, userPermissions]);
 
   // Agrupar items por sección (memoizado)
   const sections = useMemo(() => [

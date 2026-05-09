@@ -47,11 +47,12 @@ const DialogOverlay = React.forwardRef<
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 2147483646,
+        // Nota: no usar z-index "máximo" aquí porque bloquea overlays portaled (Select/Popover).
+        zIndex: 2000,
         ...style,
       }}
       className={cn(
-        "fixed inset-0 z-[2147483646] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 bg-black/62 backdrop-blur-[2px]",
+        "fixed inset-0 z-[2000] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 bg-black/62 backdrop-blur-[2px]",
         className,
       )}
       {...props}
@@ -71,11 +72,12 @@ const DialogContent = React.forwardRef<
         ref={ref}
         data-slot="dialog-content"
         style={{
-          zIndex: 2147483647,
+          // Dejar espacio para overlays portaled (Select/Popover) dentro del diálogo.
+          zIndex: 2001,
           ...style,
         }}
         className={cn(
-          "bg-background fixed top-[50%] left-[50%] z-[2147483647] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-2xl duration-200 sm:max-w-lg",
+          "bg-background fixed top-[50%] left-[50%] z-[2001] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-2xl duration-200 sm:max-w-lg",
           className,
         )}
         {...props}

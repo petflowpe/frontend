@@ -20,14 +20,21 @@ import { cn } from '../ui/utils';
 
 function formatDateForDisplay(dateStr: string): string {
   if (!dateStr) return 'No especificada';
-  let date: Date;
-  if (dateStr.includes('T')) {
-    date = new Date(dateStr);
-  } else {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    date = new Date(y, m - 1, d);
+  try {
+    let date: Date;
+    if (dateStr.includes('T')) {
+      date = new Date(dateStr);
+    } else {
+      // Esperamos YYYY-MM-DD. Si viene parcial/invalid, evitamos RangeError.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+      const [y, m, d] = dateStr.split('-').map(Number);
+      date = new Date(y, m - 1, d);
+    }
+    if (Number.isNaN(date.getTime())) return dateStr;
+    return format(date, "dd 'de' MMMM, yyyy", { locale: es });
+  } catch {
+    return dateStr;
   }
-  return format(date, "dd 'de' MMMM, yyyy", { locale: es });
 }
 
 function formatTimeForDisplay(timeStr: string): string {

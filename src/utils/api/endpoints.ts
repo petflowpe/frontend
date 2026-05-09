@@ -48,6 +48,10 @@ export const API = {
   roles: {
     list: '/roles',
     byId: (id: string | number) => `/roles/${id}`,
+    create: '/roles',
+    update: (id: string | number) => `/roles/${id}`,
+    toggle: (id: string | number) => `/roles/${id}/toggle`,
+    delete: (id: string | number) => `/roles/${id}`,
   },
   permissions: { list: '/permissions' },
   search: '/search',
@@ -189,8 +193,13 @@ export const API = {
       list: '/vehicle-services',
       byId: (id: string | number) => `/vehicle-services/${id}`,
       byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/services`,
+      sendToMaintenance: (id: string | number) => `/vehicle-services/${id}/send-to-maintenance`,
       complete: (id: string | number) => `/vehicle-services/${id}/complete`,
     },
+  },
+  vehicleConfigurations: {
+    all: '/vehicle-configurations/all',
+    store: '/vehicle-configurations',
   },
   medicalRecords: {
     list: '/medical-records',

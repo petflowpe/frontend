@@ -350,7 +350,7 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
                 <p className="font-medium truncate">{currentUser?.name || 'Usuario'}</p>
                 <p className="text-sm text-muted-foreground truncate">{currentUser?.email || 'email@smartpet.com'}</p>
                 <p className="text-xs text-muted-foreground mt-1 capitalize">
-                  {currentUser?.role || 'admin'}
+                  {currentUser?.role_display || currentUser?.role || 'Sin rol'}
                 </p>
               </div>
               <div className="p-2">

@@ -886,7 +886,7 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
                         >
                           <Mail className="h-4 w-4" />
                         </Button>
-                        {currentUser?.role === 'admin' && (
+                        {['admin', 'super_admin', 'superadmin', 'company_admin'].includes(currentUser?.role ?? '') && (
                           <Button 
                             size="sm" 
                             variant="outline"

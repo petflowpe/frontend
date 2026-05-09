@@ -165,9 +165,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: number;
           name: string;
           email: string;
-          role?: { name: string; display_name: string };
+          role?: { name: string; display_name: string } | string | null;
+          role_key?: string | null;
+          role_display?: string | null;
           company_id?: number;
           branch_id?: number;
+          permissions?: string[];
         };
       }>('/auth/login', {
         email: email || `${documentNumber}@temp.com`, // Usar email si está disponible
@@ -179,9 +182,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('auth_token', response.access_token);
         apiClient.setToken(response.access_token);
 
-        // Convertir usuario del backend al formato del frontend
+        // Convertir usuario del backend al formato del frontend.
+        // IMPORTANTE: guardamos el "slug" del rol (super_admin, company_admin, …)
+        // para que el filtrado por permisos funcione correctamente en Sidebar/App.
         const backendUser = response.user;
-        const roleStr = typeof backendUser.role === 'string' ? backendUser.role : (backendUser.role?.display_name ?? backendUser.role?.name);
+        const roleSlug = backendUser.role_key
+          ?? (typeof backendUser.role === 'string' ? backendUser.role : backendUser.role?.name)
+          ?? '';
+        const roleDisplay = backendUser.role_display
+          ?? (typeof backendUser.role === 'string' ? backendUser.role : backendUser.role?.display_name)
+          ?? 'Sin rol';
+        const permissions = Array.isArray(backendUser.permissions) ? backendUser.permissions : [];
+
         const frontendUser: User = {
           id: backendUser.id.toString(),
           documentType: (documentType || 'DNI') as DocumentType,
@@ -193,7 +205,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           address: '',
           district: '',
           password: '',
-          role: roleStr,
+          role: roleSlug,
+          // Campos auxiliares usados por Sidebar/App:
+          ...( { role_key: roleSlug, role_display: roleDisplay, permissions } as any ),
           companyId: (backendUser as any).company_id ?? undefined,
           branchId: (backendUser as any).branch_id ?? undefined,
           createdAt: new Date().toISOString(),
