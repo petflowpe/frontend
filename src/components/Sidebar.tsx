@@ -28,7 +28,6 @@ import {
   Sparkles,
   // 🆕 NUEVOS ICONOS
   Globe,
-  UserRound,
   Video,
   MessageCircle,
   Sliders, // 🆕 MULTI-TENANT
@@ -36,7 +35,6 @@ import {
   Target, // 🆕 Análisis de Patrones
   Download, // 🚀 Quick Win: Exportación
   AlertCircle, // 🚀 Quick Win: Error Monitoring
-  KeyRound, // 🚀 Quick Win: Password Recovery
   // 🇵🇪 ICONOS SUNAT
   Building2, // Config SUNAT
   FileCheck, // Facturación Electrónica
@@ -137,10 +135,8 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
     
     // 🚀 QUICK WINS
     { id: 'data-export', label: 'Exportar Datos', icon: Download, color: 'text-green-600', badge: '💾 Backup', section: 'admin' },
-    { id: 'password-recovery', label: 'Recuperar Password', icon: KeyRound, color: 'text-orange-600', badge: '🔑 Test', section: 'admin' },
     { id: 'prueba', label: 'Módulo Prueba', icon: Beaker, color: 'text-purple-600', badge: '🧪 TEST', section: 'admin' },
     
-    { id: 'profile', label: 'Mi Perfil', icon: UserRound, color: 'text-blue-500', section: 'admin' },
     { id: 'user-settings', label: 'Preferencias', icon: Sliders, color: 'text-slate-500', section: 'admin' },
     { id: 'notifications', label: 'Notificaciones', icon: BellRing, color: 'text-amber-500', section: 'admin' },
     { id: 'settings', label: 'Configuración', icon: Settings2, color: 'text-gray-500', section: 'admin' },
@@ -234,15 +230,15 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
       >
         {/* Logo y branding */}
         <div className="mb-8 mt-2 flex items-center space-x-3 px-2">
-          <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-xl shadow-lg shadow-blue-500/25 dark:shadow-blue-500/20 flex items-center justify-center ring-2 ring-white/20 dark:ring-slate-800/50">
+          <div className="w-9 h-9 bg-gradient-to-tr from-cyan-500 to-indigo-600 rounded-xl shadow-lg shadow-cyan-500/30 flex items-center justify-center ring-2 ring-cyan-400/25">
             <Heart className="h-5 w-5 text-white fill-white" />
           </div>
           {showExpanded && (
             <div>
-              <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight leading-none">
+              <h1 className="text-lg font-bold text-white tracking-tight leading-none">
                 PetFlow
               </h1>
-              <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mt-0.5">Pro Dashboard</p>
+              <p className="text-[10px] font-semibold text-cyan-400/90 uppercase tracking-wider mt-0.5">Pro Dashboard</p>
             </div>
           )}
         </div>
@@ -256,16 +252,16 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
             return (
               <div key={section.id}>
                 {showExpanded && (
-                  <h3 className={`text-[11px] font-bold uppercase tracking-widest mb-2 px-3 ${
+                  <h3 className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-2 px-3 ${
                     section.highlight 
-                      ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-slate-500 dark:text-slate-400'
+                      ? 'text-cyan-400/80'
+                      : 'text-slate-500'
                   }`}>
                     {section.label}
                   </h3>
                 )}
                 
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {sectionItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = currentActiveTab === item.id;
@@ -275,35 +271,46 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
                         key={item.id}
                         type="button"
                         onClick={(e) => onItemClick(item.id, e)}
-                        className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 group relative overflow-hidden ${
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-200 group relative overflow-visible ${
+                          showExpanded ? 'rounded-xl' : 'rounded-xl justify-center px-2'
+                        } ${
                           isActive
-                            ? 'bg-blue-50 dark:bg-slate-800 dark:text-slate-100 shadow-sm border border-blue-200/80 dark:border-slate-600/80'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700'
+                            ? 'border border-cyan-400/55 bg-slate-800/75 text-white shadow-[0_0_18px_-4px_rgba(34,211,238,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-cyan-400/20'
+                            : 'border border-transparent text-slate-400 hover:text-white hover:bg-white/[0.06]'
                         } ${!showExpanded ? 'justify-center' : ''}`}
                         title={!showExpanded ? item.label : undefined}
                       >
-                        {isActive && (
-                            <div className="absolute left-0 top-1 bottom-1 w-1 bg-blue-500 dark:bg-blue-600 rounded-r-full" />
-                        )}
-                        
-                        <Icon className={`h-[1.15rem] w-[1.15rem] shrink-0 transition-colors ${isActive ? 'text-blue-700 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white'}`} strokeWidth={1.5} />
+                        <Icon
+                          className={`h-[1.15rem] w-[1.15rem] shrink-0 transition-opacity ${item.color} ${isActive ? 'opacity-100 drop-shadow-[0_0_8px_rgba(255,255,255,0.15)]' : 'opacity-85 group-hover:opacity-100'}`}
+                          strokeWidth={1.5}
+                        />
                         
                         {showExpanded && (
-                          <span className={`font-medium text-sm truncate ${isActive ? 'text-slate-900 dark:text-slate-100' : ''}`}>
+                          <span className={`font-medium text-sm truncate flex-1 min-w-0 ${isActive ? 'text-white' : ''}`}>
                             {item.label}
                           </span>
                         )}
                         
-                        {item.badge && showExpanded && (
-                          <span className={`ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                            item.badge.toUpperCase().includes('COMPLETO')
-                              ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'
-                              : item.badge.includes('NUEVO')
-                                ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'
-                                : 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'
-                          }`}>
-                             {item.badge.replace('🆕 ', '').replace('🇵🇪 ', '').replace('✨ ', '')}
-                          </span>
+                        {showExpanded && (
+                          <div className="flex items-center gap-2 shrink-0 ml-auto">
+                            {item.badge && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${
+                                item.badge.toUpperCase().includes('COMPLETO')
+                                  ? 'bg-cyan-950/50 text-cyan-200 border-cyan-500/35'
+                                  : item.badge.includes('NUEVO')
+                                    ? 'bg-violet-950/50 text-violet-200 border-violet-500/35'
+                                    : 'bg-slate-800/80 text-slate-200 border-slate-600/60'
+                              }`}>
+                                {item.badge.replace('🆕 ', '').replace('🇵🇪 ', '').replace('✨ ', '')}
+                              </span>
+                            )}
+                            {isActive && (
+                              <span
+                                className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_12px_2px_rgba(34,211,238,0.85)] ring-2 ring-cyan-400/35"
+                                aria-hidden
+                              />
+                            )}
+                          </div>
                         )}
                       </button>
                     );
@@ -317,14 +324,14 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
         {/* Footer del sidebar */}
         {showExpanded && (
           <div className="mt-auto pt-6">
-            <div className="bg-slate-100 dark:bg-slate-800/80 rounded-xl p-3 border border-slate-200 dark:border-slate-700 shadow-sm dark:shadow-none relative overflow-hidden group cursor-default">
+            <div className="rounded-xl p-3 border border-cyan-500/25 bg-slate-900/60 shadow-[0_0_20px_-8px_rgba(34,211,238,0.35)] relative overflow-hidden group cursor-default">
               <div className="flex items-center space-x-3 relative z-10">
-                <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center shadow-inner">
+                <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center shadow-inner ring-1 ring-white/10">
                   <Star className="h-4 w-4 text-white fill-white" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-slate-900 dark:text-white">PetFlow Pro</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">v2.1 Stable</p>
+                  <p className="font-bold text-sm text-white">PetFlow Pro</p>
+                  <p className="text-[10px] text-slate-400">v2.1 Stable</p>
                 </div>
               </div>
             </div>
@@ -367,7 +374,7 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
           
           {/* Sidebar móvil */}
           <aside
-            className={`fixed inset-y-0 left-0 w-[280px] sm:w-[320px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-[100] transform transition-transform duration-300 ease-in-out shadow-xl dark:shadow-slate-950/50 ${
+            className={`fixed inset-y-0 left-0 w-[280px] sm:w-[320px] bg-[#0f172a] border-r border-slate-800/90 z-[100] transform transition-transform duration-300 ease-in-out shadow-xl shadow-black/40 ${
               mobileOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
             style={{ 
@@ -380,7 +387,7 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
             {/* Botón cerrar */}
             <button
               onClick={() => onMobileOpenChange?.(false)}
-              className="absolute top-4 right-4 p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors z-10"
+              className="absolute top-4 right-4 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors z-10"
             >
               <X className="h-5 w-5" />
             </button>
@@ -398,14 +405,14 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
       )}
 
       {/* Versión desktop: Sidebar fijo */}
-      <aside className={`${isCollapsed ? 'w-20' : 'w-64'} hidden md:flex bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 relative h-screen flex-col shadow-lg dark:shadow-slate-950/50 z-50 overflow-visible`}>
+      <aside className={`${isCollapsed ? 'w-20' : 'w-64'} hidden md:flex bg-[#0f172a] border-r border-slate-800/90 transition-all duration-300 relative h-screen flex-col shadow-lg shadow-black/30 z-50 overflow-visible`}>
         {/* Toggle: botón discreto dentro del sidebar, esquina superior derecha */}
         <button
           type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
           title={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
           aria-label={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
-          className="absolute right-2 top-6 z-10 flex h-10 w-10 min-touch items-center justify-center rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 transition-colors"
+          className="absolute right-2 top-6 z-10 flex h-10 w-10 min-touch items-center justify-center rounded-full text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a] transition-colors"
         >
           {isCollapsed ? (
             <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden />

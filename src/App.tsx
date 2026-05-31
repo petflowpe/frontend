@@ -47,7 +47,6 @@ const ExportsReports = lazy(() => import('./components/ExportsReports').then(m =
 const NotificationsImproved = lazy(() => import('./components/NotificationsImproved').then(m => ({ default: m.NotificationsImproved })));
 const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
 const CompanyManagement = lazy(() => import('./components/CompanyManagement').then(m => ({ default: m.CompanyManagement })));
-const UserProfilePage = lazy(() => import('./components/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
 const UserSettingsPage = lazy(() => import('./components/UserSettingsPage').then(m => ({ default: m.UserSettingsPage })));
 const LoyaltyProgram = lazy(() => import('./components/LoyaltyProgram').then(m => ({ default: m.LoyaltyProgram })));
 const ReviewsSystem = lazy(() => import('./components/ReviewsSystem').then(m => ({ default: m.ReviewsSystem })));
@@ -333,6 +332,22 @@ function AppContent() {
     }
   };
 
+  const handleProfileUpdated = (profile: { name?: string; email?: string; avatar_url?: string }) => {
+    setCurrentUser((previous: any) => {
+      if (!previous) return previous;
+      const updated = {
+        ...previous,
+        ...(profile.name ? { name: profile.name } : {}),
+        ...(profile.email ? { email: profile.email } : {}),
+        ...(profile.avatar_url ? { avatar_url: profile.avatar_url } : {}),
+      };
+      try {
+        localStorage.setItem('smartpet_user', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+  };
+
   const userPermissions = currentUser?.permissions || [];
 
   // MODO TRACKING PÚBLICO (Accesible sin login)
@@ -466,9 +481,8 @@ function AppContent() {
       case 'financial': return <FinancialManagement />;
       case 'exports': return <ExportsReports />;
       case 'notifications': return <NotificationsImproved onNavigate={setActiveTab} />;
-      case 'profile': return <UserProfilePage />;
       case 'user-settings': return <UserSettingsPage />;
-      case 'users': return <UserManagement currentUserId={currentUser.id} currentUserRole={currentUser.role} />;
+      case 'users': return <UserManagement currentUserId={currentUser.id} currentUserRole={currentUser.role} companyId={currentUser.companyId} />;
       case 'companies': return <CompanyManagement />;
       case 'loyalty': return <LoyaltyProgram />;
       case 'reviews': return <ReviewsSystem />;
@@ -497,7 +511,6 @@ function AppContent() {
 
       // Otros
       case 'data-export': return <DataExport />;
-      case 'password-recovery': return <PasswordRecovery onBack={() => setActiveTab('settings')} />;
       case 'prueba': return <Prueba onNavigate={setActiveTab} />;
       
       default: return <Dashboard onNavigate={setActiveTab} />;
@@ -525,7 +538,7 @@ function AppContent() {
         onMobileOpenChange={setSidebarMobileOpen}
       />
       
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header 
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -533,9 +546,10 @@ function AppContent() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onMenuClick={() => setSidebarMobileOpen(prev => !prev)}
+          onProfileUpdated={handleProfileUpdated}
         />
         
-        <main id="main" ref={mainContentRef} className="flex-1 overflow-y-auto min-h-0 bg-background transition-colors duration-200" tabIndex={-1}>
+        <main id="main" ref={mainContentRef} className="min-w-0 flex-1 overflow-y-auto min-h-0 bg-background transition-colors duration-200" tabIndex={-1}>
           <Suspense fallback={<PageSkeleton />}>
             {renderContent()}
           </Suspense>

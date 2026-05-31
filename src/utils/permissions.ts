@@ -95,7 +95,6 @@ interface ModuleRule {
 export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   // Principal
   dashboard: null,
-  profile: null,
   'user-settings': null,
   notifications: null,
   calendar: null,
@@ -145,7 +144,6 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   companies: { roles: ['super_admin'] },
   users: { roles: ['super_admin', 'company_admin'], permissions: ['users.view', 'users.*', 'users.roles', 'users.manage'] },
   'data-export': { roles: ['super_admin', 'company_admin'] },
-  'password-recovery': null,
   prueba: { roles: ['super_admin'] },
 
   // Conductor (modo aislado)

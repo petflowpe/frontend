@@ -46,6 +46,7 @@ export function useProfile() {
     password?: string;
     phone?: string;
     position?: string;
+    locale?: string;
     avatar?: File;
   }) => {
     try {

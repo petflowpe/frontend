@@ -41,6 +41,11 @@ export interface Vehicle {
   fecha_ultimo_mantenimiento?: string;
   fecha_proximo_mantenimiento?: string;
   equipamiento?: string[];
+  ultimo_cumplimiento_inspeccion?: number;
+  fecha_ultima_inspeccion?: string;
+  indice_chofer?: number;
+  puntos_observacion_chofer?: number;
+  observaciones_inspeccion_acumuladas?: string;
   driver_name?: string;
   /** Horario de disponibilidad por día (monday..sunday: { open, start, end }) */
   horario_disponibilidad?: Record<string, { open: boolean; start: string; end: string }>;
@@ -94,6 +99,11 @@ function fromBackendFormat(row: any): Vehicle {
     fecha_itv: row.fecha_itv ?? undefined,
     fecha_ultimo_mantenimiento: row.fecha_ultimo_mantenimiento,
     fecha_proximo_mantenimiento: row.fecha_proximo_mantenimiento,
+    ultimo_cumplimiento_inspeccion: row.ultimo_cumplimiento_inspeccion != null ? Number(row.ultimo_cumplimiento_inspeccion) : undefined,
+    fecha_ultima_inspeccion: row.fecha_ultima_inspeccion ?? undefined,
+    indice_chofer: row.indice_chofer != null ? Number(row.indice_chofer) : undefined,
+    puntos_observacion_chofer: row.puntos_observacion_chofer != null ? Number(row.puntos_observacion_chofer) : undefined,
+    observaciones_inspeccion_acumuladas: row.observaciones_inspeccion_acumuladas ?? undefined,
     equipment: Array.isArray(row.equipamiento) ? row.equipamiento : (row.equipment || []),
     equipamiento: row.equipamiento,
     horario_disponibilidad: row.horario_disponibilidad ?? undefined,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -46,7 +46,6 @@ import { CHART_OF_ACCOUNTS } from '../config/defaults';
 import { useVehicles } from '../hooks/useVehicles';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
-import { API_BASE_URL } from '../utils/api/config';
 
 // Configuración de vehículos (persistida en BD).
 // IMPORTANTE: no inyectar defaults "demo" automáticamente. Si el backend devuelve vacío,
@@ -87,13 +86,95 @@ function getModelsForBrand(modelsByBrand: Record<string, string[]>, brand: strin
   return match && Array.isArray((modelsByBrand as any)[match]) ? (modelsByBrand as any)[match] : [];
 }
 
+const INSPECTION_ATTACHMENT_MAX_BYTES = Math.floor(1.8 * 1024 * 1024);
+
+interface InspectionAttachmentDataUrl {
+  name: string;
+  mime_type: string;
+  size: number;
+  data_url: string;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+interface FleetAlert {
+  id: string;
+  type: 'expired' | 'upcoming' | 'service' | 'inspection' | string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | string;
+  vehicle_id?: number | string;
+  vehicle_name?: string;
+  title: string;
+  description: string;
+  due_date?: string;
+}
+
+interface InspectionTemplateItem {
+  id?: number;
+  label: string;
+  required?: boolean;
+}
+
+interface InspectionTemplateCategory {
+  id?: number;
+  name: string;
+  items: InspectionTemplateItem[];
+}
+
+interface InspectionTemplate {
+  id?: number;
+  name: string;
+  vehicle_type?: string | null;
+  categories: InspectionTemplateCategory[];
+}
+
+interface VehicleInspectionRecord {
+  id: number;
+  vehicle_id: number;
+  vehicle?: any;
+  template_id?: number;
+  inspected_at: string;
+  odometer?: number;
+  driver_name?: string;
+  supervisor_name?: string;
+  compliance_percent: number;
+  status: 'approved' | 'attention_required' | 'rejected';
+  observations?: string;
+  driver_signature?: string;
+  supervisor_signature?: string;
+  results: Array<{
+    id?: number;
+    template_item_id?: number;
+    category_name: string;
+    item_label: string;
+    passed: boolean;
+    notes?: string;
+  }>;
+  attachments?: Array<{ id: number; name?: string; url?: string; data_url?: string; mime_type?: string; size?: number }>;
+}
+
 export function VehicleManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showNewVehicle, setShowNewVehicle] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('fleet');
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   // companyId 0 = no filtrar por empresa, listar todos los vehículos
 const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, deleteVehicle, reload: reloadVehicles } = useVehicles(0);
@@ -113,6 +194,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
   // Estados para configuraciones (catálogos locales)
   const [showBrandConfig, setShowBrandConfig] = useState(false);
   const [showModelConfig, setShowModelConfig] = useState(false);
+  const [showBrandModelConfig, setShowBrandModelConfig] = useState(false);
   const [showMaintenanceTypeConfig, setShowMaintenanceTypeConfig] = useState(false);
   const [showWorkshopConfig, setShowWorkshopConfig] = useState(false);
   const [brands, setBrands] = useState<string[]>([]);
@@ -120,28 +202,6 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
   const [maintenanceTypes, setMaintenanceTypes] = useState<string[]>([]);
   const [workshops, setWorkshops] = useState<{ id: number; name: string; ruc?: string; address?: string; phone?: string }[]>([]);
   const [loadingVehicleConfigs, setLoadingVehicleConfigs] = useState(true);
-
-  const runVehicleConfigDiagnostics = useCallback(async () => {
-    try {
-      const token = apiClient.getToken?.() ?? null;
-      const res = await apiClient.get(API.vehicleConfigurations.all);
-      const payload = res && typeof res === 'object' && 'data' in (res as any) ? (res as any).data : res;
-
-      const brandsCount = Array.isArray(payload?.brands) ? payload.brands.length : 0;
-      const modelsKeys = payload?.models_by_brand && typeof payload.models_by_brand === 'object' ? Object.keys(payload.models_by_brand).length : 0;
-
-      // Alta señal sin saturar la UI.
-      toast.success(`API OK (${API_BASE_URL}) · token=${token ? 'sí' : 'no'} · brands=${brandsCount} · modelsBrands=${modelsKeys}`);
-      // Evidencia para depurar si "desaparece": aquí queda la respuesta real.
-      // eslint-disable-next-line no-console
-      console.log('[VehicleConfigDiagnostics] API_BASE_URL=', API_BASE_URL, 'token?', !!token, 'payload=', payload);
-    } catch (e: any) {
-      const msg = e?.message || 'Error consultando configuraciones de vehículos';
-      toast.error(`Diagnóstico falló: ${msg}`);
-      // eslint-disable-next-line no-console
-      console.error('[VehicleConfigDiagnostics] error', e);
-    }
-  }, []);
 
   const [showNewMaintenance, setShowNewMaintenance] = useState(false);
   const [showNewExpense, setShowNewExpense] = useState(false);
@@ -152,6 +212,13 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
   const [maintenanceHistory, setMaintenanceHistory] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [upcomingServices, setUpcomingServices] = useState<any[]>([]);
+  const [fleetAlerts, setFleetAlerts] = useState<FleetAlert[]>([]);
+  const [inspectionTemplates, setInspectionTemplates] = useState<InspectionTemplate[]>([]);
+  const [inspections, setInspections] = useState<VehicleInspectionRecord[]>([]);
+  const [showInspectionTemplates, setShowInspectionTemplates] = useState(false);
+  const [inspectionVehicle, setInspectionVehicle] = useState<any>(null);
+  const [historyVehicle, setHistoryVehicle] = useState<any>(null);
+  const [selectedInspection, setSelectedInspection] = useState<VehicleInspectionRecord | null>(null);
 
   const vehiclesForUI = useMemo(() => {
     const now = new Date();
@@ -216,6 +283,24 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
     status: row.status,
   }), []);
 
+  const inspectionFromBackend = useCallback((row: any): VehicleInspectionRecord => ({
+    id: row.id,
+    vehicle_id: row.vehicle_id ?? row.vehicleId,
+    vehicle: row.vehicle,
+    template_id: row.template_id,
+    inspected_at: row.inspected_at,
+    odometer: row.odometer,
+    driver_name: row.driver_name,
+    supervisor_name: row.supervisor_name,
+    compliance_percent: Number(row.compliance_percent ?? 0),
+    status: row.status,
+    observations: row.observations,
+    driver_signature: row.driver_signature,
+    supervisor_signature: row.supervisor_signature,
+    results: Array.isArray(row.results) ? row.results : [],
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
+  }), []);
+
   const fetchMaintenances = useCallback(async () => {
     try {
       const res = await apiClient.get(API.vehicles.maintenances.list, { per_page: 500 });
@@ -248,6 +333,39 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       setUpcomingServices([]);
     }
   }, [serviceFromBackend]);
+
+  const fetchFleetAlerts = useCallback(async () => {
+    try {
+      const res = await apiClient.get(API.vehicles.alerts);
+      const raw = Array.isArray(res) ? res : res?.data;
+      setFleetAlerts(Array.isArray(raw) ? raw : []);
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudieron cargar las alertas de flota');
+      setFleetAlerts([]);
+    }
+  }, []);
+
+  const fetchInspectionTemplates = useCallback(async () => {
+    try {
+      const res = await apiClient.get(API.vehicles.inspectionTemplates.list);
+      const raw = Array.isArray(res) ? res : res?.data;
+      setInspectionTemplates(Array.isArray(raw) ? raw : []);
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudieron cargar las plantillas de inspección');
+      setInspectionTemplates([]);
+    }
+  }, []);
+
+  const fetchInspections = useCallback(async () => {
+    try {
+      const res = await apiClient.get(API.vehicles.inspections.list, { per_page: 200 });
+      const raw = Array.isArray(res) ? res : res?.data;
+      setInspections((Array.isArray(raw) ? raw : []).map(inspectionFromBackend));
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo cargar el historial de inspecciones');
+      setInspections([]);
+    }
+  }, [inspectionFromBackend]);
 
   const loadVehicleConfigurations = useCallback(async () => {
     setLoadingVehicleConfigs(true);
@@ -321,7 +439,10 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
     fetchMaintenances();
     fetchExpenses();
     fetchServices();
-  }, [fetchMaintenances, fetchExpenses, fetchServices]);
+    fetchFleetAlerts();
+    fetchInspectionTemplates();
+    fetchInspections();
+  }, [fetchMaintenances, fetchExpenses, fetchServices, fetchFleetAlerts, fetchInspectionTemplates, fetchInspections]);
 
   useEffect(() => {
     loadVehicleConfigurations();
@@ -418,6 +539,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       }
       // Importante: refrescar lista para que aparezca en selects (gastos/mantenimientos/etc.)
       await reloadVehicles?.();
+      await fetchFleetAlerts();
       setShowNewVehicle(false);
       if (selectedVehicle && editingVehicle && String(selectedVehicle.id) === String(editingVehicle.id)) {
         setSelectedVehicle(null);
@@ -471,6 +593,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       setEditingMaintenance(null);
       await fetchMaintenances();
       await reloadVehicles?.();
+      await fetchFleetAlerts();
     } catch (e: any) {
       const msg = e?.message || 'No se pudo guardar el mantenimiento';
       toast.error(msg);
@@ -547,6 +670,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       toast.success('Servicio programado');
       setShowNewService(false);
       await fetchServices();
+      await fetchFleetAlerts();
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo programar el servicio');
     }
@@ -559,6 +683,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       await fetchServices();
       await fetchMaintenances();
       await reloadVehicles?.();
+      await fetchFleetAlerts();
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo completar el servicio');
     }
@@ -571,6 +696,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       await fetchServices();
       await fetchMaintenances();
       await reloadVehicles?.();
+      await fetchFleetAlerts();
       setActiveTab('maintenance');
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo enviar a mantenimiento');
@@ -582,9 +708,49 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       await apiClient.delete(API.vehicles.services.byId(id));
       toast.success('Servicio eliminado');
       await fetchServices();
+      await fetchFleetAlerts();
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo eliminar el servicio');
     }
+  };
+
+  const handleSaveBrandModels = async (nextBrands: string[], nextModels: Record<string, string[]>) => {
+    const cleanBrands = dedupeStrings(nextBrands);
+    const alignedModels: Record<string, string[]> = {};
+    for (const brand of cleanBrands) {
+      alignedModels[brand] = dedupeStrings(nextModels[brand] || []);
+    }
+    setBrands(cleanBrands);
+    setModels(alignedModels);
+    await saveVehicleConfigurations({ type: 'brands', items: cleanBrands }, { silent: true });
+    await saveVehicleConfigurations({ type: 'models_by_brand', models_by_brand: alignedModels }, { silent: true });
+    toast.success('Marcas y modelos guardados');
+  };
+
+  const handleSaveInspectionTemplate = async (template: InspectionTemplate) => {
+    await apiClient.post(API.vehicles.inspectionTemplates.store, template);
+    toast.success('Plantilla guardada');
+    await fetchInspectionTemplates();
+  };
+
+  const handleRestoreInspectionTemplate = async () => {
+    const res = await apiClient.post(API.vehicles.inspectionTemplates.restore, {});
+    const restored = (res as any)?.data ?? res;
+    setInspectionTemplates(restored ? [restored] : []);
+    toast.success('Plantilla restaurada');
+    await fetchInspectionTemplates();
+  };
+
+  const handleSaveInspection = async (vehicleId: number | string, payload: any) => {
+    await withTimeout(
+      apiClient.post(API.vehicles.inspections.byVehicle(vehicleId), payload),
+      15000,
+      'El backend no respondió en 15 segundos. Verifique que Laravel esté activo en http://localhost:8000.'
+    );
+    toast.success('Inspección guardada');
+    setInspectionVehicle(null);
+    setActiveTab('fleet');
+    await Promise.all([fetchInspections(), fetchFleetAlerts(), reloadVehicles?.()]);
   };
 
   const filteredVehicles = vehiclesForUI.filter(vehicle => {
@@ -613,6 +779,60 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
     percentage: (amount / totalExpenses) * 100
   }));
 
+  const criticalAlerts = fleetAlerts.filter((a) => a.severity === 'critical' || a.severity === 'high');
+
+  const monthKeys = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('es-PE', { month: 'short', year: '2-digit' });
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      return {
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+        label: formatter.format(date),
+      };
+    });
+  }, []);
+
+  const monthlyCostSeries = useMemo(() => {
+    return monthKeys.map((month) => {
+      const maintenance = maintenanceHistory.reduce((sum, row) => {
+        if (!row?.date || String(row.date).slice(0, 7) !== month.key) return sum;
+        return sum + (Number(row.cost) || 0);
+      }, 0);
+      const fuel = expenses.reduce((sum, row) => {
+        if (!row?.date || String(row.date).slice(0, 7) !== month.key) return sum;
+        const category = String(row.category || '').toLowerCase();
+        if (!category.includes('combustible')) return sum;
+        return sum + (Number(row.amount) || 0);
+      }, 0);
+      return { ...month, maintenance, fuel };
+    });
+  }, [monthKeys, maintenanceHistory, expenses]);
+
+  const vehicleExpenseComparison = useMemo(() => {
+    return vehiclesForUI
+      .map((vehicle) => {
+        const vehicleExpenses = expenses.filter((row) => String(row.vehicleId) === String(vehicle.id));
+        const fuel = vehicleExpenses
+          .filter((row) => String(row.category || '').toLowerCase().includes('combustible'))
+          .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+        const maintenance = maintenanceHistory
+          .filter((row) => String(row.vehicleId) === String(vehicle.id))
+          .reduce((sum, row) => sum + (Number(row.cost) || 0), 0);
+        const other = vehicleExpenses
+          .filter((row) => !String(row.category || '').toLowerCase().includes('combustible'))
+          .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+        return {
+          vehicle,
+          fuel,
+          maintenance,
+          other,
+          total: fuel + maintenance + other,
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [vehiclesForUI, expenses, maintenanceHistory]);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -622,7 +842,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
           <p className="text-muted-foreground">Administra tu flota de vehículos móviles y su mantenimiento</p>
         </div>
         <div className="flex gap-2">
-          {/* Configuración de Marcas */}
+          {/* Configuración unificada de marcas y modelos */}
           <Button
             variant="outline"
             onClick={() => {
@@ -630,50 +850,19 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                 toast.info('Cargando configuraciones...');
                 return;
               }
-              setShowBrandConfig(true);
+              setShowBrandModelConfig(true);
             }}
           >
             <Car className="h-4 w-4 mr-2" />
-            Config. Marcas
+            Marcas y Modelos
           </Button>
-          <Dialog open={showBrandConfig} onOpenChange={setShowBrandConfig}>
-            {showBrandConfig && (
-              <BrandConfigDialog
+          <Dialog open={showBrandModelConfig} onOpenChange={setShowBrandModelConfig}>
+            {showBrandModelConfig && (
+              <BrandModelConfigDialog
                 brands={brands}
-                onSave={async (nextBrands: string[]) => {
-                  setBrands(nextBrands);
-                  await saveVehicleConfigurations({ type: 'brands', items: nextBrands });
-                }}
-                onClose={() => setShowBrandConfig(false)}
-              />
-            )}
-          </Dialog>
-
-          {/* Configuración de Modelos */}
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (!Array.isArray(brands) || brands.length === 0) {
-                toast.info('Primero crea al menos una marca (Config. Marcas).');
-                setShowBrandConfig(true);
-                return;
-              }
-              setShowModelConfig(true);
-            }}
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Config. Modelos
-          </Button>
-          <Dialog open={showModelConfig} onOpenChange={setShowModelConfig}>
-            {showModelConfig && (
-              <ModelConfigDialog
                 models={models}
-                brands={brands}
-                onSave={async (nextModels: Record<string, string[]>) => {
-                  setModels(nextModels);
-                  await saveVehicleConfigurations({ type: 'models_by_brand', models_by_brand: nextModels });
-                }}
-                onClose={() => setShowModelConfig(false)}
+                onSave={handleSaveBrandModels}
+                onClose={() => setShowBrandModelConfig(false)}
               />
             )}
           </Dialog>
@@ -736,12 +925,6 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
           <Button variant="outline" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Exportar
-          </Button>
-
-          {/* Diagnóstico rápido (para validar persistencia/API real en el navegador) */}
-          <Button variant="outline" onClick={runVehicleConfigDiagnostics}>
-            <Settings className="h-4 w-4 mr-2" />
-            Diagnóstico
           </Button>
 
           {/* Botón Nuevo Vehículo */}
@@ -838,12 +1021,33 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="fleet">Flota</TabsTrigger>
-          <TabsTrigger value="maintenance">Mantenimiento</TabsTrigger>
-          <TabsTrigger value="expenses">Gastos</TabsTrigger>
-          <TabsTrigger value="services">Próximos Servicios</TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-1">
+          <TabsList className="inline-flex h-10 w-max min-w-0 items-center gap-1 rounded-full border border-cyan-400/20 bg-[#0b1020]/95 p-1 text-slate-300 shadow-[0_0_18px_-10px_rgba(34,211,238,0.65)]">
+            {[
+              ['dashboard', 'Dashboard'],
+              ['fleet', 'Flota'],
+              ['maintenance', 'Mantenimiento'],
+              ['services', 'Próximos Servicios'],
+              ['expenses', 'Gastos'],
+              ['alerts', `Alertas (${fleetAlerts.length})`],
+              ['inspections', 'Inspecciones'],
+            ].map(([value, label]) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="h-8 flex-none rounded-full border-0 px-4 text-xs font-semibold text-indigo-200 transition-all data-[state=active]:bg-cyan-500/25 data-[state=active]:text-cyan-100 data-[state=active]:shadow-[0_0_14px_-5px_rgba(34,211,238,0.9)] dark:data-[state=active]:bg-cyan-500/25 dark:data-[state=active]:text-cyan-100"
+              >
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        {/* TAB: Dashboard */}
+        <TabsContent value="dashboard" className="space-y-6">
+          <FleetCostChart data={monthlyCostSeries} />
+          <VehicleExpenseComparison data={vehicleExpenseComparison} />
+        </TabsContent>
 
         {/* TAB: Flota */}
         <TabsContent value="fleet" className="space-y-6">
@@ -886,6 +1090,8 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                 }}
                 onDelete={() => handleDeleteVehicle(vehicle.id)}
                 onViewDetails={() => setSelectedVehicle(vehicle)}
+                onInspect={() => setInspectionVehicle(vehicle)}
+                onHistory={() => setHistoryVehicle(vehicle)}
               />
             ))}
           </div>
@@ -1157,7 +1363,12 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
           </div>
 
           <div className="space-y-4">
-            {upcomingServices.map((service) => {
+            {upcomingServices.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Wrench className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No hay próximos servicios programados.</p>
+              </Card>
+            ) : upcomingServices.map((service) => {
               const vehicle = vehiclesForUI.find(v => v.id === service.vehicleId);
               const daysUntil = getDaysUntil(service.dueDate);
               return (
@@ -1222,6 +1433,124 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
             })}
           </div>
         </TabsContent>
+
+        {/* TAB: Alertas */}
+        <TabsContent value="alerts" className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold">Alertas y recordatorios</h3>
+              <p className="text-sm text-muted-foreground">
+                Vencimientos de documentos, próximos servicios y mantenimientos que requieren atención.
+              </p>
+            </div>
+            <Badge variant={criticalAlerts.length ? 'destructive' : 'secondary'}>
+              {criticalAlerts.length} críticas / altas
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              ['Vencidos', fleetAlerts.filter((a) => a.type === 'expired').length, 'text-red-500'],
+              ['Servicios próximos', fleetAlerts.filter((a) => a.type === 'service' || a.type === 'upcoming').length, 'text-orange-500'],
+              ['Inspecciones', fleetAlerts.filter((a) => a.type === 'inspection').length, 'text-cyan-500'],
+            ].map(([label, count, color]) => (
+              <Card key={String(label)} className="p-4">
+                <p className={`text-3xl font-bold ${color}`}>{count}</p>
+                <p className="text-sm text-muted-foreground">{label}</p>
+              </Card>
+            ))}
+          </div>
+
+          <Card className="p-5">
+            <div className="space-y-3">
+              {fleetAlerts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin vencimientos ni alertas pendientes.</p>
+              ) : fleetAlerts.map((alert) => (
+                <div key={alert.id} className="rounded-xl border p-4 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{alert.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {alert.vehicle_name || 'Flota'} · {alert.description}
+                    </p>
+                    {alert.due_date ? (
+                      <p className="text-xs text-muted-foreground mt-1">Fecha relacionada: {formatDate(alert.due_date)}</p>
+                    ) : null}
+                  </div>
+                  <Badge variant={alert.severity === 'critical' ? 'destructive' : 'outline'}>
+                    {alert.severity === 'critical' ? 'Crítica' : alert.severity === 'high' ? 'Alta' : alert.severity === 'medium' ? 'Media' : 'Baja'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* TAB: Inspecciones */}
+        <TabsContent value="inspections" className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold">Inspecciones de unidades</h3>
+              <p className="text-sm text-muted-foreground">Crea plantillas, aplica checklists y consulta el historial de revisión.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowInspectionTemplates(true)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Plantilla de inspección
+              </Button>
+              <Button onClick={() => setInspectionVehicle(vehiclesForUI[0] || null)} disabled={vehiclesForUI.length === 0}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva inspección
+              </Button>
+            </div>
+          </div>
+
+          <Card className="p-0 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Unidad</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Responsables</TableHead>
+                  <TableHead>Cumplimiento</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {inspections.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      No hay inspecciones registradas.
+                    </TableCell>
+                  </TableRow>
+                ) : inspections.map((inspection) => (
+                  <TableRow key={inspection.id}>
+                    <TableCell className="font-medium">{inspection.vehicle?.name || `Vehículo #${inspection.vehicle_id}`}</TableCell>
+                    <TableCell>{formatDate(inspection.inspected_at)}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <p>Chofer: {inspection.driver_name || '—'}</p>
+                        <p className="text-muted-foreground">Supervisor: {inspection.supervisor_name || '—'}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{inspection.compliance_percent}%</TableCell>
+                    <TableCell>
+                      <Badge variant={inspection.status === 'approved' ? 'secondary' : 'destructive'}>
+                        {inspection.status === 'approved' ? 'Aprobada' : inspection.status === 'attention_required' ? 'Atención' : 'Rechazada'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedInspection(inspection)}>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Ver
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Modal de detalles del vehículo */}
@@ -1235,12 +1564,57 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={showInspectionTemplates} onOpenChange={setShowInspectionTemplates}>
+        {showInspectionTemplates && (
+          <InspectionTemplateDialog
+            templates={inspectionTemplates}
+            onSave={handleSaveInspectionTemplate}
+            onRestore={handleRestoreInspectionTemplate}
+            onClose={() => setShowInspectionTemplates(false)}
+          />
+        )}
+      </Dialog>
+
+      {inspectionVehicle && (
+        <InspectionApplyDialog
+          vehicle={inspectionVehicle}
+          vehicles={vehiclesForUI}
+          templates={inspectionTemplates}
+          onVehicleChange={(vehicleId: string) => {
+            const next = vehiclesForUI.find((v) => String(v.id) === String(vehicleId));
+            if (next) setInspectionVehicle(next);
+          }}
+          onSave={handleSaveInspection}
+          onClose={() => setInspectionVehicle(null)}
+        />
+      )}
+
+      <Dialog open={!!historyVehicle} onOpenChange={(open) => !open && setHistoryVehicle(null)}>
+        {historyVehicle && (
+          <InspectionHistoryDialog
+            vehicle={historyVehicle}
+            inspections={inspections.filter((inspection) => String(inspection.vehicle_id) === String(historyVehicle.id))}
+            onView={setSelectedInspection}
+            onClose={() => setHistoryVehicle(null)}
+          />
+        )}
+      </Dialog>
+
+      <Dialog open={!!selectedInspection} onOpenChange={(open) => !open && setSelectedInspection(null)}>
+        {selectedInspection && (
+          <InspectionDetailDialog
+            inspection={selectedInspection}
+            onClose={() => setSelectedInspection(null)}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }
 
 // Componente de tarjeta de vehículo
-function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
+function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails, onInspect, onHistory }: any) {
   const statusConfig = getStatusConfig(vehicle.status);
   const StatusIcon = statusConfig.icon;
   const safeDate = (value: any) => {
@@ -1321,15 +1695,22 @@ function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button 
           variant="outline" 
           size="sm" 
-          className="flex-1"
           onClick={onViewDetails}
         >
           <Eye className="h-4 w-4 mr-2" />
           Ver Detalles
+        </Button>
+        <Button variant="outline" size="sm" onClick={onInspect}>
+          <CheckCircle2 className="h-4 w-4 mr-2" />
+          Checklist
+        </Button>
+        <Button variant="outline" size="sm" onClick={onHistory}>
+          <FileText className="h-4 w-4 mr-2" />
+          Historial
         </Button>
         <Button 
           variant="outline" 
@@ -1346,6 +1727,121 @@ function VehicleCard({ vehicle, onEdit, onDelete, onViewDetails }: any) {
         >
           <Trash2 className="h-4 w-4" />
         </Button>
+      </div>
+    </Card>
+  );
+}
+
+function FleetCostChart({ data }: { data: Array<{ label: string; maintenance: number; fuel: number }> }) {
+  const maxValue = Math.max(1, ...data.flatMap((row) => [row.maintenance, row.fuel]));
+  const width = 720;
+  const height = 240;
+  const left = 54;
+  const right = 24;
+  const top = 24;
+  const bottom = 42;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+  const xFor = (index: number) => left + (data.length <= 1 ? 0 : (chartWidth / (data.length - 1)) * index);
+  const yFor = (value: number) => top + chartHeight - (value / maxValue) * chartHeight;
+  const lineFor = (key: 'maintenance' | 'fuel') => data.map((row, index) => `${xFor(index)},${yFor(row[key])}`).join(' ');
+  const current = data[data.length - 1] || { maintenance: 0, fuel: 0 };
+
+  return (
+    <Card className="p-5 bg-[#070b1d] border-slate-800/80 text-slate-100">
+      <div className="mb-4">
+        <h3 className="font-semibold">Costos flota vs combustible</h3>
+        <p className="text-sm text-slate-400">Últimos 6 meses (S/ mensual)</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Badge className="bg-emerald-500/15 text-emerald-200 border-emerald-500/30">
+            Mant. este mes - {formatCurrency(current.maintenance, 'PEN')}
+          </Badge>
+          <Badge className="bg-cyan-500/15 text-cyan-200 border-cyan-500/30">
+            Comb. este mes - {formatCurrency(current.fuel, 'PEN')}
+          </Badge>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[680px] w-full h-72">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = top + chartHeight - chartHeight * ratio;
+            return (
+              <g key={ratio}>
+                <line x1={left} x2={width - right} y1={y} y2={y} stroke="rgba(148,163,184,0.16)" strokeDasharray="3 4" />
+                <text x={left - 12} y={y + 4} textAnchor="end" className="fill-slate-400 text-[11px]">
+                  {Math.round(maxValue * ratio)}
+                </text>
+              </g>
+            );
+          })}
+          {data.map((row, index) => {
+            const x = xFor(index);
+            return (
+              <g key={row.label}>
+                <line x1={x} x2={x} y1={top} y2={top + chartHeight} stroke="rgba(148,163,184,0.10)" strokeDasharray="3 4" />
+                <text x={x} y={height - 12} textAnchor="middle" className="fill-slate-400 text-[11px]">{row.label}</text>
+              </g>
+            );
+          })}
+          <polyline points={lineFor('maintenance')} fill="none" stroke="#a855f7" strokeWidth="3" />
+          <polyline points={lineFor('fuel')} fill="none" stroke="#06b6d4" strokeWidth="3" />
+          {data.map((row, index) => (
+            <g key={`${row.label}-points`}>
+              <circle cx={xFor(index)} cy={yFor(row.maintenance)} r="4" fill="#a855f7" />
+              <circle cx={xFor(index)} cy={yFor(row.fuel)} r="4" fill="#06b6d4" />
+            </g>
+          ))}
+        </svg>
+      </div>
+      <div className="mt-2 flex justify-center gap-6 text-sm">
+        <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-purple-500" />Mantenimiento</span>
+        <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-cyan-500" />Combustible</span>
+      </div>
+    </Card>
+  );
+}
+
+function VehicleExpenseComparison({ data }: { data: Array<{ vehicle: any; fuel: number; maintenance: number; other: number; total: number }> }) {
+  const maxValue = Math.max(1, ...data.map((row) => row.total));
+
+  return (
+    <Card className="p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        <div>
+          <h3 className="font-semibold">Comparativa de gastos por vehículo</h3>
+          <p className="text-sm text-muted-foreground">Combustible, mantenimiento y otros gastos acumulados.</p>
+        </div>
+        <Badge variant="outline">{data.length} unidades</Badge>
+      </div>
+      <div className="space-y-4">
+        {data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aún no hay gastos registrados para comparar.</p>
+        ) : data.map(({ vehicle, fuel, maintenance, other, total }) => {
+          const fuelPct = (fuel / maxValue) * 100;
+          const maintenancePct = (maintenance / maxValue) * 100;
+          const otherPct = (other / maxValue) * 100;
+          return (
+            <div key={vehicle.id} className="rounded-xl border p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
+                <div>
+                  <p className="font-semibold">{vehicle.name}</p>
+                  <p className="text-xs text-muted-foreground">{vehicle.plate || 'Sin placa'} · {vehicle.brand} {vehicle.model}</p>
+                </div>
+                <p className="font-bold">{formatCurrency(total, 'PEN')}</p>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-muted flex">
+                <div className="bg-cyan-500" style={{ width: `${fuelPct}%` }} title="Combustible" />
+                <div className="bg-purple-500" style={{ width: `${maintenancePct}%` }} title="Mantenimiento" />
+                <div className="bg-slate-500" style={{ width: `${otherPct}%` }} title="Otros" />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <span>Combustible: {formatCurrency(fuel, 'PEN')}</span>
+                <span>Mantenimiento: {formatCurrency(maintenance, 'PEN')}</span>
+                <span>Otros: {formatCurrency(other, 'PEN')}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Card>
   );
@@ -1875,6 +2371,168 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
   );
 }
 
+function BrandModelConfigDialog({ brands, models, onSave, onClose }: any) {
+  const [localBrands, setLocalBrands] = useState<string[]>(dedupeStrings(brands || []));
+  const [localModels, setLocalModels] = useState<Record<string, string[]>>({ ...(models || {}) });
+  const [selectedBrand, setSelectedBrand] = useState<string>(brands?.[0] || '');
+  const [newBrand, setNewBrand] = useState('');
+  const [newModel, setNewModel] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!selectedBrand && localBrands.length) setSelectedBrand(localBrands[0]);
+    if (selectedBrand && !localBrands.includes(selectedBrand)) setSelectedBrand(localBrands[0] || '');
+  }, [localBrands, selectedBrand]);
+
+  const addBrand = () => {
+    const value = newBrand.trim();
+    if (!value) return;
+    if (localBrands.some((brand) => brand.toLowerCase() === value.toLowerCase())) {
+      toast.info('La marca ya existe');
+      return;
+    }
+    setLocalBrands((prev) => [...prev, value]);
+    setLocalModels((prev) => ({ ...prev, [value]: [] }));
+    setSelectedBrand(value);
+    setNewBrand('');
+  };
+
+  const removeBrand = (brand: string) => {
+    setLocalBrands((prev) => prev.filter((item) => item !== brand));
+    setLocalModels((prev) => {
+      const next = { ...prev };
+      delete next[brand];
+      return next;
+    });
+  };
+
+  const renameBrand = (brand: string, value: string) => {
+    const nextName = value.trim();
+    if (!nextName || nextName === brand) return;
+    setLocalBrands((prev) => prev.map((item) => (item === brand ? nextName : item)));
+    setLocalModels((prev) => {
+      const next = { ...prev, [nextName]: prev[brand] || [] };
+      delete next[brand];
+      return next;
+    });
+    setSelectedBrand(nextName);
+  };
+
+  const addModel = () => {
+    const value = newModel.trim();
+    if (!value || !selectedBrand) return;
+    const list = localModels[selectedBrand] || [];
+    if (list.some((model) => model.toLowerCase() === value.toLowerCase())) {
+      toast.info('El modelo ya existe para esta marca');
+      return;
+    }
+    setLocalModels((prev) => ({ ...prev, [selectedBrand]: [...list, value] }));
+    setNewModel('');
+  };
+
+  const removeModel = (brand: string, index: number) => {
+    setLocalModels((prev) => ({
+      ...prev,
+      [brand]: (prev[brand] || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(localBrands, localModels);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <DialogContent className="max-w-4xl max-h-[86vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Configurar marcas y modelos</DialogTitle>
+        <DialogDescription>
+          Administra la marca y los modelos asociados en una sola vista.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-5">
+        <Card className="p-4">
+          <Label>Nueva marca</Label>
+          <div className="flex gap-2 mt-2">
+            <Input
+              value={newBrand}
+              onChange={(e) => setNewBrand(e.target.value)}
+              placeholder="Ej: Toyota"
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addBrand())}
+            />
+            <Button type="button" onClick={addBrand}><Plus className="h-4 w-4" /></Button>
+          </div>
+          <div className="mt-4 space-y-2 max-h-[26rem] overflow-y-auto">
+            {localBrands.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay marcas configuradas.</p>
+            ) : localBrands.map((brand) => (
+              <div key={brand} className={`rounded-lg border p-2 ${selectedBrand === brand ? 'bg-primary/10 border-primary/30' : ''}`}>
+                <button type="button" className="w-full text-left font-medium" onClick={() => setSelectedBrand(brand)}>
+                  {brand}
+                </button>
+                <div className="mt-2 flex gap-2">
+                  <Input defaultValue={brand} onBlur={(e) => renameBrand(brand, e.target.value)} className="h-8" />
+                  <Button size="sm" variant="outline" className="text-red-600" onClick={() => removeBrand(brand)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-semibold">Modelos de {selectedBrand || 'marca'}</h3>
+              <p className="text-xs text-muted-foreground">Cada modelo queda vinculado a la marca seleccionada.</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newModel}
+              onChange={(e) => setNewModel(e.target.value)}
+              placeholder="Ej: Hiace"
+              disabled={!selectedBrand}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addModel())}
+            />
+            <Button type="button" onClick={addModel} disabled={!selectedBrand}><Plus className="h-4 w-4" /></Button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {!selectedBrand ? (
+              <p className="text-sm text-muted-foreground">Seleccione o cree una marca.</p>
+            ) : (localModels[selectedBrand] || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Esta marca aún no tiene modelos.</p>
+            ) : (localModels[selectedBrand] || []).map((model, index) => (
+              <Badge key={`${model}-${index}`} variant="secondary" className="pl-3 pr-1 py-1">
+                {model}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-4 w-4 p-0 ml-2"
+                  onClick={() => removeModel(selectedBrand, index)}
+                >
+                  ×
+                </Button>
+              </Badge>
+            ))}
+          </div>
+        </Card>
+      </div>
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+        <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar marcas y modelos'}</Button>
+      </div>
+    </DialogContent>
+  );
+}
+
 // Diálogo de configuración de marcas
 function BrandConfigDialog({ brands, onSave, onClose }: any) {
   const [localBrands, setLocalBrands] = useState([...brands]);
@@ -2152,6 +2810,576 @@ function ModelConfigDialog({ models, brands, onSave, onClose }: any) {
           </Button>
         </div>
       </div>
+    </DialogContent>
+  );
+}
+
+function InspectionTemplateDialog({ templates, onSave, onRestore, onClose }: any) {
+  const base = templates?.[0] || {
+    name: 'Inspección vehicular - movilidad canina',
+    categories: [{ name: 'Documentos', items: [{ label: 'Licencia', required: true }] }],
+  };
+  const [template, setTemplate] = useState<InspectionTemplate>({
+    id: base.id,
+    name: base.name || 'Inspección vehicular - movilidad canina',
+    vehicle_type: base.vehicle_type || null,
+    categories: (base.categories || []).map((category: any) => ({
+      id: category.id,
+      name: category.name,
+      items: (category.items || []).map((item: any) => ({ id: item.id, label: item.label, required: item.required ?? true })),
+    })),
+  });
+  const [saving, setSaving] = useState(false);
+
+  const updateCategory = (index: number, value: string) => {
+    setTemplate((prev) => ({
+      ...prev,
+      categories: prev.categories.map((category, i) => (i === index ? { ...category, name: value } : category)),
+    }));
+  };
+
+  const addCategory = () => {
+    setTemplate((prev) => ({
+      ...prev,
+      categories: [...prev.categories, { name: 'Nueva categoría', items: [{ label: 'Nuevo ítem', required: true }] }],
+    }));
+  };
+
+  const addItem = (categoryIndex: number) => {
+    setTemplate((prev) => ({
+      ...prev,
+      categories: prev.categories.map((category, i) => i === categoryIndex
+        ? { ...category, items: [...category.items, { label: 'Nuevo ítem', required: true }] }
+        : category),
+    }));
+  };
+
+  const updateItem = (categoryIndex: number, itemIndex: number, value: string) => {
+    setTemplate((prev) => ({
+      ...prev,
+      categories: prev.categories.map((category, i) => i === categoryIndex
+        ? { ...category, items: category.items.map((item, j) => (j === itemIndex ? { ...item, label: value } : item)) }
+        : category),
+    }));
+  };
+
+  const removeItem = (categoryIndex: number, itemIndex: number) => {
+    setTemplate((prev) => ({
+      ...prev,
+      categories: prev.categories.map((category, i) => i === categoryIndex
+        ? { ...category, items: category.items.filter((_, j) => j !== itemIndex) }
+        : category).filter((category) => category.items.length > 0),
+    }));
+  };
+
+  const handleSave = async () => {
+    const clean = {
+      ...template,
+      name: template.name.trim(),
+      categories: template.categories
+        .map((category) => ({
+          ...category,
+          name: category.name.trim(),
+          items: category.items.map((item) => ({ ...item, label: item.label.trim(), required: item.required ?? true })).filter((item) => item.label),
+        }))
+        .filter((category) => category.name && category.items.length),
+    };
+    if (!clean.name || clean.categories.length === 0) {
+      toast.error('La plantilla debe tener nombre y al menos una categoría con ítems');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(clean);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Plantilla del checklist</DialogTitle>
+        <DialogDescription>
+          Define categorías e ítems. Cada inspección evaluará Cumple / No cumple y calculará el porcentaje.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Input value={template.name} onChange={(e) => setTemplate({ ...template, name: e.target.value })} />
+          <Button variant="outline" onClick={onRestore} type="button">Restaurar plantilla</Button>
+          <Button onClick={addCategory} type="button"><Plus className="h-4 w-4 mr-2" />Categoría</Button>
+        </div>
+        <div className="space-y-4">
+          {template.categories.map((category, categoryIndex) => (
+            <Card key={categoryIndex} className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Input value={category.name} onChange={(e) => updateCategory(categoryIndex, e.target.value)} />
+                <Button variant="outline" onClick={() => addItem(categoryIndex)} type="button">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ítem
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {category.items.map((item, itemIndex) => (
+                  <div key={itemIndex} className="flex gap-2">
+                    <Input value={item.label} onChange={(e) => updateItem(categoryIndex, itemIndex, e.target.value)} />
+                    <Button variant="outline" className="text-red-600" onClick={() => removeItem(categoryIndex, itemIndex)} type="button">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+        <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar plantilla'}</Button>
+      </div>
+    </DialogContent>
+  );
+}
+
+function SignaturePadLite({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [drawing, setDrawing] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.lineWidth = 3;
+    context.strokeStyle = '#0f172a';
+
+    if (!value) return;
+    const image = new Image();
+    image.onload = () => context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.src = value;
+  }, [value]);
+
+  const pointFromEvent = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const persistSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    onChange(canvas.toDataURL('image/png'));
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const context = event.currentTarget.getContext('2d');
+    if (!context) return;
+    const point = pointFromEvent(event);
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    setDrawing(true);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing) return;
+    event.preventDefault();
+    const context = event.currentTarget.getContext('2d');
+    if (!context) return;
+    const point = pointFromEvent(event);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!drawing) return;
+    setDrawing(false);
+    persistSignature();
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={900}
+      height={180}
+      className="h-36 w-full rounded-lg border bg-white cursor-crosshair touch-none select-none"
+      onPointerDown={handlePointerDown}
+      onPointerUp={stopDrawing}
+      onPointerCancel={stopDrawing}
+      onPointerLeave={stopDrawing}
+      onPointerMove={handlePointerMove}
+    />
+  );
+}
+
+function InspectionApplyDialog({ vehicle, vehicles, templates, onVehicleChange, onSave, onClose }: any) {
+  const template: InspectionTemplate | undefined = templates?.[0];
+  const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const initialResults = (template?.categories || []).flatMap((category) =>
+    category.items.map((item) => ({
+      template_item_id: item.id,
+      category_name: category.name,
+      item_label: item.label,
+      passed: true,
+      notes: '',
+    }))
+  );
+  const [formData, setFormData] = useState({
+    vehicleId: vehicle?.id || vehicles?.[0]?.id || '',
+    inspected_at: nowLocal,
+    odometer: vehicle?.mileage || vehicle?.kilometraje || '',
+    driver_name: vehicle?.driver || vehicle?.driver_name || '',
+    supervisor_name: '',
+    observations: '',
+    driver_signature: '',
+    supervisor_signature: '',
+    results: initialResults,
+    attachments: [] as InspectionAttachmentDataUrl[],
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const compliance = formData.results.length
+    ? Math.round((formData.results.filter((r) => r.passed).length / formData.results.length) * 1000) / 10
+    : 0;
+
+  const updateResult = (index: number, passed: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      results: prev.results.map((result, i) => (i === index ? { ...result, passed } : result)),
+    }));
+  };
+
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      vehicleId: vehicle?.id || prev.vehicleId || vehicles?.[0]?.id || '',
+      odometer: vehicle?.mileage || vehicle?.kilometraje || prev.odometer,
+      driver_name: vehicle?.driver || vehicle?.driver_name || prev.driver_name,
+    }));
+  }, [vehicle, vehicles]);
+
+  const grouped = formData.results.reduce((acc: Record<string, Array<any & { index: number }>>, result, index) => {
+    acc[result.category_name] = acc[result.category_name] || [];
+    acc[result.category_name].push({ ...result, index });
+    return acc;
+  }, {});
+
+  const handleAttachmentChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    const invalid = selectedFiles.find((file) => {
+      const allowedType = file.type.startsWith('image/') || file.type === 'application/pdf';
+      return !allowedType || file.size > INSPECTION_ATTACHMENT_MAX_BYTES;
+    });
+
+    if (invalid) {
+      toast.error(`"${invalid.name}" debe ser imagen/PDF y pesar máximo 1.8 MB`);
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const attachments = await Promise.all(selectedFiles.map(async (file) => ({
+        name: file.name,
+        mime_type: file.type,
+        size: file.size,
+        data_url: await fileToDataUrl(file),
+      })));
+      setFormData((prev) => ({ ...prev, attachments }));
+    } catch (_error) {
+      toast.error('No se pudieron preparar los adjuntos');
+    }
+  };
+
+  const handleSubmit = async () => {
+    setSaveError('');
+    if (!template) {
+      toast.error('Primero configure una plantilla de inspección');
+      setSaveError('Primero configure una plantilla de inspección.');
+      return;
+    }
+    if (!formData.vehicleId) {
+      toast.error('Seleccione una unidad');
+      setSaveError('Seleccione una unidad.');
+      return;
+    }
+    if (!String(formData.driver_name || '').trim()) {
+      toast.error('El chofer es obligatorio');
+      setSaveError('El chofer es obligatorio.');
+      return;
+    }
+    if (!formData.driver_signature || !formData.supervisor_signature) {
+      toast.error('Las firmas del chofer y supervisor son obligatorias');
+      setSaveError('Las firmas del chofer y supervisor son obligatorias.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(formData.vehicleId, {
+        ...formData,
+        template_id: template.id,
+        inspected_at: formData.inspected_at.replace('T', ' '),
+      });
+    } catch (error: any) {
+      const details = error?.errors && typeof error.errors === 'object'
+        ? Object.values(error.errors).flat().join(' ')
+        : '';
+      const message = details || error?.message || 'No se pudo guardar la inspección. Verifique que el backend esté activo y la migración ejecutada.';
+      setSaveError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-background text-foreground">
+      <div className="flex h-screen flex-col">
+        <div className="border-b bg-gradient-to-r from-slate-950 to-slate-900 p-5 text-white">
+          <div className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
+              <Truck className="h-5 w-5 text-cyan-300" />
+              Nueva inspección — {vehicle?.plate || vehicle?.name}
+            </h2>
+            <p className="text-sm text-slate-300">
+              Pantalla completa para aplicar checklist, fotos y firmas táctiles de chofer y supervisor.
+            </p>
+          </div>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-slate-400">Unidad</p>
+              <p className="font-semibold">{vehicle?.name || 'Seleccione unidad'}</p>
+              <p className="text-xs text-slate-400">{vehicle?.brand} {vehicle?.model} · {vehicle?.plate || 'Sin placa'}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-slate-400">Estado</p>
+              <p className="font-semibold">{getStatusConfig(vehicle?.status || '').label}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-slate-400">Odómetro</p>
+              <p className="font-semibold">{formData.odometer || '—'} km</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-slate-400">Cumplimiento</p>
+              <p className="font-semibold text-cyan-200">{compliance}%</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          <Card className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>Unidad</Label>
+            <select
+              value={String(formData.vehicleId)}
+              onChange={(e) => {
+                setFormData({ ...formData, vehicleId: e.target.value });
+                onVehicleChange(e.target.value);
+              }}
+              className="border-input bg-input-background text-foreground flex h-9 w-full rounded-md border px-3 py-2 text-sm"
+            >
+              {vehicles.map((v: any) => <option key={v.id} value={v.id}>{v.name} {v.plate ? `(${v.plate})` : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Fecha y hora</Label>
+            <Input type="datetime-local" value={formData.inspected_at} onChange={(e) => setFormData({ ...formData, inspected_at: e.target.value })} />
+          </div>
+          <div>
+            <Label>Odómetro (km)</Label>
+            <Input type="number" value={formData.odometer} onChange={(e) => setFormData({ ...formData, odometer: e.target.value })} />
+          </div>
+          <div>
+            <Label>Chofer</Label>
+            <Input value={formData.driver_name} onChange={(e) => setFormData({ ...formData, driver_name: e.target.value })} />
+          </div>
+          <div className="col-span-2">
+            <Label>Supervisor / responsable</Label>
+            <Input value={formData.supervisor_name} onChange={(e) => setFormData({ ...formData, supervisor_name: e.target.value })} />
+          </div>
+            </div>
+          </Card>
+
+        {Object.entries(grouped).map(([category, items]) => (
+          <Card key={category} className="p-4 space-y-2">
+            <p className="text-sm font-semibold text-primary">{category}</p>
+            {items.map((item) => (
+              <div key={item.index} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                <span className="text-sm font-medium">{item.item_label}</span>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={item.passed ? 'default' : 'outline'} onClick={() => updateResult(item.index, true)}>Cumple</Button>
+                  <Button type="button" size="sm" variant={!item.passed ? 'destructive' : 'outline'} onClick={() => updateResult(item.index, false)}>No cumple</Button>
+                </div>
+              </div>
+            ))}
+          </Card>
+        ))}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card className="p-4 space-y-3">
+              <div>
+                <Label>Observaciones (opcional)</Label>
+                <Textarea value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} rows={4} />
+              </div>
+              <div>
+                <Label>Adjuntos (fotos / PDF ligeros)</Label>
+                <Input type="file" multiple accept="image/*,.pdf" onChange={handleAttachmentChange} />
+                <p className="mt-1 text-xs text-muted-foreground">{formData.attachments.length} archivo(s) seleccionado(s).</p>
+              </div>
+            </Card>
+            <Card className="p-4 space-y-4">
+              <div>
+                <div className="flex justify-between"><Label>Firma táctil del chofer *</Label><Button variant="ghost" size="sm" onClick={() => setFormData({ ...formData, driver_signature: '' })}>Limpiar</Button></div>
+                <SignaturePadLite value={formData.driver_signature} onChange={(value) => setFormData({ ...formData, driver_signature: value })} />
+              </div>
+              <div>
+                <div className="flex justify-between"><Label>Firma táctil del supervisor *</Label><Button variant="ghost" size="sm" onClick={() => setFormData({ ...formData, supervisor_signature: '' })}>Limpiar</Button></div>
+                <SignaturePadLite value={formData.supervisor_signature} onChange={(value) => setFormData({ ...formData, supervisor_signature: value })} />
+              </div>
+            </Card>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-background p-4">
+          {saveError ? (
+            <div className="mr-auto max-w-2xl rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+              {saveError}
+            </div>
+          ) : null}
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={handleSubmit} disabled={saving}>{saving ? 'Guardando...' : 'Guardar inspección'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InspectionHistoryDialog({ vehicle, inspections, onView, onClose }: any) {
+  return (
+    <DialogContent className="max-w-3xl max-h-[86vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Historial de inspecciones</DialogTitle>
+        <DialogDescription>{vehicle.name} {vehicle.plate ? `(${vehicle.plate})` : ''}</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3">
+        {inspections.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Esta unidad aún no tiene inspecciones.</p>
+        ) : inspections.map((inspection: VehicleInspectionRecord) => (
+          <div key={inspection.id} className="rounded-lg border p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold">{formatDate(inspection.inspected_at)} · {inspection.compliance_percent}%</p>
+              <p className="text-sm text-muted-foreground">Chofer: {inspection.driver_name || '—'} · Supervisor: {inspection.supervisor_name || '—'}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => onView(inspection)}>Ver detalle</Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end pt-4 border-t"><Button variant="outline" onClick={onClose}>Cerrar</Button></div>
+    </DialogContent>
+  );
+}
+
+function InspectionDetailDialog({ inspection, onClose }: { inspection: VehicleInspectionRecord; onClose: () => void }) {
+  const groupedResults = inspection.results.reduce((acc: Record<string, typeof inspection.results>, result) => {
+    acc[result.category_name] = acc[result.category_name] || [];
+    acc[result.category_name].push(result);
+    return acc;
+  }, {});
+
+  return (
+    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Detalle inspección</DialogTitle>
+        <DialogDescription>
+          {inspection.vehicle?.name || `Vehículo #${inspection.vehicle_id}`} · Cumplimiento {inspection.compliance_percent}%
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {[
+          ['Fecha', formatDate(inspection.inspected_at)],
+          ['Placa', inspection.vehicle?.placa || inspection.vehicle?.plate || '—'],
+          ['Odómetro', inspection.odometer != null ? `${inspection.odometer} km` : '—'],
+          ['Chofer', inspection.driver_name || '—'],
+          ['Supervisor', inspection.supervisor_name || '—'],
+          ['Cumplimiento', `${inspection.compliance_percent}%`],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="font-semibold">{value}</p>
+          </div>
+        ))}
+      </div>
+      {Object.entries(groupedResults).map(([category, results]) => (
+        <Card key={category} className="p-4">
+          <h4 className="font-semibold mb-3">{category}</h4>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Ítem</TableHead>
+                <TableHead>Respuesta</TableHead>
+                <TableHead>Notas</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {results.map((result, index) => (
+                <TableRow key={result.id || `${category}-${index}`}>
+                  <TableCell className="font-medium">{result.item_label}</TableCell>
+                  <TableCell>
+                    <Badge variant={result.passed ? 'secondary' : 'destructive'}>{result.passed ? 'Cumple' : 'No cumple'}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{result.notes || '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      ))}
+      <div>
+        <Label>Observaciones</Label>
+        <div className="mt-1 rounded-lg border bg-muted/20 p-3 text-sm">{inspection.observations || '—'}</div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Firma chofer</Label>
+          <div className="h-32 rounded-lg border bg-white p-2">
+            {inspection.driver_signature ? <img src={inspection.driver_signature} alt="Firma chofer" className="h-full w-full object-contain" /> : null}
+          </div>
+        </div>
+        <div>
+          <Label>Firma supervisor</Label>
+          <div className="h-32 rounded-lg border bg-white p-2">
+            {inspection.supervisor_signature ? <img src={inspection.supervisor_signature} alt="Firma supervisor" className="h-full w-full object-contain" /> : null}
+          </div>
+        </div>
+      </div>
+      {inspection.attachments?.length ? (
+        <div>
+          <Label>Adjuntos</Label>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {inspection.attachments.map((attachment) => (
+              <a
+                key={attachment.id}
+                href={attachment.data_url || attachment.url}
+                download={attachment.name || `inspeccion-adjunto-${attachment.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm underline"
+              >
+                {attachment.name || `Adjunto ${attachment.id}`}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="flex justify-end pt-4 border-t"><Button variant="outline" onClick={onClose}>Cerrar</Button></div>
     </DialogContent>
   );
 }

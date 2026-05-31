@@ -6,10 +6,31 @@ import { XIcon } from "lucide-react@0.487.0";
 
 import { cn } from "./utils";
 
+/** Portales de Radix (Select, Popover, menús) viven fuera del nodo del Dialog; hay que ignorarlos en dismiss/focus. */
+function isRadixPortaledOverlayTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(
+    [
+      '[data-slot="select-content"]',
+      '[data-slot="popover-content"]',
+      '[data-slot="dropdown-menu-content"]',
+      '[data-slot="dropdown-menu-sub-content"]',
+      "[data-radix-popper-content-wrapper]",
+      "[data-radix-select-viewport]",
+      '[data-radix-collection-item]',
+      '[role="listbox"]',
+      '[role="option"]',
+      '[role="menu"]',
+      '[role="menuitem"]',
+    ].join(","),
+  );
+}
+
 function Dialog({
+  modal = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+  return <DialogPrimitive.Root modal={modal} data-slot="dialog" {...props} />;
 }
 
 const DialogTrigger = React.forwardRef<
@@ -64,13 +85,14 @@ DialogOverlay.displayName = "DialogOverlay";
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, style, ...props }, ref) => {
+>(({ className, children, style, onPointerDownOutside, onInteractOutside, onFocusOutside, ...props }, ref) => {
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
         data-slot="dialog-content"
+        {...props}
         style={{
           // Dejar espacio para overlays portaled (Select/Popover) dentro del diálogo.
           zIndex: 2001,
@@ -80,7 +102,25 @@ const DialogContent = React.forwardRef<
           "bg-background fixed top-[50%] left-[50%] z-[2001] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-2xl duration-200 sm:max-w-lg",
           className,
         )}
-        {...props}
+        onPointerDownOutside={(event) => {
+          if (isRadixPortaledOverlayTarget(event.target)) event.preventDefault();
+          onPointerDownOutside?.(event);
+        }}
+        onInteractOutside={(event) => {
+          if (isRadixPortaledOverlayTarget(event.target)) event.preventDefault();
+          onInteractOutside?.(event);
+        }}
+        onFocusOutside={(event) => {
+          const detail = event.detail as { originalEvent?: FocusEvent } | undefined;
+          const rel = detail?.originalEvent?.relatedTarget;
+          const focusWentToPortal =
+            (rel instanceof Element && isRadixPortaledOverlayTarget(rel)) ||
+            (typeof document !== "undefined" &&
+              document.activeElement instanceof Element &&
+              isRadixPortaledOverlayTarget(document.activeElement));
+          if (focusWentToPortal) event.preventDefault();
+          onFocusOutside?.(event);
+        }}
       >
         {children}
         <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">

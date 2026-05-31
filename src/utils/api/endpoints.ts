@@ -196,6 +196,17 @@ export const API = {
       sendToMaintenance: (id: string | number) => `/vehicle-services/${id}/send-to-maintenance`,
       complete: (id: string | number) => `/vehicle-services/${id}/complete`,
     },
+    alerts: '/vehicle-alerts',
+    inspectionTemplates: {
+      list: '/vehicle-inspection-templates',
+      store: '/vehicle-inspection-templates',
+      restore: '/vehicle-inspection-templates/restore',
+    },
+    inspections: {
+      list: '/vehicle-inspections',
+      byId: (id: string | number) => `/vehicle-inspections/${id}`,
+      byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/inspections`,
+    },
   },
   vehicleConfigurations: {
     all: '/vehicle-configurations/all',

@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { NotificationCenter } from './NotificationCenter';
+import { UserProfileModal } from './UserProfileModal';
 import { toast } from 'sonner';
 import { getStoredTheme, setTheme, type Theme } from '../utils/theme';
 
@@ -17,11 +18,14 @@ interface HeaderProps {
   onSearchClick?: () => void; // 🆕 Alternativa para búsqueda
   onLogout?: () => void; // 🚀 NUEVO: Callback para cerrar sesión
   onMenuClick?: () => void; // 🚀 NUEVO: Callback para abrir menú móvil
+  onProfileUpdated?: (profile: { name?: string; email?: string; avatar_url?: string }) => void;
 }
 
-export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onSearchClick, onLogout, onMenuClick }: HeaderProps) {
+export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onSearchClick, onLogout, onMenuClick, onProfileUpdated }: HeaderProps) {
   const [theme, setThemeState] = useState<Theme>(() => getStoredTheme());
   const [notifications, setNotifications] = useState(5);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Sincronizar estado con localStorage (p. ej. otra pestaña o init)
   useEffect(() => {
@@ -336,11 +340,15 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
           </Popover>
 
           {/* Menú de usuario */}
-          <Popover>
+          <Popover open={userMenuOpen} onOpenChange={setUserMenuOpen}>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="flex items-center space-x-1 sm:space-x-2">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-primary rounded-full flex items-center justify-center">
-                  <UserRound className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary-foreground" />
+                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-primary rounded-full flex items-center justify-center overflow-hidden">
+                  {currentUser?.avatar_url ? (
+                    <img src={currentUser.avatar_url} alt="Perfil" className="h-full w-full object-cover" />
+                  ) : (
+                    <UserRound className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary-foreground" />
+                  )}
                 </div>
                 <ChevronDown className="h-3 w-3 text-muted-foreground hidden sm:block" />
               </Button>
@@ -354,7 +362,15 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
                 </p>
               </div>
               <div className="p-2">
-                <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setActiveTab?.('settings')}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setProfileModalOpen(true);
+                  }}
+                >
                   <UserRound className="h-4 w-4 mr-2" />
                   Mi Perfil
                 </Button>
@@ -372,6 +388,11 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
           </Popover>
         </div>
       </div>
+      <UserProfileModal
+        open={profileModalOpen}
+        onOpenChange={setProfileModalOpen}
+        onProfileUpdated={onProfileUpdated}
+      />
     </header>
   );
 }
