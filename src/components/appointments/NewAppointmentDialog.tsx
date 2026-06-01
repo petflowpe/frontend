@@ -16,6 +16,7 @@ import { Calendar, Clock, Plus, Search, Trash2, AlertCircle, ChevronRight, User,
 import { useClients } from '../../hooks/useClients';
 import { useProducts } from '../../hooks/useProducts';
 import { useVehicles } from '../../hooks/useVehicles';
+import { useAvailableVehiclesForAppointment } from '../../hooks/useVehicleCoverage';
 import { useAppointments } from '../../hooks/useAppointments';
 import { createAvailabilityValidator } from '../../services/availabilityValidator';
 import { NewClientDialog } from './NewClientDialog';
@@ -180,13 +181,26 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
         district: client.district,
       });
       setValue('pet', { id: pet.id, name: pet.name, breed: pet.breed || '', size: pet.size });
-      if (vehicles?.length > 0) {
-        const v = vehicles[0];
-        setValue('vehicle', { id: v.id, name: v.name, driver: v.driver, driverName: v.driver_name || v.driver });
-      }
       setStep(3);
     })();
-  }, [open, initialPetForNewAppointment?.petId, initialPetForNewAppointment?.clientId, clients, loadClientPets, setValue, vehicles]);
+  }, [open, initialPetForNewAppointment?.petId, initialPetForNewAppointment?.clientId, clients, loadClientPets, setValue]);
+
+  const { filteredVehicles, loadingCoverage, hasCoverageFilter } = useAvailableVehiclesForAppointment(
+    watchedClient?.district,
+    watchedDate,
+    watchedTime,
+    vehicles || []
+  );
+
+  // Limpiar vehículo si ya no cubre distrito/fecha/hora
+  useEffect(() => {
+    if (!watchedVehicle?.id || !hasCoverageFilter) return;
+    const stillValid = filteredVehicles.some((v) => String(v.id) === String(watchedVehicle.id));
+    if (!stillValid) {
+      setValue('vehicle', undefined as any);
+      toast.message('El vehículo seleccionado no cubre este distrito u horario. Elige otro.');
+    }
+  }, [filteredVehicles, hasCoverageFilter, watchedVehicle?.id, setValue]);
 
   // Validación de disponibilidad en tiempo real (solo en paso 3)
   useEffect(() => {
@@ -257,7 +271,7 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
       setValue('pet', undefined as any);
     }
 
-    // Auto-select vehicle if assigned
+    // Auto-select vehicle if assigned (se validará cobertura al elegir fecha/hora)
     if (client.assignedVehicle) {
       const vehicle = vehicles.find(v => v.id === `vehiculo-${client.assignedVehicle}` || v.id === client.assignedVehicle);
       if (vehicle) {
@@ -265,9 +279,8 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
           id: vehicle.id,
           name: vehicle.name,
           driver: vehicle.driver,
-          driverName: vehicle.driverName
+          driverName: vehicle.driver_name || vehicle.driver
         });
-        toast.success(`Vehículo asignado: ${vehicle.name}`);
       }
     }
   };
@@ -432,14 +445,18 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
         toast.error('Por favor seleccione una mascota');
         isValid = false;
       }
-      if (isValid && !watchedVehicle) {
-        toast.error('Por favor seleccione un vehículo');
-        isValid = false;
-      }
     } else if (step === 2) {
       isValid = await form.trigger(['items']);
     } else if (step === 3) {
       isValid = await form.trigger(['date', 'time']);
+      if (isValid && !watchedVehicle) {
+        toast.error('Por favor seleccione un vehículo con cobertura para este distrito y horario');
+        isValid = false;
+      }
+      if (isValid && hasCoverageFilter && filteredVehicles.length === 0) {
+        toast.error('No hay vehículos disponibles para este distrito, fecha y hora');
+        isValid = false;
+      }
     }
     
     if (isValid) setStep(prev => prev + 1);
@@ -547,28 +564,6 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
                      {errors.pet && <p className="text-red-500 text-sm mt-1">{errors.pet.message}</p>}
                      {!watchedPet && <p className="text-red-500 text-sm mt-1">Mascota requerida</p>}
                   </Card>
-
-                  <Card className="p-6">
-                    <Label>Vehículo Asignado</Label>
-                    <Select 
-                      onValueChange={(val) => {
-                        const v = vehicles.find(veh => veh.id === val);
-                        if(v) setValue('vehicle', { id: v.id, name: v.name, driver: v.driver, driverName: v.driverName });
-                      }}
-                      value={watch('vehicle')?.id || ''}
-                    >
-                       <SelectTrigger>
-                         <SelectValue placeholder="Seleccione vehículo" />
-                       </SelectTrigger>
-                       <SelectContent>
-                         {vehicles.map(v => (
-                           <SelectItem key={v.id} value={v.id}>{v.name} ({v.driverName || 'Sin conductor'})</SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                     {errors.vehicle && <p className="text-red-500 text-sm mt-1">{errors.vehicle.message}</p>}
-                     {!watch('vehicle') && <p className="text-red-500 text-sm mt-1">Vehículo requerido</p>}
-                  </Card>
                 </div>
               )}
             </div>
@@ -664,6 +659,57 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
                     <Label>Hora</Label>
                     <Input type="time" {...form.register('time')} />
                     {errors.time && <p className="text-red-500 text-sm">{errors.time.message}</p>}
+                  </div>
+
+                  <div>
+                    <Label>Vehículo (cobertura por distrito)</Label>
+                    {watchedClient?.district && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Distrito: {watchedClient.district}
+                        {loadingCoverage && ' · actualizando disponibles...'}
+                      </p>
+                    )}
+                    <Select
+                      onValueChange={(val) => {
+                        const list = hasCoverageFilter ? filteredVehicles : vehicles;
+                        const v = list.find((veh) => String(veh.id) === val);
+                        if (v) {
+                          setValue('vehicle', {
+                            id: v.id,
+                            name: v.name,
+                            driver: v.driver,
+                            driverName: (v as any).driver_name || v.driver,
+                          });
+                        }
+                      }}
+                      value={watch('vehicle')?.id ? String(watch('vehicle')?.id) : ''}
+                      disabled={!watchedDate || !watchedTime || loadingCoverage}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          !watchedDate || !watchedTime
+                            ? 'Indica fecha y hora primero'
+                            : loadingCoverage
+                              ? 'Cargando vehículos...'
+                              : 'Seleccione vehículo'
+                        } />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(hasCoverageFilter ? filteredVehicles : vehicles).map((v) => (
+                          <SelectItem key={String(v.id)} value={String(v.id)}>
+                            {v.name} ({(v as any).driver_name || v.driver || 'Sin conductor'})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {hasCoverageFilter && filteredVehicles.length === 0 && watchedDate && watchedTime && !loadingCoverage && (
+                      <p className="text-amber-600 text-sm mt-1">
+                        Ningún vehículo cubre {watchedClient?.district || 'este distrito'} en ese horario.
+                      </p>
+                    )}
+                    {!watch('vehicle') && watchedDate && watchedTime && (
+                      <p className="text-red-500 text-sm mt-1">Vehículo requerido</p>
+                    )}
                   </div>
                   
                   {/* Indicador de disponibilidad en tiempo real */}

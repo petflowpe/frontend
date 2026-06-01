@@ -15,6 +15,7 @@ import { useClients } from '../../hooks/useClients';
 import { useProducts } from '../../hooks/useProducts';
 import { apiClient } from '../../utils/api/client';
 import { API } from '../../utils/api/endpoints';
+import { useAvailableVehiclesForAppointment } from '../../hooks/useVehicleCoverage';
 
 interface Service {
   id: string;
@@ -104,6 +105,22 @@ export function NewAppointmentDialog({
     duration: (s as any).duration ?? 45,
     price: s.price ?? 0,
   })), [servicesFromApi]);
+
+  const { filteredVehicles, loadingCoverage, hasCoverageFilter } = useAvailableVehiclesForAppointment(
+    selectedClient?.district,
+    appointmentDate,
+    appointmentTime,
+    vehicles
+  );
+
+  useEffect(() => {
+    if (!selectedVehicle || !hasCoverageFilter) return;
+    const stillValid = filteredVehicles.some((v) => String(v.id) === String(selectedVehicle));
+    if (!stillValid) {
+      setSelectedVehicle('');
+      toast.message('El vehículo seleccionado no cubre este distrito u horario.');
+    }
+  }, [filteredVehicles, hasCoverageFilter, selectedVehicle]);
 
   useEffect(() => {
     if (!selectedClient?.id) {
@@ -238,6 +255,11 @@ export function NewAppointmentDialog({
       setStep(3);
       return;
     }
+    if (hasCoverageFilter && !filteredVehicles.some((v) => String(v.id) === String(selectedVehicle))) {
+      toast.error('El vehículo no cubre el distrito u horario seleccionado');
+      setStep(3);
+      return;
+    }
 
     // Validar conflictos de horario
     if (existingAppointments && existingAppointments.length > 0) {
@@ -276,7 +298,8 @@ export function NewAppointmentDialog({
       }
     }
 
-    const vehicle = vehicles.find(v => v.id === selectedVehicle);
+    const vehicleList = hasCoverageFilter ? filteredVehicles : vehicles;
+    const vehicle = vehicleList.find(v => String(v.id) === String(selectedVehicle));
     const totalDurationMin = calculateDuration();
     const totalPrice = calculateTotal();
 
@@ -330,7 +353,11 @@ export function NewAppointmentDialog({
   const canGoNext = () => {
     if (step === 1) return selectedClient && selectedPet;
     if (step === 2) return selectedServices.length > 0;
-    if (step === 3) return selectedVehicle && appointmentDate && appointmentTime;
+    if (step === 3) {
+      if (!selectedVehicle || !appointmentDate || !appointmentTime) return false;
+      if (hasCoverageFilter && filteredVehicles.length === 0) return false;
+      return true;
+    }
     return false;
   };
 
@@ -560,18 +587,36 @@ export function NewAppointmentDialog({
                 <Car className="h-4 w-4" />
                 Vehículo Asignado
               </Label>
-              <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
+              {selectedClient?.district && (
+                <p className="text-xs text-muted-foreground">
+                  Distrito: {selectedClient.district}
+                  {loadingCoverage && ' · actualizando disponibles...'}
+                </p>
+              )}
+              <Select
+                value={selectedVehicle}
+                onValueChange={setSelectedVehicle}
+                disabled={loadingCoverage}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar vehículo..." />
+                  <SelectValue placeholder={
+                    loadingCoverage ? 'Cargando vehículos...' : 'Seleccionar vehículo...'
+                  } />
                 </SelectTrigger>
                 <SelectContent>
-                  {vehicles.map(v => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name} - {v.driver}
+                  {(hasCoverageFilter ? filteredVehicles : vehicles).map(v => (
+                    <SelectItem key={String(v.id)} value={String(v.id)}>
+                      {v.name} - {v.driver || 'Sin conductor'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {hasCoverageFilter && filteredVehicles.length === 0 && !loadingCoverage && (
+                <p className="text-sm text-amber-600 flex items-center gap-1">
+                  <AlertTriangle className="h-4 w-4" />
+                  Ningún vehículo cubre este distrito en el horario elegido.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

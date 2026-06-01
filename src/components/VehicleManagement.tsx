@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { VehicleCoverageRules } from './vehicles/VehicleCoverageRules';
 import { toast } from 'sonner';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -2275,7 +2276,7 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
             Disponibilidad del vehículo
           </Label>
           <p className="text-xs text-muted-foreground">
-            Días y horarios en los que este vehículo está disponible para citas (Agenda Visual validará contra esto).
+            Plantilla de horario base. Si defines reglas de cobertura abajo, la agenda usará esas reglas con prioridad.
           </p>
           <div className="grid gap-2">
             {Object.entries(DAY_LABELS).map(([day, label]) => (
@@ -2326,6 +2327,8 @@ function VehicleDialog({ vehicle, brands, models, onSave, onClose }: any) {
             ))}
           </div>
         </div>
+
+        <VehicleCoverageRules vehicleId={vehicle?.id} />
 
         <div className="space-y-4 pt-4 border-t">
           <Label>Equipamiento</Label>

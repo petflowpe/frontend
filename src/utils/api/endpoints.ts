@@ -207,6 +207,11 @@ export const API = {
       byId: (id: string | number) => `/vehicle-inspections/${id}`,
       byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/inspections`,
     },
+    coverageRules: {
+      availableVehicles: '/vehicle-coverage-rules/available-vehicles',
+      byVehicle: (vehicleId: string | number) => `/vehicles/${vehicleId}/coverage-rules`,
+      byId: (id: string | number) => `/vehicle-coverage-rules/${id}`,
+    },
   },
   vehicleConfigurations: {
     all: '/vehicle-configurations/all',

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useInventory, Product } from '../hooks/useInventory';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 import { ProductImage } from './ProductImage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -48,26 +49,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 export function Products() {
   const { user } = useAuth();
   const companyId = user?.companyId ?? 1;
-  const { products, addProduct, updateProduct, deleteProduct, adjustStock, getInventoryMetrics, uploadProductImage } = useInventory(companyId);
+  const { categories, brands, areas, loading: catalogLoading } = useProductCatalog(companyId);
+  const defaultAreaId = areas[0]?.id;
+  const { products, loading, addProduct, updateProduct, deleteProduct, adjustStock, getInventoryMetrics } = useInventory(companyId, defaultAreaId);
   const metrics = getInventoryMetrics();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
     code: '',
     category: '',
+    categoryId: undefined,
     brand: '',
+    brandId: undefined,
+    areaId: undefined,
     price: 0,
     cost: 0,
     stock: 0,
     minStock: 5,
-    unit: 'Unidad',
+    unit: 'NIU',
     location: '',
     imagePath: ''
   });
@@ -82,52 +87,48 @@ export function Products() {
         name: '',
         code: '',
         category: '',
+        categoryId: categories[0]?.id,
         brand: '',
+        brandId: brands[0]?.id,
+        areaId: areas[0]?.id,
         price: 0,
         cost: 0,
         stock: 0,
         minStock: 5,
-        unit: 'Unidad',
-        location: '',
+        unit: 'NIU',
+        location: areas[0]?.name || '',
         imagePath: ''
       });
     }
     setShowProductModal(true);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    setIsUploading(true);
-    const path = await uploadProductImage(file);
-    setIsUploading(false);
-    
-    if (path) {
-      setFormData(prev => ({ ...prev, imagePath: path }));
-    }
-  };
+  const handleSaveProduct = async () => {
+    if (!formData.name) return;
 
-  const handleSaveProduct = () => {
-    if (!formData.name || !formData.code) return;
-
-    if (editingProduct) {
-      updateProduct(editingProduct.id, formData);
-    } else {
-      addProduct(formData as Omit<Product, 'id'>);
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, formData);
+      } else {
+        await addProduct(formData as Omit<Product, 'id'>);
+      }
+      setShowProductModal(false);
+    } catch {
+      // toast en hook
     }
-    setShowProductModal(false);
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           p.code.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
+    const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter || String(p.categoryId) === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
-  const lowStockProducts = products.filter(p => p.stock <= p.minStock);
-  const categories = Array.from(new Set(products.map(p => p.category)));
+  const lowStockProducts = products.filter(p => p.minStock > 0 && p.stock <= p.minStock);
+  const categoryOptions = categories.length > 0
+    ? categories
+    : Array.from(new Set(products.map(p => p.category).filter(Boolean))).map((name, i) => ({ id: i, name: name as string }));
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -139,6 +140,7 @@ export function Products() {
           </h1>
           <p className="text-muted-foreground">
             Controla stock, precios y catálogo de productos
+            {(loading || catalogLoading) && ' · sincronizando...'}
           </p>
         </div>
         <Button onClick={() => handleOpenModal()} className="bg-emerald-600 hover:bg-emerald-700">
@@ -242,8 +244,8 @@ export function Products() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas</SelectItem>
-                      {categories.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      {categoryOptions.map(c => (
+                        <SelectItem key={String(c.id)} value={c.name}>{c.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -402,38 +404,6 @@ export function Products() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-4">
-            <div className="col-span-2 flex items-center gap-4 border p-4 rounded-lg bg-muted/20">
-              <div className="h-24 w-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center bg-background overflow-hidden relative">
-                {isUploading ? (
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                ) : (
-                  <ProductImage path={formData.imagePath} alt="Preview" className="h-full w-full" />
-                )}
-              </div>
-              <div className="flex-1 space-y-2">
-                <Label>Imagen del Producto</Label>
-                <div className="flex gap-2">
-                  <Input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    disabled={isUploading}
-                    className="text-xs"
-                  />
-                  {formData.imagePath && (
-                    <Button 
-                      variant="destructive" 
-                      size="icon" 
-                      onClick={() => setFormData({...formData, imagePath: ''})}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">Formatos: JPG, PNG, WEBP. Máx 5MB.</p>
-              </div>
-            </div>
-
             <div className="space-y-2 col-span-2">
               <Label>Nombre del Producto *</Label>
               <Input 
@@ -454,30 +424,36 @@ export function Products() {
 
             <div className="space-y-2">
               <Label>Marca</Label>
-              <Input 
-                value={formData.brand} 
-                onChange={(e) => setFormData({...formData, brand: e.target.value})}
-                placeholder="Ej. Royal Canin"
-              />
+              <Select
+                value={formData.brandId ? String(formData.brandId) : ''}
+                onValueChange={(val) => {
+                  const brand = brands.find(b => String(b.id) === val);
+                  setFormData({ ...formData, brandId: brand?.id, brand: brand?.name || '' });
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Seleccionar marca..." /></SelectTrigger>
+                <SelectContent>
+                  {brands.map(b => (
+                    <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label>Categoría</Label>
-              <Select 
-                value={formData.category} 
-                onValueChange={(val) => setFormData({...formData, category: val})}
+              <Select
+                value={formData.categoryId ? String(formData.categoryId) : ''}
+                onValueChange={(val) => {
+                  const cat = categories.find(c => String(c.id) === val);
+                  setFormData({ ...formData, categoryId: cat?.id, category: cat?.name || '' });
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar..." />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar categoría..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Alimento">Alimento</SelectItem>
-                  <SelectItem value="Accesorios">Accesorios</SelectItem>
-                  <SelectItem value="Cuidado">Cuidado</SelectItem>
-                  <SelectItem value="Farmacia">Farmacia</SelectItem>
-                  <SelectItem value="Juguetes">Juguetes</SelectItem>
-                  <SelectItem value="Suplementos">Suplementos</SelectItem>
-                  <SelectItem value="Ropa">Ropa</SelectItem>
+                  {categories.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -528,20 +504,19 @@ export function Products() {
             </div>
 
             <div className="space-y-2 col-span-2">
-              <Label>Ubicación / Punto de Venta</Label>
-              <Select 
-                value={formData.location} 
-                onValueChange={(val) => setFormData({...formData, location: val})}
+              <Label>Área / Ubicación de stock</Label>
+              <Select
+                value={formData.areaId ? String(formData.areaId) : ''}
+                onValueChange={(val) => {
+                  const area = areas.find(a => String(a.id) === val);
+                  setFormData({ ...formData, areaId: area?.id, location: area?.name || '' });
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar ubicación..." />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar área..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Tienda Principal">Tienda Principal</SelectItem>
-                  <SelectItem value="Almacén Central">Almacén Central</SelectItem>
-                  <SelectItem value="Móvil 1">Móvil 1 (Vehículo)</SelectItem>
-                  <SelectItem value="Móvil 2">Móvil 2 (Vehículo)</SelectItem>
-                  <SelectItem value="Móvil 3">Móvil 3 (Vehículo)</SelectItem>
+                  {areas.map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { useAppointments } from '../../hooks/useAppointments';
 import { useVehicles } from '../../hooks/useVehicles';
+import { useAvailableVehiclesForAppointment } from '../../hooks/useVehicleCoverage';
 import { useProducts } from '../../hooks/useProducts';
 import { createAvailabilityValidator } from '../../services/availabilityValidator';
 import { apiClient } from '../../utils/api/client';
@@ -54,6 +55,23 @@ export function RescheduleDialog({ open, onOpenChange, appointment, onSuccess }:
   const watchedDate = watch('date');
   const watchedTime = watch('time');
   const watchedVehicleId = watch('vehicleId');
+  const appointmentDistrict = appointment?.district || appointment?.client?.district || '';
+
+  const { filteredVehicles, loadingCoverage, hasCoverageFilter } = useAvailableVehiclesForAppointment(
+    appointmentDistrict,
+    watchedDate,
+    watchedTime,
+    vehicles || []
+  );
+
+  useEffect(() => {
+    if (!watchedVehicleId || !hasCoverageFilter) return;
+    const stillValid = filteredVehicles.some((v) => String(v.id) === String(watchedVehicleId));
+    if (!stillValid) {
+      form.setValue('vehicleId', '');
+      toast.message('El vehículo ya no cubre este distrito u horario.');
+    }
+  }, [filteredVehicles, hasCoverageFilter, watchedVehicleId, form]);
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -226,18 +244,28 @@ export function RescheduleDialog({ open, onOpenChange, appointment, onSuccess }:
           {/* Vehículo (opcional cambiar) */}
           <div className="space-y-2">
             <Label htmlFor="vehicleId">Vehículo (opcional)</Label>
+            {appointmentDistrict && (
+              <p className="text-xs text-muted-foreground">
+                Distrito: {appointmentDistrict}
+                {loadingCoverage && ' · actualizando disponibles...'}
+              </p>
+            )}
             <select
               id="vehicleId"
               {...form.register('vehicleId')}
+              disabled={loadingCoverage}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="">Mantener vehículo actual</option>
-              {vehicles.map(vehicle => (
-                <option key={vehicle.id} value={vehicle.id}>
+              {(hasCoverageFilter ? filteredVehicles : vehicles).map(vehicle => (
+                <option key={vehicle.id} value={String(vehicle.id)}>
                   {vehicle.name} {vehicle.plate ? `(${vehicle.plate})` : ''}
                 </option>
               ))}
             </select>
+            {hasCoverageFilter && filteredVehicles.length === 0 && watchedDate && watchedTime && !loadingCoverage && (
+              <p className="text-sm text-amber-600">Ningún vehículo cubre este distrito en el horario elegido.</p>
+            )}
           </div>
 
           {/* Notas */}
