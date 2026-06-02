@@ -26,15 +26,33 @@ jobs:
           missing=0
           for name in SSH_HOST SSH_USER DEPLOY_PATH; do
             if [ -z "${!name}" ]; then
-              echo "::error::Falta el secret $name en GitHub (Settings > Secrets > Actions)"
+              echo "::error::Falta el secret $name. En frontend usa FRONTEND_DEPLOY_PATH (ej: /var/www/petflow/frontend/dist)"
               missing=1
             fi
           done
           if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo "::error::Falta el secret SSH_PRIVATE_KEY"
+            echo "::error::Falta el secret SSH_PRIVATE_KEY (copialo desde el repo backend)"
             missing=1
           fi
           exit "$missing"
+
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Compilar SPA
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+        run: |
+          export VITE_API_URL="${VITE_API_URL:-https://api.petflow.com/api}"
+          npm ci
+          npm run build
 
       - name: Configurar SSH
         env:
@@ -49,43 +67,16 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy frontend en VPS
+      - name: Publicar build al VPS
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o BatchMode=yes \
-            -o ConnectTimeout=30 \
             -o StrictHostKeyChecking=no \
             "$SSH_USER@$SSH_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" << 'REMOTE_SCRIPT'
-          set -euo pipefail
+            "mkdir -p '$DEPLOY_PATH'"
 
-          cd "$DEPLOY_PATH"
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=no" \
+            build/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
 
-          if [ -s "$HOME/.nvm/nvm.sh" ]; then
-            # shellcheck disable=SC1090
-            . "$HOME/.nvm/nvm.sh"
-          fi
-
-          echo "Actualizando codigo frontend..."
-          git fetch origin main
-          git checkout main
-          git reset --hard origin/main
-          git clean -fd -e .env -e .env.local -e build -e dist -e node_modules
-
-          echo "Instalando dependencias Node..."
-          if command -v npm >/dev/null 2>&1; then
-            npm ci
-          else
-            echo "Node/npm no encontrado en el servidor."
-            exit 1
-          fi
-
-          echo "Compilando SPA..."
-          npm run build
-
-          echo "Publicando build (Vite -> build/, Nginx suele usar dist/)..."
-          rm -rf dist
-          cp -R build dist
-
-          echo "Deploy frontend completado"
-          REMOTE_SCRIPT
+          echo "Deploy frontend completado en $DEPLOY_PATH"
