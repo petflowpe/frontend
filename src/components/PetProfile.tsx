@@ -5,6 +5,13 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
 import { NewMedicalAttentionDialog } from './pets/NewMedicalAttentionDialog';
+import { PreventiveHealthDialog } from './pets/PreventiveHealthDialog';
+import { PreventiveHealthSection } from './pets/PreventiveHealthSection';
+import {
+  buildPreventiveEvents,
+  type PreventiveCategory,
+  type PreventiveEvent,
+} from './pets/preventiveHealthUtils';
 import { 
   Heart, 
   Calendar, 
@@ -63,6 +70,7 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
   const [petData, setPetData] = useState<any>(null);
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [showAttentionDialog, setShowAttentionDialog] = useState(!!openNewAttention);
+  const [preventiveDialog, setPreventiveDialog] = useState<PreventiveCategory | null>(null);
 
   const reloadPetData = async () => {
     const [petResponse, timelineResponse] = await Promise.all([
@@ -185,61 +193,60 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
     }
   ];
 
-  // Historial de Vacunas (Recuperado)
-  const vaccineHistoryFallback = [
+  const preventiveHistoryFallback: PreventiveEvent[] = [
     {
       id: 1,
       name: 'Vacuna Quintuple (1ra Dosis)',
       date: '2020-05-15',
-      status: 'completed',
+      status: 'applied',
       type: 'vaccine',
       nextDue: '2020-06-15',
-      vet: 'Dr. Alejandro Vet'
+      vet: 'Dr. Alejandro Vet',
     },
     {
       id: 2,
       name: 'Vacuna Quintuple (2da Dosis)',
       date: '2020-06-15',
-      status: 'completed',
+      status: 'applied',
       type: 'vaccine',
       nextDue: '2020-07-15',
-      vet: 'Dr. Alejandro Vet'
+      vet: 'Dr. Alejandro Vet',
     },
     {
       id: 3,
       name: 'Vacuna Quintuple (3ra Dosis)',
       date: '2020-07-15',
-      status: 'completed',
+      status: 'applied',
       type: 'vaccine',
       nextDue: '2021-07-15',
-      vet: 'Dr. Alejandro Vet'
+      vet: 'Dr. Alejandro Vet',
     },
     {
       id: 4,
       name: 'Vacuna Rabia',
       date: '2020-08-15',
-      status: 'completed',
+      status: 'applied',
       type: 'vaccine',
       nextDue: '2021-08-15',
-      vet: 'Dr. Alejandro Vet'
+      vet: 'Dr. Alejandro Vet',
     },
     {
       id: 5,
       name: 'Vacuna Quintuple (Anual)',
       date: '2023-11-15',
-      status: 'completed',
+      status: 'applied',
       type: 'vaccine',
       nextDue: '2024-11-15',
-      vet: 'Dra. Sofia Tech'
+      vet: 'Dra. Sofia Tech',
     },
     {
       id: 6,
       name: 'Desparasitación Interna',
       date: '2024-01-10',
-      status: 'completed',
+      status: 'applied',
       type: 'deworming',
       nextDue: '2024-04-10',
-      vet: 'Dra. Sofia Tech'
+      vet: 'Dra. Sofia Tech',
     },
     {
       id: 7,
@@ -248,8 +255,8 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
       status: 'upcoming',
       type: 'vaccine',
       nextDue: null,
-      vet: 'Pendiente'
-    }
+      vet: 'Pendiente',
+    },
   ];
 
   // Productos recomendados/utilizados
@@ -385,22 +392,15 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
     });
   }, [timelineData, pet.weight]);
 
-  const vaccineHistory = useMemo(() => {
-    const fromTimeline = timelineData
-      .filter((event: any) => event.type === 'vaccine')
-      .map((event: any, idx: number) => ({
-        id: event.id || idx + 1,
-        name: event.title || event.event_type || 'Vacuna',
-        date: event.occurred_at || new Date().toISOString().slice(0, 10),
-        status: 'completed',
-        type: 'vaccine',
-        nextDue: event.next_due_date || null,
-        vet: 'Equipo médico',
-      }));
-
-    if (fromTimeline.length > 0) return fromTimeline;
-    return vaccineHistoryFallback;
-  }, [timelineData]);
+  const preventiveEvents = useMemo(
+    () =>
+      buildPreventiveEvents({
+        timeline: timelineData,
+        petData,
+        fallback: preventiveHistoryFallback,
+      }),
+    [timelineData, petData]
+  );
 
   const activeNutritionProduct = useMemo(() => {
     if (!productHistory.length) return null;
@@ -731,7 +731,7 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Cronograma Vacunas
+                    Salud Preventiva
                   </button>
                   <button
                     onClick={() => setMedicalSubTab('stats')}
@@ -875,64 +875,12 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
                 )}
 
                 {medicalSubTab === 'vaccines' && (
-                  <div className="space-y-6">
-                    <Card className="p-6">
-                      <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                        <Syringe className="h-5 w-5 text-blue-500" />
-                        Plan de Vacunación y Desparasitación
-                      </h3>
-                      
-                      <div className="relative border-l-2 border-slate-200 ml-3 space-y-8">
-                        {vaccineHistory.map((item, index) => (
-                          <div key={index} className="relative pl-8">
-                            {/* Dot indicator */}
-                            <div className={`absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 ${
-                              item.status === 'completed' 
-                                ? 'bg-green-500 border-green-500' 
-                                : 'bg-white border-slate-300'
-                            }`} />
-                            
-                            <div className={`p-4 rounded-lg border ${
-                              item.status === 'completed' 
-                                ? 'bg-white border-slate-200 shadow-sm' 
-                                : 'bg-slate-50 border-slate-200 border-dashed opacity-80'
-                            }`}>
-                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h4 className={`font-bold ${item.status === 'completed' ? 'text-slate-900' : 'text-slate-500'}`}>
-                                      {item.name}
-                                    </h4>
-                                    {item.status === 'completed' ? (
-                                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 flex items-center gap-1">
-                                        <CheckCircle2 className="h-3 w-3" /> Aplicada
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 flex items-center gap-1">
-                                        <Clock className="h-3 w-3" /> Pendiente
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-slate-500 mt-1">
-                                    Fecha: {formatDate(item.date)} • Veterinario: {item.vet}
-                                  </p>
-                                </div>
-                                
-                                {item.nextDue && (
-                                  <div className="text-right">
-                                    <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Próxima Dosis</div>
-                                    <div className="font-mono text-sm font-medium text-slate-700 bg-slate-100 px-2 py-1 rounded inline-block mt-1">
-                                      {formatDate(item.nextDue)}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  </div>
+                  <PreventiveHealthSection
+                    petName={pet.name}
+                    birthDate={pet.birthDate}
+                    events={preventiveEvents}
+                    onRegister={(category) => setPreventiveDialog(category)}
+                  />
                 )}
 
                 {medicalSubTab === 'stats' && (
@@ -1212,6 +1160,22 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
           setMedicalSubTab('timeline');
         }}
       />
+
+      {preventiveDialog && (
+        <PreventiveHealthDialog
+          open={!!preventiveDialog}
+          onOpenChange={(open) => !open && setPreventiveDialog(null)}
+          category={preventiveDialog}
+          petId={pet.id}
+          clientId={pet.clientId}
+          companyId={pet.companyId}
+          petName={`${pet.name} ${pet.lastName || ''}`.trim()}
+          onSaved={() => {
+            reloadPetData().catch(() => {});
+            setMedicalSubTab('vaccines');
+          }}
+        />
+      )}
     </div>
   );
 }
