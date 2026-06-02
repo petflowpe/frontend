@@ -72,8 +72,8 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
         toast.info('Mostrando detalles del cliente', { description: notification.title });
         break;
       case 'medical':
-        if (setActiveTab && !notification.relatedModule) setActiveTab('medical');
-        toast.info('Mostrando detalles médicos', { description: notification.title });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('pets');
+        toast.info('Abriendo mascotas para historial clínico', { description: notification.title });
         break;
       case 'staff':
         if (setActiveTab && !notification.relatedModule) setActiveTab('staff');
@@ -96,7 +96,7 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
       case 'products': return 'Productos';
       case 'inventory': return 'Inventario';
       case 'purchases': return 'Compras';
-      case 'medical': return 'Cuidado Médico';
+      case 'medical': return 'Mascotas';
       case 'vehicles': return 'Gestión de Vehículos';
       case 'routes': return 'Rutas y Navegación';
       case 'invoicing': return 'Sistema de Facturación';
@@ -127,7 +127,7 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
       case 'products': return 'Catálogo de productos y servicios';
       case 'inventory': return 'Stock, ajustes y movimientos de inventario';
       case 'purchases': return 'Gestión de compras y proveedores';
-      case 'medical': return 'Control de vacunas, desparasitación y tratamientos preventivos';
+      case 'medical': return 'Historial clínico y atenciones desde el perfil de cada mascota';
       case 'vehicles': return 'Administra tu flota móvil, mantenimiento y gastos operativos';
       case 'routes': return 'Optimiza las rutas de tus vehículos móviles';
       case 'invoicing': return 'Crea y gestiona facturas para tus servicios';

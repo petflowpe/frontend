@@ -63,7 +63,7 @@ import * as XLSX from 'xlsx';
 import { useClients } from '../hooks/useClients';
 import { usePagination } from '../hooks/usePagination';
 import { apiClient } from '../utils/api/client';
-import { setPendingAction } from '../utils/navigationBridge';
+import { setPendingAction, getPendingAction, clearPendingAction } from '../utils/navigationBridge';
 import { PET_DOG_BREEDS, PET_CAT_BREEDS, PET_TEMPERAMENTS, PET_BEHAVIORS } from '../config/defaults';
 import { PetProfile } from './PetProfile';
 import { getRoleKey, type CurrentUserLike } from '../utils/permissions';
@@ -757,15 +757,6 @@ export function PetsManagement({
     setPetToDelete(petId);
   };
 
-  const navigateToPetContext = useCallback((tab: 'appointments' | 'medical', pet: PetRecord) => {
-    setPendingAction(tab, 'focus_pet', {
-      petId: String(pet?.id || ''),
-      petName: getPetDisplayName(pet),
-      ownerName: pet?.client?.razon_social || (Array.isArray(pet?.owners) ? pet.owners[0]?.razon_social : '') || '',
-    });
-    onNavigate?.(tab);
-  }, [onNavigate]);
-
   /** Ir a Citas y abrir directamente el paso de crear cita con esta mascota */
   const navigateToNewAppointmentWithPet = useCallback((pet: PetRecord) => {
     const clientId = pet?.client_id ?? (pet?.client as any)?.id ?? (Array.isArray(pet?.owners) ? pet.owners[0]?.id : undefined);
@@ -789,9 +780,31 @@ export function PetsManagement({
   }, [onNavigate]);
 
   const [profilePetId, setProfilePetId] = useState<number | null>(null);
-  const openPetProfile = useCallback((pet: PetRecord) => {
+  const [profileOpts, setProfileOpts] = useState<{ initialTab?: string; openNewAttention?: boolean }>({});
+  const openPetProfile = useCallback((pet: PetRecord, opts?: { initialTab?: string; openNewAttention?: boolean }) => {
     const id = Number(pet.id);
-    if (Number.isFinite(id) && id > 0) setProfilePetId(id);
+    if (Number.isFinite(id) && id > 0) {
+      setProfileOpts(opts || {});
+      setProfilePetId(id);
+    }
+  }, []);
+
+  useEffect(() => {
+    const pending = getPendingAction('pets') || getPendingAction('medical');
+    if (!pending) return;
+    const petId = Number(pending.payload?.petId);
+    if (!Number.isFinite(petId) || petId <= 0) {
+      clearPendingAction();
+      return;
+    }
+    if (pending.action === 'focus_pet' || pending.action === 'new_medical_attention_for_pet') {
+      setProfileOpts({
+        initialTab: 'medical',
+        openNewAttention: pending.action === 'new_medical_attention_for_pet',
+      });
+      setProfilePetId(petId);
+    }
+    clearPendingAction();
   }, []);
 
   const confirmDeletePet = useCallback(async () => {
@@ -935,7 +948,18 @@ export function PetsManagement({
   const speciesOptions = speciesList.length ? speciesList : DEFAULT_SPECIES;
 
   if (profilePetId) {
-    return <PetProfile petId={profilePetId} onNavigate={onNavigate} onClose={() => setProfilePetId(null)} />;
+    return (
+      <PetProfile
+        petId={profilePetId}
+        onNavigate={onNavigate}
+        onClose={() => {
+          setProfilePetId(null);
+          setProfileOpts({});
+        }}
+        initialTab={profileOpts.initialTab}
+        openNewAttention={profileOpts.openNewAttention}
+      />
+    );
   }
 
   return (
@@ -1442,7 +1466,7 @@ export function PetsManagement({
                                 </Button>
                               </Tooltip>
                               <Tooltip content="Historial clínico">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => navigateToPetContext('medical', pet)}>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openPetProfile(pet, { initialTab: 'medical' })}>
                                   <FileText className="h-4 w-4" />
                                 </Button>
                               </Tooltip>

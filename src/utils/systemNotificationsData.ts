@@ -250,7 +250,7 @@ export const initialNotifications: Notification[] = [
     read: false,
     actionRequired: true,
     client: 'Carmen Díaz',
-    relatedModule: 'medical',
+    relatedModule: 'pets',
     relatedId: 'VAC-234',
     data: { petName: 'Luna', vaccineType: 'Rabia', dueDate: '2024-12-08' }
   },
@@ -264,7 +264,7 @@ export const initialNotifications: Notification[] = [
     timestamp: new Date(Date.now() - 172800000).toISOString(),
     read: true,
     actionRequired: false,
-    relatedModule: 'medical',
+    relatedModule: 'pets',
     relatedId: 'multiple'
   },
 

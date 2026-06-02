@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
-import { Separator } from './ui/separator';
+import { NewMedicalAttentionDialog } from './pets/NewMedicalAttentionDialog';
 import { 
   Heart, 
   Calendar, 
@@ -49,32 +49,40 @@ interface PetProfileProps {
   petId: number | string;
   onClose: () => void;
   onNavigate?: (tab: string) => void;
+  initialTab?: string;
+  openNewAttention?: boolean;
 }
 
-export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
-  const [activeTab, setActiveTab] = useState('medical');
+export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAttention }: PetProfileProps) {
+  const [activeTab, setActiveTab] = useState(initialTab || 'medical');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [medicalSubTab, setMedicalSubTab] = useState('timeline');
+  const [activityLevel, setActivityLevel] = useState<'Bajo' | 'Moderado' | 'Alto'>('Moderado');
+  const [selectedNutritionProductId, setSelectedNutritionProductId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [petData, setPetData] = useState<any>(null);
   const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [showAttentionDialog, setShowAttentionDialog] = useState(!!openNewAttention);
+
+  const reloadPetData = async () => {
+    const [petResponse, timelineResponse] = await Promise.all([
+      apiClient.get<any>(`/pets/${petId}`),
+      apiClient.get<any>(`/pets/${petId}/timeline`),
+    ]);
+    const p = petResponse?.data || petResponse;
+    const timeline = timelineResponse?.data?.timeline || [];
+    setPetData(p);
+    setTimelineData(Array.isArray(timeline) ? timeline : []);
+  };
 
   useEffect(() => {
     let mounted = true;
     const run = async () => {
       try {
         setLoading(true);
-        const [petResponse, timelineResponse] = await Promise.all([
-          apiClient.get<any>(`/pets/${petId}`),
-          apiClient.get<any>(`/pets/${petId}/timeline`),
-        ]);
-        if (!mounted) return;
-        const p = petResponse?.data || petResponse;
-        const timeline = timelineResponse?.data?.timeline || [];
-        setPetData(p);
-        setTimelineData(Array.isArray(timeline) ? timeline : []);
+        await reloadPetData();
       } catch (e: any) {
-        toast.error(e?.message || 'No se pudo cargar el perfil de mascota');
+        if (mounted) toast.error(e?.message || 'No se pudo cargar el perfil de mascota');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -82,6 +90,18 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
     run();
     return () => { mounted = false; };
   }, [petId]);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (openNewAttention) {
+      setActiveTab('medical');
+      setMedicalSubTab('timeline');
+      setShowAttentionDialog(true);
+    }
+  }, [openNewAttention]);
 
   const pet = useMemo(() => {
     const owner = petData?.client || petData?.owners?.[0] || {};
@@ -91,6 +111,9 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
       : 'https://via.placeholder.com/150/e2e8f0/64748b?text=PET';
     return {
       id: petData?.id ?? petId,
+      clientId: petData?.client_id || owner?.id || petData?.owners?.[0]?.id,
+      companyId: petData?.company_id || owner?.company_id,
+      rawWeight: petData?.weight,
       name: petData?.name || 'Mascota',
       lastName: petData?.last_name || '',
       species: petData?.species || '—',
@@ -263,6 +286,15 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
     }
   ];
 
+  const parseKgFromQuantity = (value: string): number => {
+    const normalized = String(value || '').toLowerCase().replace(',', '.');
+    const parsed = parseFloat(normalized);
+    if (Number.isNaN(parsed) || parsed <= 0) return 0;
+    if (normalized.includes('kg')) return parsed;
+    if (normalized.includes('g')) return parsed / 1000;
+    return parsed;
+  };
+
   // Historial de servicios
   const serviceHistory = [
     {
@@ -325,25 +357,32 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
 
   // Handlers para botones
   const clinicalHistory = useMemo(() => {
-    if (!timelineData.length) return clinicalHistoryFallback;
-    return timelineData.map((event: any) => ({
-      id: `EV-${event.id}`,
-      type: event.type === 'vaccine' ? 'vaccine' : 'consultation',
-      title: event.title || event.event_type || 'Atención',
-      date: event.occurred_at || new Date().toISOString().slice(0, 10),
-      doctor: 'Equipo médico',
-      reason: event.title || event.event_type || 'Seguimiento clínico',
-      diagnosis: event.description || 'Sin diagnóstico detallado',
-      vitals: {
-        weight: pet.weight !== '—' ? pet.weight : '--',
-        temp: '--',
-        pulse: '--',
-      },
-      treatment: [event.event_type || 'Atención general'],
-      observations: event.description || 'Sin observaciones',
-      evidence: [],
-      status: 'completed',
-    }));
+    const records = timelineData.filter((e: any) => e.type === 'medical_record' || e.type === 'appointment');
+    if (!records.length) return [];
+    return records.map((event: any) => {
+      const vitals = event.vital_signs || {};
+      const treatmentLines = event.treatment
+        ? String(event.treatment).split('\n').filter(Boolean)
+        : [];
+      return {
+        id: `EV-${event.id}`,
+        type: event.type === 'vaccine' ? 'vaccine' : 'consultation',
+        title: event.title || event.event_type || 'Atención',
+        date: event.occurred_at || new Date().toISOString().slice(0, 10),
+        doctor: 'Equipo móvil',
+        reason: event.description?.split('\n\n')[0]?.replace(/^Motivo:\s*/i, '') || event.title || 'Consulta',
+        diagnosis: event.diagnosis || event.description || '—',
+        vitals: {
+          weight: event.weight != null ? `${event.weight} kg` : (pet.weight !== '—' ? pet.weight : '—'),
+          temp: event.temperature != null ? `${event.temperature} °C` : '—',
+          pulse: vitals.pulse || '—',
+        },
+        treatment: treatmentLines.length ? treatmentLines : ['Sin tratamiento registrado'],
+        observations: event.notes || event.description || 'Sin observaciones',
+        evidence: event.attachments || [],
+        status: 'completed',
+      };
+    });
   }, [timelineData, pet.weight]);
 
   const vaccineHistory = useMemo(() => {
@@ -362,6 +401,77 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
     if (fromTimeline.length > 0) return fromTimeline;
     return vaccineHistoryFallback;
   }, [timelineData]);
+
+  const activeNutritionProduct = useMemo(() => {
+    if (!productHistory.length) return null;
+    if (selectedNutritionProductId) {
+      return productHistory.find((p) => p.id === selectedNutritionProductId) || productHistory[0];
+    }
+    return productHistory[0];
+  }, [productHistory, selectedNutritionProductId]);
+
+  const nutritionEstimate = useMemo(() => {
+    const weightValue = Number(String(pet.weight || '').replace(',', '.').replace(/[^\d.]/g, '')) || 0;
+    const ageYears = pet.birthDate ? Math.max(0, (Date.now() - new Date(pet.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 0;
+    const breedNormalized = String(pet.breed || '').toLowerCase();
+    const quantityKg = activeNutritionProduct ? parseKgFromQuantity(activeNutritionProduct.quantity) : 0;
+
+    const breedFactor =
+      breedNormalized.includes('golden') ? 1.2 :
+      breedNormalized.includes('labrador') ? 1.18 :
+      breedNormalized.includes('pastor') ? 1.16 :
+      breedNormalized.includes('bulldog') ? 1.08 : 1.1;
+
+    const ageFactor = ageYears < 1 ? 1.25 : ageYears > 8 ? 0.9 : 1.05;
+    const activityFactor = activityLevel === 'Bajo' ? 0.95 : activityLevel === 'Alto' ? 1.2 : 1.1;
+    const baseFactor = 10; // conversión aproximada a gramos/día
+
+    const gramsPerDay = Math.round(weightValue * baseFactor * breedFactor * ageFactor * activityFactor);
+    const purchaseDays = gramsPerDay > 0 && quantityKg > 0
+      ? Math.max(1, Math.round((quantityKg * 1000) / gramsPerDay))
+      : 0;
+
+    const lastPurchaseDate = activeNutritionProduct?.lastPurchase ? new Date(activeNutritionProduct.lastPurchase) : null;
+    const estimatedNextPurchase = (lastPurchaseDate && purchaseDays > 0)
+      ? new Date(lastPurchaseDate.getTime() + purchaseDays * 24 * 60 * 60 * 1000)
+      : null;
+    const daysRemaining = estimatedNextPurchase
+      ? Math.ceil((estimatedNextPurchase.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+      : null;
+
+    return {
+      weightValue,
+      ageLabel: ageYears > 0 ? `${Math.floor(ageYears)} año${Math.floor(ageYears) === 1 ? '' : 's'}` : 'N/D',
+      breedFactor,
+      ageFactor,
+      activityFactor,
+      gramsPerDay,
+      purchaseDays,
+      estimatedNextPurchase,
+      daysRemaining,
+    };
+  }, [pet.weight, pet.birthDate, pet.breed, activeNutritionProduct, activityLevel]);
+
+  useEffect(() => {
+    if (!activeNutritionProduct || nutritionEstimate.daysRemaining === null) return;
+    if (nutritionEstimate.daysRemaining < 0 || nutritionEstimate.daysRemaining > 5) return;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const storageKey = `nutrition-notified-${pet.id}-${activeNutritionProduct.id}-${todayKey}`;
+    if (typeof window !== 'undefined' && localStorage.getItem(storageKey)) return;
+
+    const message = `${pet.name}: reposición de ${activeNutritionProduct.name} en ${nutritionEstimate.daysRemaining} día(s).`;
+    toast.warning(message);
+
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const notify = () => new Notification('Recordatorio de Nutrición', { body: message });
+      if (Notification.permission === 'granted') notify();
+      else if (Notification.permission === 'default') Notification.requestPermission().then((p) => {
+        if (p === 'granted') notify();
+      });
+    }
+
+    if (typeof window !== 'undefined') localStorage.setItem(storageKey, '1');
+  }, [nutritionEstimate.daysRemaining, activeNutritionProduct, pet.id, pet.name]);
 
   const openModule = (tab: string, action: string) => {
     setPendingAction(tab, action, {
@@ -384,8 +494,11 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
   };
 
   const handleNewTreatment = () => {
-    openModule('medical', 'new_medical_attention_for_pet');
-    toast.success('Abriendo módulo clínico para nueva atención');
+    if (!pet.clientId) {
+      toast.error('No se encontró el tutor asociado a esta mascota');
+      return;
+    }
+    setShowAttentionDialog(true);
   };
 
   const handleDownloadHistory = () => {
@@ -559,7 +672,7 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
                               className="bg-transparent border-pink-600 text-pink-500 hover:bg-pink-600/10 hover:text-pink-400 h-8 text-xs font-bold uppercase tracking-wide px-4 rounded-md transition-colors"
                            >
                               <Heart className="h-3.5 w-3.5 mr-2 fill-current" />
-                              Thor
+                              {pet.name}
                            </Button>
                         </div>
                      </div>
@@ -576,7 +689,7 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
             <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1">
               <TabsTrigger value="medical">Clínica</TabsTrigger>
               <TabsTrigger value="grooming">Baños</TabsTrigger>
-              <TabsTrigger value="products">Productos</TabsTrigger>
+              <TabsTrigger value="products">Nutrición</TabsTrigger>
             </TabsList>
 
             <TabsContent value="medical" className="space-y-6">
@@ -634,6 +747,16 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
 
                 {medicalSubTab === 'timeline' && (
                   <div className="space-y-8">
+                    {clinicalHistory.length === 0 && (
+                      <Card className="p-8 text-center border-dashed">
+                        <Stethoscope className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                        <p className="text-muted-foreground text-sm mb-4">Sin atenciones clínicas registradas.</p>
+                        <Button size="sm" onClick={handleNewTreatment}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Registrar primera atención
+                        </Button>
+                      </Card>
+                    )}
                     {clinicalHistory.map((record) => (
                       <div key={record.id} className="relative pl-8 before:absolute before:left-3 before:top-8 before:bottom-[-32px] before:w-[2px] before:bg-slate-200 last:before:hidden">
                         {/* Timeline Icon */}
@@ -829,8 +952,102 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
 
             <TabsContent value="products" className="space-y-6">
 
+              <Card className="p-5 bg-[#0b122f] border border-slate-800 text-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Bell className="h-5 w-5 text-cyan-400" />
+                      Cálculo Automático de Consumo
+                    </h3>
+                    <p className="text-xs text-slate-400">Basado en peso, edad, raza, producto y nivel de actividad</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-400">Parámetros de cálculo</p>
+                    <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm flex justify-between">
+                      <span className="text-slate-300">Peso actual</span>
+                      <span className="font-semibold">{pet.weight}</span>
+                    </div>
+                    <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm flex justify-between">
+                      <span className="text-slate-300">Edad</span>
+                      <span className="font-semibold">{nutritionEstimate.ageLabel}</span>
+                    </div>
+                    <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm flex justify-between">
+                      <span className="text-slate-300">Raza</span>
+                      <span className="font-semibold">{pet.breed}</span>
+                    </div>
+                    <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300">Nivel de actividad</span>
+                        <Badge className="bg-green-900/40 text-green-300 border border-green-700">{activityLevel}</Badge>
+                      </div>
+                      <div className="flex gap-2">
+                        {(['Bajo', 'Moderado', 'Alto'] as const).map((level) => (
+                          <Button
+                            key={level}
+                            type="button"
+                            variant={activityLevel === level ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setActivityLevel(level)}
+                            className="h-7 text-xs"
+                          >
+                            {level}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm space-y-2">
+                      <span className="text-slate-300 block">Producto base</span>
+                      <Select
+                        value={String(selectedNutritionProductId || activeNutritionProduct?.id || '')}
+                        onValueChange={(v) => setSelectedNutritionProductId(parseInt(v))}
+                      >
+                        <SelectTrigger className="bg-slate-950 border-slate-700">
+                          <SelectValue placeholder="Selecciona producto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {productHistory.map((product) => (
+                            <SelectItem key={product.id} value={String(product.id)}>
+                              {product.name} ({product.quantity})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-400">Fórmula aplicada</p>
+                    <div className="rounded-md bg-cyan-950/40 border border-cyan-800 p-3 text-sm space-y-1">
+                      <p className="text-cyan-300 font-mono">Consumo = (Peso x 10 x Factor Raza x Factor Edad) x Actividad</p>
+                      <p className="text-slate-300 font-mono">
+                        ({nutritionEstimate.weightValue.toFixed(1)} x 10 x {nutritionEstimate.breedFactor.toFixed(2)} x {nutritionEstimate.ageFactor.toFixed(2)}) x {nutritionEstimate.activityFactor.toFixed(2)}
+                      </p>
+                      <p className="font-bold text-white">≈ {nutritionEstimate.gramsPerDay} gr/día</p>
+                    </div>
+                    <div className="rounded-md bg-emerald-950/30 border border-emerald-800 p-3 text-sm">
+                      <p className="font-semibold text-emerald-300">Próxima compra estimada</p>
+                      <p className="text-slate-200 mt-1">
+                        {nutritionEstimate.estimatedNextPurchase
+                          ? `${formatDate(nutritionEstimate.estimatedNextPurchase.toISOString().slice(0, 10))} (cada ${nutritionEstimate.purchaseDays} días)`
+                          : 'Sin datos suficientes para estimar'}
+                      </p>
+                      {nutritionEstimate.daysRemaining !== null && (
+                        <p className={`mt-1 text-xs ${nutritionEstimate.daysRemaining <= 5 ? 'text-amber-300' : 'text-slate-300'}`}>
+                          {nutritionEstimate.daysRemaining <= 5
+                            ? `⚠ Compra próxima en ${nutritionEstimate.daysRemaining} día(s). Se activó notificación.`
+                            : `Faltan ${nutritionEstimate.daysRemaining} día(s) para reposición.`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Productos Recurrentes</h3>
+                <h3 className="text-lg font-semibold">Productos Recurrentes de Nutrición</h3>
                 <Button size="sm" onClick={handleNewPurchase}>
                   <ShoppingCart className="h-4 w-4 mr-2" />
                   Comprar
@@ -981,6 +1198,20 @@ export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
           </Tabs>
         </div>
       </div>
+
+      <NewMedicalAttentionDialog
+        open={showAttentionDialog}
+        onOpenChange={setShowAttentionDialog}
+        petId={pet.id}
+        clientId={pet.clientId}
+        companyId={pet.companyId}
+        petName={`${pet.name} ${pet.lastName || ''}`.trim()}
+        defaultWeight={pet.rawWeight}
+        onSaved={() => {
+          reloadPetData().catch(() => {});
+          setMedicalSubTab('timeline');
+        }}
+      />
     </div>
   );
 }

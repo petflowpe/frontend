@@ -31,7 +31,6 @@ const Products = lazy(() => import('./components/Products').then(m => ({ default
 const SuppliersManagement = lazy(() => import('./components/SuppliersManagement').then(m => ({ default: m.SuppliersManagement })));
 const Inventory = lazy(() => import('./components/Inventory').then(m => ({ default: m.Inventory })));
 const Purchases = lazy(() => import('./components/Purchases').then(m => ({ default: m.Purchases })));
-const MedicalCare = lazy(() => import('./components/MedicalCare').then(m => ({ default: m.MedicalCare })));
 const VehicleManagement = lazy(() => import('./components/VehicleManagement').then(m => ({ default: m.VehicleManagement })));
 const PetsManagement = lazy(() => import('./components/PetsManagement').then(m => ({ default: m.PetsManagement })));
 const Routes = lazy(() => import('./components/Routes').then(m => ({ default: m.Routes })));
@@ -472,7 +471,8 @@ function AppContent() {
       case 'suppliers': return <SuppliersManagement />;
       case 'inventory': return <Inventory />;
       case 'purchases': return <Purchases />;
-      case 'medical': return <MedicalCare />;
+      case 'medical':
+        return <PetsManagement onNavigate={setActiveTab} currentUser={currentUser} />;
       case 'vehicles': return <VehicleManagement />;
       case 'routes': return <Routes onNavigate={setActiveTab} />;
       case 'invoicing': return <Invoicing currentUser={currentUser} />;

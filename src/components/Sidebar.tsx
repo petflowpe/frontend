@@ -110,7 +110,6 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
     // 🆕 CENTRO DE CONTROL
     { id: 'operations-center', label: 'Centro de Control', icon: Zap, color: 'text-blue-600', badge: 'BETA', section: 'operations' },
     
-    { id: 'medical', label: 'Cuidado Médico', icon: HeartPulse, color: 'text-teal-500', section: 'operations' },
     { id: 'vehicles', label: 'Vehículos', icon: Truck, color: 'text-lime-500', section: 'operations' },
     { id: 'routes', label: 'Planificador Rutas', icon: MapPin, color: 'text-red-500', section: 'operations' },
     { id: 'invoicing', label: 'Facturación', icon: Receipt, color: 'text-yellow-500', section: 'financial' },

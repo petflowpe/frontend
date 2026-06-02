@@ -112,7 +112,6 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   suppliers: { permissions: ['products.view', 'products.*'] },
   inventory: { permissions: ['inventory.view', 'inventory.*', 'products.view', 'products.*'] },
   purchases: { permissions: ['purchases.view', 'purchases.*'] },
-  medical: { permissions: ['medical.view', 'medical.*'] },
   vehicles: { roles: ['super_admin', 'company_admin', 'company_user'] },
   routes: { roles: ['super_admin', 'company_admin', 'company_user'] },
   'operations-center': { roles: ['super_admin', 'company_admin'] },
