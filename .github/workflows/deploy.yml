@@ -1,0 +1,91 @@
+name: Deploy Frontend VPS (PRO)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
+
+    steps:
+      - name: Validar secrets requeridos
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          missing=0
+          for name in SSH_HOST SSH_USER DEPLOY_PATH; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Falta el secret $name en GitHub (Settings > Secrets > Actions)"
+              missing=1
+            fi
+          done
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::Falta el secret SSH_PRIVATE_KEY"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Configurar SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ! ssh-keyscan -H -T 20 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "::error::No se pudo resolver el host SSH ($SSH_HOST). Verifica SSH_HOST."
+            exit 1
+          fi
+
+      - name: Deploy frontend en VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=no \
+            "$SSH_USER@$SSH_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" << 'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          cd "$DEPLOY_PATH"
+
+          if [ -s "$HOME/.nvm/nvm.sh" ]; then
+            # shellcheck disable=SC1090
+            . "$HOME/.nvm/nvm.sh"
+          fi
+
+          echo "Actualizando codigo frontend..."
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          git clean -fd -e .env -e .env.local -e build -e dist -e node_modules
+
+          echo "Instalando dependencias Node..."
+          if command -v npm >/dev/null 2>&1; then
+            npm ci
+          else
+            echo "Node/npm no encontrado en el servidor."
+            exit 1
+          fi
+
+          echo "Compilando SPA..."
+          npm run build
+
+          echo "Publicando build (Vite -> build/, Nginx suele usar dist/)..."
+          rm -rf dist
+          cp -R build dist
+
+          echo "Deploy frontend completado"
+          REMOTE_SCRIPT
