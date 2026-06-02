@@ -466,7 +466,7 @@ function AppContent() {
       case 'calendar': return <Calendar currentUser={currentUser} />;
       case 'appointments': return <Appointments />;
       case 'clients': return <Clients />;
-      case 'pets': return <PetsManagement onNavigate={setActiveTab} />;
+      case 'pets': return <PetsManagement onNavigate={setActiveTab} currentUser={currentUser} />;
       case 'services': return <Services />;
       case 'products': return <Products />;
       case 'suppliers': return <SuppliersManagement />;

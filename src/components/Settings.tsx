@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save, User, Building, Bell, Shield, Palette, Globe, Database, Car, DollarSign, BookOpen, MapPin, FileText, Plus, Trash2, MessageSquare, Calendar } from 'lucide-react';
+import { Settings as SettingsIcon, Save, User, Building, Bell, Shield, Palette, Globe, Database, Car, DollarSign, MapPin, FileText, Plus, Trash2, MessageSquare, Calendar, Cog } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -8,10 +8,10 @@ import { Textarea } from './ui/textarea';
 import { Switch } from './ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
-import { AccountingConfig } from './AccountingConfig';
 import { ChatAutomationConfig } from './ChatAutomationConfig';
 import { GoogleMapsConfig } from './admin/GoogleMapsConfig';
 import { CalendarSettings } from './settings/CalendarSettings';
+import { OperationsSettings } from './settings/OperationsSettings';
 import { toast } from 'sonner';
 
 interface SettingsProps {
@@ -162,9 +162,11 @@ export function Settings({ currentUser }: SettingsProps) {
       <Tabs defaultValue="business" className="w-full">
         <TabsList className="w-full flex flex-wrap h-auto p-1 gap-1">
           <TabsTrigger value="business" className="flex-1">Negocio</TabsTrigger>
-          <TabsTrigger value="operational" className="flex-1">Operaciones</TabsTrigger>
+          <TabsTrigger value="operations" className="flex-1 flex items-center justify-center gap-2">
+            <Cog className="w-4 h-4" />
+            Operaciones
+          </TabsTrigger>
           <TabsTrigger value="pricing" className="flex-1">Precios</TabsTrigger>
-          <TabsTrigger value="accounting" className="flex-1">Contabilidad</TabsTrigger>
           <TabsTrigger value="system" className="flex-1">Sistema</TabsTrigger>
           <TabsTrigger value="security" className="flex-1">Seguridad</TabsTrigger>
           <TabsTrigger value="templates" className="flex-1">Plantillas</TabsTrigger>
@@ -182,6 +184,10 @@ export function Settings({ currentUser }: SettingsProps) {
 
         <TabsContent value="calendar" className="space-y-6">
           <CalendarSettings companyId={currentUser?.companyId ?? 1} />
+        </TabsContent>
+
+        <TabsContent value="operations" className="space-y-6">
+          <OperationsSettings companyId={currentUser?.companyId ?? null} />
         </TabsContent>
 
         <TabsContent value="automation" className="space-y-6">
@@ -326,23 +332,14 @@ export function Settings({ currentUser }: SettingsProps) {
                 />
               </div>
             </div>
-            
-            <div className="flex justify-end mt-4">
-              <Button onClick={() => handleSave('business')}>
-                <Save className="h-4 w-4 mr-2" />
-                Guardar
-              </Button>
-            </div>
-          </Card>
-        </TabsContent>
 
-        <TabsContent value="operational" className="space-y-6">
-          <Card className="p-6">
+            <Separator className="my-6" />
+
             <div className="flex items-center space-x-2 mb-4">
               <Car className="h-5 w-5" />
               <h3 className="text-lg">Configuración Operacional</h3>
             </div>
-            
+
             <div className="space-y-6">
               <div>
                 <h4 className="font-medium mb-3">Horarios de Trabajo</h4>
@@ -372,7 +369,7 @@ export function Settings({ currentUser }: SettingsProps) {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <Label>Días laborables</Label>
                   {Object.entries(operationalSettings.workingDays).map(([day, enabled]) => {
@@ -385,7 +382,7 @@ export function Settings({ currentUser }: SettingsProps) {
                       saturday: 'Sábado',
                       sunday: 'Domingo'
                     };
-                    
+
                     return (
                       <div key={day} className="flex items-center justify-between">
                         <Label htmlFor={day}>{dayNames[day]}</Label>
@@ -402,9 +399,9 @@ export function Settings({ currentUser }: SettingsProps) {
                   })}
                 </div>
               </div>
-              
+
               <Separator />
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="service-radius">Radio de servicio (km)</Label>
@@ -412,27 +409,27 @@ export function Settings({ currentUser }: SettingsProps) {
                     id="service-radius"
                     type="number"
                     value={operationalSettings.serviceRadius}
-                    onChange={(e) => setOperationalSettings({ 
-                      ...operationalSettings, 
-                      serviceRadius: Number(e.target.value) 
+                    onChange={(e) => setOperationalSettings({
+                      ...operationalSettings,
+                      serviceRadius: Number(e.target.value)
                     })}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="reminder-time">Recordatorio de cita (horas antes)</Label>
                   <Input
                     id="reminder-time"
                     type="number"
                     value={operationalSettings.reminderTime}
-                    onChange={(e) => setOperationalSettings({ 
-                      ...operationalSettings, 
-                      reminderTime: Number(e.target.value) 
+                    onChange={(e) => setOperationalSettings({
+                      ...operationalSettings,
+                      reminderTime: Number(e.target.value)
                     })}
                   />
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -442,13 +439,13 @@ export function Settings({ currentUser }: SettingsProps) {
                   <Switch
                     id="emergency-services"
                     checked={operationalSettings.emergencyServices}
-                    onCheckedChange={(checked) => setOperationalSettings({ 
-                      ...operationalSettings, 
-                      emergencyServices: checked 
+                    onCheckedChange={(checked) => setOperationalSettings({
+                      ...operationalSettings,
+                      emergencyServices: checked
                     })}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <Label htmlFor="holiday-work">Trabajo en días festivos</Label>
@@ -457,13 +454,13 @@ export function Settings({ currentUser }: SettingsProps) {
                   <Switch
                     id="holiday-work"
                     checked={operationalSettings.holidayWork}
-                    onCheckedChange={(checked) => setOperationalSettings({ 
-                      ...operationalSettings, 
-                      holidayWork: checked 
+                    onCheckedChange={(checked) => setOperationalSettings({
+                      ...operationalSettings,
+                      holidayWork: checked
                     })}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <Label htmlFor="auto-confirmation">Confirmación automática</Label>
@@ -472,9 +469,9 @@ export function Settings({ currentUser }: SettingsProps) {
                   <Switch
                     id="auto-confirmation"
                     checked={operationalSettings.autoConfirmation}
-                    onCheckedChange={(checked) => setOperationalSettings({ 
-                      ...operationalSettings, 
-                      autoConfirmation: checked 
+                    onCheckedChange={(checked) => setOperationalSettings({
+                      ...operationalSettings,
+                      autoConfirmation: checked
                     })}
                   />
                 </div>
@@ -482,7 +479,7 @@ export function Settings({ currentUser }: SettingsProps) {
             </div>
             
             <div className="flex justify-end mt-4">
-              <Button onClick={() => handleSave('operational')}>
+              <Button onClick={() => handleSave('business')}>
                 <Save className="h-4 w-4 mr-2" />
                 Guardar
               </Button>
@@ -649,26 +646,6 @@ export function Settings({ currentUser }: SettingsProps) {
             
             <div className="flex justify-end mt-4">
               <Button onClick={() => handleSave('pricing')}>
-                <Save className="h-4 w-4 mr-2" />
-                Guardar
-              </Button>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="accounting" className="space-y-6">
-          <Card className="p-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <BookOpen className="h-5 w-5" />
-              <h3 className="text-lg">Configuración Contable</h3>
-            </div>
-            
-            <div className="space-y-6">
-              <AccountingConfig />
-            </div>
-            
-            <div className="flex justify-end mt-4">
-              <Button onClick={() => handleSave('accounting')}>
                 <Save className="h-4 w-4 mr-2" />
                 Guardar
               </Button>

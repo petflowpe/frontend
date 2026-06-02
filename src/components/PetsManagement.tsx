@@ -33,7 +33,6 @@ import {
   Calendar,
   Heart,
   Users,
-  Settings,
   List,
   ChevronLeft,
   ChevronRight,
@@ -52,7 +51,10 @@ import {
   Loader2,
   Columns,
   Check,
-  ChevronsUpDown
+  ArrowUp,
+  ArrowDown,
+  SlidersHorizontal,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Tooltip } from './ui/tooltip';
 import { Skeleton } from './ui/skeleton';
@@ -63,6 +65,8 @@ import { usePagination } from '../hooks/usePagination';
 import { apiClient } from '../utils/api/client';
 import { setPendingAction } from '../utils/navigationBridge';
 import { PET_DOG_BREEDS, PET_CAT_BREEDS, PET_TEMPERAMENTS, PET_BEHAVIORS } from '../config/defaults';
+import { PetProfile } from './PetProfile';
+import { getRoleKey, type CurrentUserLike } from '../utils/permissions';
 
 const DEFAULT_SPECIES = ['Perro', 'Gato', 'Otro'];
 const MIN_PET_PHOTOS = 0;
@@ -213,13 +217,6 @@ interface PetTimelineEvent {
   title: string;
   description?: string | null;
   occurred_at?: string | null;
-}
-
-interface DuplicateSummary {
-  owners: number;
-  pets: number;
-  species: number;
-  breeds: number;
 }
 
 /** Formato dd/mm/yyyy para exportación */
@@ -408,7 +405,17 @@ function buildInitialPetFormData(pet: PetRecord | null | undefined): PetFormData
   };
 }
 
-export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+export function PetsManagement({
+  onNavigate,
+  currentUser,
+}: {
+  onNavigate?: (tab: string) => void;
+  currentUser?: CurrentUserLike | null;
+}) {
+  const canDeletePets = getRoleKey(currentUser).toLowerCase() === 'super_admin';
+  const userCompanyId = (currentUser as { companyId?: number; company_id?: number } | null | undefined)?.companyId
+    ?? (currentUser as { companyId?: number; company_id?: number } | null | undefined)?.company_id
+    ?? null;
   const savedPrefs = useRef(loadSavedPrefs());
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(() => (savedPrefs.current?.statusFilter as string) ?? 'all');
@@ -440,17 +447,11 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
   const pagination = usePagination<PetRecord>(pageSize);
   const { data: pets, meta, setResult, setData, setLoading, loading, page, lastPage, total, perPage, setMeta, buildParams, goToPage, nextPage, prevPage } = pagination;
 
-  const [showBreedConfig, setShowBreedConfig] = useState(false);
-  const [showTemperamentConfig, setShowTemperamentConfig] = useState(false);
-  const [showBehaviorConfig, setShowBehaviorConfig] = useState(false);
-  const [showSpeciesConfig, setShowSpeciesConfig] = useState(false);
   const [showPetTimeline, setShowPetTimeline] = useState(false);
   const [timelinePet, setTimelinePet] = useState<PetRecord | null>(null);
   const [petTimeline, setPetTimeline] = useState<PetTimelineEvent[]>([]);
   const [petAudit, setPetAudit] = useState<Array<{ id: number; action: string; description?: string; created_at?: string }>>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
-  const [remindersCount, setRemindersCount] = useState(0);
-  const [duplicateSummary, setDuplicateSummary] = useState<DuplicateSummary | null>(null);
   const [speciesList, setSpeciesList] = useState<string[]>([]);
   const [dogBreeds, setDogBreeds] = useState([...PET_DOG_BREEDS]);
   const [catBreeds, setCatBreeds] = useState([...PET_CAT_BREEDS]);
@@ -517,24 +518,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
     }
   };
 
-  const saveConfigurations = async (type: string, items: string[], options?: { silent?: boolean }) => {
-    try {
-      await apiClient.post('/pet-configurations', {
-        type,
-        items,
-        company_id: null,
-      });
-      if (!options?.silent) {
-        toast.success('Configuraciones guardadas exitosamente');
-        await loadConfigurations();
-      }
-    } catch (error: any) {
-      console.error('Error saving configurations:', error);
-      const msg = error?.message || error?.errors ? JSON.stringify(error.errors || error.message) : 'Error desconocido';
-      toast.error('Error al guardar: ' + msg);
-    }
-  };
-
   const loadPets = useCallback(async (pageNum?: number) => {
     setSearchDebouncing(false);
     setLoading(true);
@@ -549,6 +532,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
       if (breedFilter && breedFilter !== 'all') params.breed = breedFilter;
       if (genderFilter && genderFilter !== 'all') params.gender = genderFilter;
       if (birthdaySoonOnly) params.birthday_soon = '1';
+      if (userCompanyId != null) params.company_id = String(userCompanyId);
       params.sort_by = sortBy;
       params.sort_order = sortOrder;
 
@@ -562,27 +546,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
     } finally {
       setLoading(false);
     }
-  }, [page, perPage, searchTerm, statusFilter, speciesFilter, breedFilter, genderFilter, birthdaySoonOnly, sortBy, sortOrder, buildParams]);
-
-  const loadRemindersAndDuplicates = useCallback(async () => {
-    try {
-      const [remindersRes, duplicatesRes] = await Promise.all([
-        apiClient.get<{ data?: unknown[]; summary?: { total?: number } }>('/pets/reminders', { days: '30' }),
-        apiClient.get<{ summary?: DuplicateSummary }>('/pets/duplicates'),
-      ]);
-      const remindersPayload = remindersRes as { data?: unknown[]; summary?: { total?: number } };
-      const duplicatesPayload = duplicatesRes as { summary?: DuplicateSummary };
-      const nextReminderCount = Number(remindersPayload?.summary?.total ?? remindersPayload?.data?.length ?? 0);
-      const nextDuplicateSummary = duplicatesPayload?.summary ?? null;
-      setRemindersCount(nextReminderCount);
-      setDuplicateSummary(nextDuplicateSummary);
-      return { reminders: nextReminderCount, duplicates: nextDuplicateSummary };
-    } catch {
-      setRemindersCount(0);
-      setDuplicateSummary(null);
-      return { reminders: 0, duplicates: null };
-    }
-  }, []);
+  }, [page, perPage, searchTerm, statusFilter, speciesFilter, breedFilter, genderFilter, birthdaySoonOnly, sortBy, sortOrder, buildParams, userCompanyId]);
 
   const openPetTimeline = useCallback(async (pet: PetRecord) => {
     setTimelinePet(pet);
@@ -614,10 +578,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
     const timer = setTimeout(() => loadPets(), searchTerm ? 500 : 0);
     return () => clearTimeout(timer);
   }, [page, statusFilter, searchTerm, speciesFilter, breedFilter, genderFilter, birthdaySoonOnly, sortBy, sortOrder, loadPets]);
-
-  useEffect(() => {
-    loadRemindersAndDuplicates();
-  }, [loadRemindersAndDuplicates]);
 
   // Persistir preferencias en localStorage
   useEffect(() => {
@@ -780,11 +740,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
     setSelectedClient(null);
   }, []);
 
-  const openNewPetModal = useCallback(() => {
-    resetPetEditorState();
-    setShowNewPet(true);
-  }, [resetPetEditorState]);
-
   const openEditPetModal = useCallback((pet: PetRecord) => {
     setSelectedPet(pet);
     setEditingPet(pet);
@@ -833,9 +788,10 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
     onNavigate?.('clients');
   }, [onNavigate]);
 
-  const [showProfilePet, setShowProfilePet] = useState<PetRecord | null>(null);
+  const [profilePetId, setProfilePetId] = useState<number | null>(null);
   const openPetProfile = useCallback((pet: PetRecord) => {
-    setShowProfilePet(pet);
+    const id = Number(pet.id);
+    if (Number.isFinite(id) && id > 0) setProfilePetId(id);
   }, []);
 
   const confirmDeletePet = useCallback(async () => {
@@ -976,6 +932,11 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
   }, [exportPendingAction, runExportExcel, runExportPDF]);
 
   const breedsForFilter = speciesFilter && speciesFilter !== 'all' ? (breedsBySpecies[speciesFilter] || []) : [];
+  const speciesOptions = speciesList.length ? speciesList : DEFAULT_SPECIES;
+
+  if (profilePetId) {
+    return <PetProfile petId={profilePetId} onClose={() => setProfilePetId(null)} />;
+  }
 
   return (
     <div className="p-3 sm:p-4 md:p-5 lg:p-6 space-y-0 min-w-0">
@@ -987,7 +948,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
           </div>
           <div className="min-w-0 pt-0.5">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-              <span className="whitespace-nowrap">Gestión de</span> Mascotas
+              Gestión de Mascotas
             </h1>
             <p className="mt-1.5 text-sm sm:text-base text-gray-500 dark:text-gray-400 max-w-2xl">
               Administra todas las mascotas registradas en el sistema
@@ -996,280 +957,261 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
         </div>
       </header>
 
-      {/* 2. Barra de acciones: debajo del encabezado, agrupada visualmente */}
-      <div className="py-4 sm:py-5 md:py-6 flex flex-wrap gap-2 sm:gap-3 items-center">
-        {/* Configuración de Especies */}
-        <Dialog open={showSpeciesConfig} onOpenChange={setShowSpeciesConfig}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 sm:h-10 px-3 sm:px-4 text-xs sm:text-sm touch-manipulation min-w-[44px] border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-              <PawPrint className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-1.5 shrink-0" />
-              <span className="md:inline">Config. Especies</span>
-              <span className="md:hidden">Especies</span>
-            </Button>
-          </DialogTrigger>
-            <ConfigDialog
-              title="Configurar Especies"
-              items={speciesList.length ? speciesList : DEFAULT_SPECIES}
-              onSave={async (items: string[]) => {
-                setSpeciesList(items);
-                await saveConfigurations('species', items);
-              }}
-              onClose={() => setShowSpeciesConfig(false)}
-            />
-          </Dialog>
-
-        {/* Configuración de Razas */}
-        <Dialog open={showBreedConfig} onOpenChange={setShowBreedConfig}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 sm:h-10 px-3 sm:px-4 text-xs sm:text-sm touch-manipulation min-w-[44px] border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-              <Dog className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-1.5 shrink-0" />
-              <span className="md:inline">Config. Razas</span>
-              <span className="md:hidden">Razas</span>
-            </Button>
-          </DialogTrigger>
-            <BreedConfigDialog
-              speciesList={speciesList}
-              breedsBySpecies={breedsBySpecies}
-              onSave={async (species: string, items: string[]) => {
-                const type = species === 'Perro' ? 'dog_breed' : species === 'Gato' ? 'cat_breed' : `breed_${species}`;
-                await saveConfigurations(type, items, { silent: true });
-                setBreedsBySpecies((prev) => ({ ...prev, [species]: items }));
-                if (species === 'Perro') setDogBreeds(items);
-                if (species === 'Gato') setCatBreeds(items);
-              }}
-              onAllSaved={() => loadConfigurations()}
-              onClose={() => setShowBreedConfig(false)}
-            />
-          </Dialog>
-
-        {/* Configuración de Carácter */}
-        <Dialog open={showTemperamentConfig} onOpenChange={setShowTemperamentConfig}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 sm:h-10 px-3 sm:px-4 text-xs sm:text-sm touch-manipulation min-w-[44px] border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-              <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-1.5 shrink-0" />
-              <span className="md:inline">Config. Carácter</span>
-              <span className="md:hidden">Carácter</span>
-            </Button>
-          </DialogTrigger>
-            <ConfigDialog
-              title="Configurar Carácter"
-              items={temperaments}
-              onSave={async (items: string[]) => {
-                setTemperaments(items);
-                await saveConfigurations('temperament', items);
-              }}
-              onClose={() => setShowTemperamentConfig(false)}
-            />
-          </Dialog>
-
-        {/* Configuración de Comportamiento */}
-        <Dialog open={showBehaviorConfig} onOpenChange={setShowBehaviorConfig}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 sm:h-10 px-3 sm:px-4 text-xs sm:text-sm touch-manipulation min-w-[44px] border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-              <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-1.5 shrink-0" />
-              <span className="md:inline">Config. Comportamiento</span>
-              <span className="md:hidden">Comportamiento</span>
-            </Button>
-          </DialogTrigger>
-            <ConfigDialog
-              title="Configurar Comportamiento"
-              items={behaviors}
-              onSave={async (items: string[]) => {
-                setBehaviors(items);
-                await saveConfigurations('behavior', items);
-              }}
-              onClose={() => setShowBehaviorConfig(false)}
-            />
-          </Dialog>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 sm:h-10 text-xs sm:text-sm min-h-[44px]"
-          onClick={async () => {
-            const result = await loadRemindersAndDuplicates();
-            if (!result?.duplicates) {
-              toast.info('No se detectaron duplicados');
-              return;
-            }
-            toast.info(`Duplicados: amos ${result.duplicates.owners}, mascotas ${result.duplicates.pets}, especies ${result.duplicates.species}, razas ${result.duplicates.breeds}`);
-          }}
-        >
-          Auditoría duplicados
-        </Button>
-        <Badge variant="outline" className="h-9 sm:h-10 inline-flex items-center px-3">
-          Recordatorios 30d: {remindersCount}
-        </Badge>
-        </div>
-
-      {/* Filtros y vista en una sola línea */}
+      {/* Filtros compactos */}
       <Card className="p-3 sm:p-4 mt-4 mb-4 sm:mt-0">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="flex-1 min-w-0 w-full sm:min-w-[180px] md:min-w-[220px]"> 
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar por nombre, raza o cliente..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    if (e.target.value.trim()) setSearchDebouncing(true);
-                  }}
-                  className="pl-9 pr-9"
-                  aria-label="Buscar mascotas por nombre, raza o cliente"
-                />
-                {searchDebouncing && (
-                  <span className="absolute right-3 top-2.5 flex items-center gap-1 text-xs text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Buscando…
-                  </span>
-                )}
-              </div>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar por nombre, raza o cliente..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (e.target.value.trim()) setSearchDebouncing(true);
+                }}
+                className="pl-9 pr-9 h-9"
+                aria-label="Buscar mascotas por nombre, raza o cliente"
+              />
+              {searchDebouncing && (
+                <span className="absolute right-3 top-2.5 flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Buscando…
+                </span>
+              )}
             </div>
-            <div className="w-full sm:w-[220px] md:w-[180px]">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full h-10">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="active">Activas</SelectItem>
-                <SelectItem value="deceased">Fallecidas</SelectItem>
-              </SelectContent>
-            </Select>
-            </div>
-            <div className="w-full sm:w-[220px] md:w-[160px]">
-            <Select value={speciesFilter} onValueChange={(v) => { setSpeciesFilter(v); setBreedFilter('all'); }}>
-              <SelectTrigger className="w-full h-10">
-                <SelectValue placeholder="Especie" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas especies</SelectItem>
-                {(speciesList.length ? speciesList : DEFAULT_SPECIES).map((s: string) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            </div>
-            <div className="w-full sm:w-[220px] md:w-[170px]">
-            <Select value={breedFilter} onValueChange={setBreedFilter}>
-              <SelectTrigger className="w-full h-10">
-                <SelectValue placeholder="Raza" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas razas</SelectItem>
-                {breedsForFilter.map((r: string) => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            </div>
-            <div className="w-full sm:w-[220px] md:w-[150px]">
-            <Select value={genderFilter} onValueChange={setGenderFilter}>
-              <SelectTrigger className="w-full h-10">
-                <SelectValue placeholder="Sexo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="Macho">Macho</SelectItem>
-                <SelectItem value="Hembra">Hembra</SelectItem>
-              </SelectContent>
-            </Select>
-            </div>
-            <Tooltip content="Mostrar solo mascotas con cumpleaños en los próximos 30 días">
-              <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
-                <input type="checkbox" checked={birthdaySoonOnly} onChange={(e) => setBirthdaySoonOnly(e.target.checked)} className="rounded" aria-label="Filtrar cumpleaños próximos" />
-                <span className="text-sm">Cumple próximos</span>
-              </label>
-            </Tooltip>
-            <Tooltip content="Campo por el que se ordena la lista">
-              <div className="w-full sm:w-[220px] md:w-auto">
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-full md:w-[160px] h-10" aria-label="Ordenar por">
-                    <SelectValue placeholder="Ordenar por" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name">Nombre</SelectItem>
-                    <SelectItem value="age">Edad</SelectItem>
-                    <SelectItem value="birth_date">F. nacimiento</SelectItem>
-                    <SelectItem value="species">Especie</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </Tooltip>
-            <Tooltip content={sortOrder === 'asc' ? 'Ascendente (clic para descendente)' : 'Descendente (clic para ascendente)'}>
-              <Button variant="outline" size="sm" onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))} className="w-9 h-9 p-0" aria-label={sortOrder === 'asc' ? 'Orden ascendente, clic para descendente' : 'Orden descendente, clic para ascendente'}>
-                {sortOrder === 'asc' ? '↑' : '↓'}
-              </Button>
-            </Tooltip>
-            <div className="flex items-center gap-2 sm:border-l sm:border-gray-200 dark:border-gray-700 sm:pl-3">
-              <Tooltip content="Elige si Excel/PDF incluyen solo la página visible o todas las mascotas (respetando filtros)">
-                <div className="inline-block">
-                  <Select value={exportScope} onValueChange={(v: 'page' | 'all') => setExportScope(v)}>
-                    <SelectTrigger className="w-[140px]" aria-label="Ámbito de exportación">
-                      <SelectValue>
-                        {exportScope === 'page' ? `Página actual (${pets.length})` : `Todas (${total})`}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="page">Página actual ({pets.length})</SelectItem>
-                      <SelectItem value="all">Todas ({total})</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </Tooltip>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1" aria-label="Seleccionar columnas para exportar">
-                    <Columns className="h-4 w-4" />
-                    <span className="hidden sm:inline">Columnas</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Orden: {sortBy === 'name' ? 'Nombre' : sortBy === 'age' ? 'Edad' : sortBy === 'birth_date' ? 'F. nac.' : 'Especie'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" align="end">
+                <div className="space-y-1">
+                  {[
+                    { value: 'name', label: 'Nombre' },
+                    { value: 'age', label: 'Edad' },
+                    { value: 'birth_date', label: 'F. nacimiento' },
+                    { value: 'species', label: 'Especie' },
+                  ].map((opt) => (
+                    <Button
+                      key={opt.value}
+                      type="button"
+                      variant={sortBy === opt.value ? 'default' : 'ghost'}
+                      size="sm"
+                      className="w-full justify-start h-8"
+                      onClick={() => setSortBy(opt.value)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start h-8 gap-2 mt-1"
+                    onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                  >
+                    {sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                    {sortOrder === 'asc' ? 'Ascendente' : 'Descendente'}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-56" align="end">
-                  <p className="font-medium text-sm mb-2">Columnas en Excel/PDF</p>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {EXPORT_COLUMN_OPTIONS.map((opt) => (
-                      <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
-                        <Checkbox
-                          checked={exportColumns.includes(opt.key)}
-                          onCheckedChange={(checked) => {
-                            if (checked) setExportColumns((c) => (c.includes(opt.key) ? c : [...c, opt.key]));
-                            else setExportColumns((c) => c.filter((k) => k !== opt.key));
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground mr-1 shrink-0">Estado:</span>
+            {[
+              { value: 'all', label: 'Todas' },
+              { value: 'active', label: 'Activas' },
+              { value: 'deceased', label: 'Fallecidas' },
+            ].map((opt) => (
+              <Button
+                key={opt.value}
+                type="button"
+                variant={statusFilter === opt.value ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 px-2.5 text-xs"
+                onClick={() => setStatusFilter(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+
+            <span className="text-xs text-muted-foreground mx-1 shrink-0 hidden sm:inline">|</span>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant={speciesFilter !== 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 px-2.5 text-xs gap-1"
+                >
+                  {speciesFilter === 'all' ? 'Especie' : speciesFilter}
+                  <ChevronsUpDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-52 p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar especie…" />
+                  <CommandList>
+                    <CommandEmpty>Sin resultados</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="all-species"
+                        onSelect={() => {
+                          setSpeciesFilter('all');
+                          setBreedFilter('all');
+                        }}
+                      >
+                        Todas especies
+                      </CommandItem>
+                      {speciesOptions.map((s) => (
+                        <CommandItem
+                          key={s}
+                          value={s}
+                          onSelect={() => {
+                            setSpeciesFilter(s);
+                            setBreedFilter('all');
                           }}
-                        />
-                        <span className="text-sm">{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <Tooltip content={exportScope === 'all' ? 'Descargar todas (según filtros) en Excel (Ctrl+E)' : 'Descargar página actual en Excel (.xlsx) (Ctrl+E)'}>
+                        >
+                          {s}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button
-                  variant="outline"
+                  type="button"
+                  variant={breedFilter !== 'all' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={handleExportExcel}
-                  disabled={exportingExcel || exportingPdf}
-                  className="gap-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-800 dark:hover:bg-emerald-900/20"
-                  aria-label="Exportar a Excel"
+                  className="h-8 px-2.5 text-xs gap-1"
+                  disabled={speciesFilter === 'all'}
                 >
-                  {exportingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                  <span className="hidden sm:inline">{exportingExcel ? 'Exportando…' : 'Excel'}</span>
+                  {breedFilter === 'all' ? 'Raza' : breedFilter}
+                  <ChevronsUpDown className="h-3 w-3 opacity-60" />
                 </Button>
-              </Tooltip>
-              <Tooltip content={exportScope === 'all' ? 'Descargar todas (según filtros) en PDF (Ctrl+Shift+P)' : 'Abrir vista de impresión para guardar como PDF (Ctrl+Shift+P)'}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportPDF}
-                  disabled={exportingExcel || exportingPdf}
-                  className="gap-1.5 text-rose-700 border-rose-200 hover:bg-rose-50 dark:text-rose-400 dark:border-rose-800 dark:hover:bg-rose-900/20"
-                  aria-label="Exportar a PDF"
-                >
-                  {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                  <span className="hidden sm:inline">{exportingPdf ? 'Exportando…' : 'PDF'}</span>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar raza…" />
+                  <CommandList>
+                    <CommandEmpty>Sin resultados</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem value="all-breeds" onSelect={() => setBreedFilter('all')}>
+                        Todas razas
+                      </CommandItem>
+                      {breedsForFilter.map((r) => (
+                        <CommandItem key={r} value={r} onSelect={() => setBreedFilter(r)}>
+                          {r}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            <span className="text-xs text-muted-foreground mx-1 shrink-0 hidden sm:inline">|</span>
+
+            <span className="text-xs text-muted-foreground mr-1 shrink-0">Sexo:</span>
+            {[
+              { value: 'all', label: 'Todos' },
+              { value: 'Macho', label: 'Macho' },
+              { value: 'Hembra', label: 'Hembra' },
+            ].map((opt) => (
+              <Button
+                key={opt.value}
+                type="button"
+                variant={genderFilter === opt.value ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 px-2.5 text-xs"
+                onClick={() => setGenderFilter(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+
+            <Button
+              type="button"
+              variant={birthdaySoonOnly ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 px-2.5 text-xs gap-1"
+              onClick={() => setBirthdaySoonOnly((v) => !v)}
+            >
+              <Cake className="h-3.5 w-3.5" />
+              Cumple próximos
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/60">
+            <Select value={exportScope} onValueChange={(v: 'page' | 'all') => setExportScope(v)}>
+              <SelectTrigger className="w-[140px] h-8 text-xs" aria-label="Ámbito de exportación">
+                <SelectValue>
+                  {exportScope === 'page' ? `Página (${pets.length})` : `Todas (${total})`}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="page">Página actual ({pets.length})</SelectItem>
+                <SelectItem value="all">Todas ({total})</SelectItem>
+              </SelectContent>
+            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1" aria-label="Seleccionar columnas para exportar">
+                  <Columns className="h-4 w-4" />
+                  Columnas
                 </Button>
-              </Tooltip>
-            </div>
+              </PopoverTrigger>
+              <PopoverContent className="w-56" align="start">
+                <p className="font-medium text-sm mb-2">Columnas en Excel/PDF</p>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {EXPORT_COLUMN_OPTIONS.map((opt) => (
+                    <label key={opt.key} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={exportColumns.includes(opt.key)}
+                        onCheckedChange={(checked) => {
+                          if (checked) setExportColumns((c) => (c.includes(opt.key) ? c : [...c, opt.key]));
+                          else setExportColumns((c) => c.filter((k) => k !== opt.key));
+                        }}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={exportingExcel || exportingPdf}
+              className="h-8 gap-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-800 dark:hover:bg-emerald-900/20"
+              aria-label="Exportar a Excel"
+            >
+              {exportingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+              Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPDF}
+              disabled={exportingExcel || exportingPdf}
+              className="h-8 gap-1.5 text-rose-700 border-rose-200 hover:bg-rose-50 dark:text-rose-400 dark:border-rose-800 dark:hover:bg-rose-900/20"
+              aria-label="Exportar a PDF"
+            >
+              {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              PDF
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -1426,7 +1368,12 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                               {pet.species === 'Gato' ? <Cat className="h-5 w-5" /> : <Dog className="h-5 w-5" />}
                             </div>
                           )}
-                          <button type="button" onClick={() => openPetProfile(pet)} className="font-medium text-left hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded">
+                          <button
+                            type="button"
+                            onClick={() => openPetProfile(pet)}
+                            className="font-medium text-left text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded"
+                            title="Ver perfil de la mascota"
+                          >
                             {getPetDisplayName(pet)}
                           </button>
                         </div>
@@ -1481,25 +1428,49 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
                       </td>
                       <td className="p-3">{pet.fallecido ? <Badge variant="destructive">Fallecido</Badge> : <Badge variant="secondary">Activo</Badge>}</td>
                       <td className="p-3 text-right">
-                        {onNavigate && (
-                          <>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 mr-1" onClick={() => navigateToNewAppointmentWithPet(pet)} title="Crear cita">
-                              <CalendarClock className="h-4 w-4" />
+                        <div className="inline-flex items-center justify-end gap-0.5">
+                          <Tooltip content="Ver perfil">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openPetProfile(pet)}>
+                              <PawPrint className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 mr-1" onClick={() => navigateToPetContext('medical', pet)} title="Historial">
-                              <FileText className="h-4 w-4" />
+                          </Tooltip>
+                          {onNavigate && (
+                            <>
+                              <Tooltip content="Crear cita">
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => navigateToNewAppointmentWithPet(pet)}>
+                                  <CalendarClock className="h-4 w-4" />
+                                </Button>
+                              </Tooltip>
+                              <Tooltip content="Historial clínico">
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => navigateToPetContext('medical', pet)}>
+                                  <FileText className="h-4 w-4" />
+                                </Button>
+                              </Tooltip>
+                            </>
+                          )}
+                          <Tooltip content="Editar en Clientes">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => navigateToClientsEditPet(pet)}>
+                              <Edit className="h-4 w-4" />
                             </Button>
-                          </>
-                        )}
-                        <Button variant="outline" size="sm" className="mr-1" onClick={() => navigateToClientsEditPet(pet)} title="Editar (formulario en Clientes)">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" size="sm" className="mr-1" onClick={() => openPetTimeline(pet)} title="Timeline/Auditoría">
-                          <FileText className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-600" onClick={() => handleDeletePet(pet.id.toString())} title="Eliminar">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          </Tooltip>
+                          <Tooltip content="Timeline y auditoría">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openPetTimeline(pet)}>
+                              <List className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                          {canDeletePets && (
+                            <Tooltip content="Eliminar (solo super administrador)">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                onClick={() => handleDeletePet(pet.id.toString())}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </Tooltip>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1554,52 +1525,6 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
         </Card>
       )}
 
-      {/* Diálogo perfil de mascota (al hacer clic en el nombre) */}
-      <Dialog open={!!showProfilePet} onOpenChange={(open) => { if (!open) setShowProfilePet(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Perfil de la mascota</DialogTitle>
-            <DialogDescription>Datos principales. Usa Editar para modificar en Clientes.</DialogDescription>
-          </DialogHeader>
-          {showProfilePet && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                {showProfilePet.photos?.[0]?.url ? (
-                  <img src={showProfilePet.photos[0].url} alt={getPetDisplayName(showProfilePet)} className="w-16 h-16 rounded-xl object-cover" />
-                ) : (
-                  <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${showProfilePet.species === 'Gato' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                    {showProfilePet.species === 'Gato' ? <Cat className="h-8 w-8" /> : <Dog className="h-8 w-8" />}
-                  </div>
-                )}
-                <div>
-                  <p className="font-semibold text-lg">{getPetDisplayName(showProfilePet)}</p>
-                  <p className="text-sm text-muted-foreground">{showProfilePet.species} {showProfilePet.breed ? ` / ${showProfilePet.breed}` : ''}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-muted-foreground">Cliente:</span>
-                <span>{showProfilePet.client?.razon_social || (Array.isArray(showProfilePet.owners) ? showProfilePet.owners[0]?.razon_social : '') || '-'}</span>
-                <span className="text-muted-foreground">Edad / Peso:</span>
-                <span>{showProfilePet.age != null ? `${showProfilePet.age} años` : '-'} {showProfilePet.weight != null ? ` / ${showProfilePet.weight} kg` : ''}</span>
-                <span className="text-muted-foreground">Sexo:</span>
-                <span>{showProfilePet.gender || '-'}</span>
-                <span className="text-muted-foreground">Estado:</span>
-                <span>{showProfilePet.fallecido ? 'Fallecido' : 'Activo'}</span>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => { setShowProfilePet(null); openEditPetModal(showProfilePet); }} className="gap-1">
-                  <Edit className="h-4 w-4" />
-                  Editar (en este módulo)
-                </Button>
-                <Button variant="default" size="sm" onClick={() => { setShowProfilePet(null); navigateToClientsEditPet(showProfilePet); }} className="gap-1">
-                  Ir a Clientes y editar
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Diálogo de nueva/editar mascota */}
       <Dialog
         open={showNewPet}
@@ -1613,7 +1538,7 @@ export function PetsManagement({ onNavigate }: { onNavigate?: (tab: string) => v
             <div className="w-full px-6 sm:px-8 pt-6 pb-5">
               <div className="flex items-center gap-3 mb-1">
                 <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg">
-                  <span className="text-xl">🐾</span>
+                  <PawPrint className="h-5 w-5" />
                 </div>
                 <DialogTitle className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
                   {editingPet ? 'Editar Mascota' : 'Nueva Mascota'}
@@ -2476,7 +2401,7 @@ function PetForm({
                       : 'bg-card text-card-foreground border border-border hover:bg-muted'
                   }`}
                 >
-                  {isDefault ? '✓ Por defecto' : 'Elegir por defecto'}
+                  {isDefault ? '★ Por defecto' : 'Elegir por defecto'}
                 </button>
               </div>
             );
@@ -2506,7 +2431,7 @@ function PetForm({
                         : 'bg-card text-card-foreground border border-border hover:bg-muted'
                     }`}
                   >
-                    {defaultPhoto?.kind === 'new' && defaultPhoto.index === index ? '✓ Por defecto' : 'Elegir por defecto'}
+                    {defaultPhoto?.kind === 'new' && defaultPhoto.index === index ? '★ Por defecto' : 'Elegir por defecto'}
                   </button>
                 </>
               ) : (
@@ -2898,7 +2823,7 @@ function PetForm({
       <div className="sticky bottom-0 z-20 -mx-5 sm:-mx-8 mt-6 border-t border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/90 px-5 sm:px-8 pt-5 pb-4 shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.25)]">
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-4">
           <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-1.5">
-            <span aria-hidden>ℹ️</span>
+            <Check className="h-4 w-4 shrink-0" aria-hidden />
             Revisa los datos antes de guardar. Los cambios se reflejarán en historial y reportes.
           </p>
           <div className="flex justify-end gap-3">
@@ -2934,283 +2859,5 @@ function PetForm({
         </div>
       </div>
     </form>
-  );
-}
-
-interface ConfigDialogProps {
-  title: string;
-  items: string[];
-  onSave?: (items: string[]) => Promise<void> | void;
-  onClose: () => void;
-}
-
-// Diálogo de configuración genérico
-function ConfigDialog({ title, items, onSave, onClose }: ConfigDialogProps) {
-  const [localItems, setLocalItems] = useState([...items]);
-  const [newItem, setNewItem] = useState('');
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingValue, setEditingValue] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setLocalItems(Array.isArray(items) ? [...items] : []);
-  }, [items]);
-
-  const handleAdd = () => {
-    const value = newItem.trim();
-    if (!value) return;
-    const exists = localItems.some((item) => item.trim().toLowerCase() === value.toLowerCase());
-    if (exists) {
-      toast.error('Esta opción ya existe');
-      return;
-    }
-    setLocalItems([...localItems, value]);
-    setNewItem('');
-  };
-
-  const handleEdit = (index: number) => {
-    setEditingIndex(index);
-    setEditingValue(localItems[index]);
-  };
-
-  const handleSaveEdit = () => {
-    if (editingIndex !== null && editingValue.trim()) {
-      const updated = [...localItems];
-      updated[editingIndex] = editingValue.trim();
-      setLocalItems(updated);
-      setEditingIndex(null);
-      setEditingValue('');
-    }
-  };
-
-  const handleDelete = (index: number) => {
-    setLocalItems(localItems.filter((_, i) => i !== index));
-  };
-
-  const handleSave = async () => {
-    if (!onSave) {
-      onClose();
-      return;
-    }
-    setSaving(true);
-    try {
-      const seen = new Set<string>();
-      const clean = localItems
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .filter((item) => {
-          const key = item.toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      await onSave(clean);
-      onClose();
-    } catch (e) {
-      // El toast de error lo muestra saveConfigurations
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogContent className="max-w-md">
-      <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>Agrega, edita o elimina opciones</DialogDescription>
-      </DialogHeader>
-      <div className="space-y-4">
-        <div className="flex gap-2">
-          <Input
-            value={newItem}
-            onChange={(e) => setNewItem(e.target.value)}
-            placeholder="Nueva opción..."
-            onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
-          />
-          <Button type="button" onClick={handleAdd}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="space-y-2 max-h-80 overflow-y-auto">
-          {localItems.map((item, index) => (
-            <div key={index} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-              {editingIndex === index ? (
-                <>
-                  <Input
-                    value={editingValue}
-                    onChange={(e) => setEditingValue(e.target.value)}
-                    className="flex-1"
-                    autoFocus
-                  />
-                  <Button size="sm" onClick={handleSaveEdit}>
-                    Guardar
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingIndex(null)}>
-                    Cancelar
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span className="flex-1">{item}</span>
-                  <Button size="sm" variant="outline" onClick={() => handleEdit(index)}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleDelete(index)} className="text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar Configuración'}
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
-
-// Diálogo de configuración de razas por especie (carga especies desde BD)
-interface BreedConfigDialogProps {
-  speciesList?: string[];
-  breedsBySpecies?: Record<string, string[]>;
-  onSave?: (species: string, items: string[]) => Promise<void> | void;
-  onAllSaved?: (bySpecies: Record<string, string[]>) => void;
-  onClose: () => void;
-}
-
-function BreedConfigDialog({ speciesList = [], breedsBySpecies = {}, onSave, onAllSaved, onClose }: BreedConfigDialogProps) {
-  const species = Array.isArray(speciesList) && speciesList.length > 0 ? speciesList : ['Perro', 'Gato'];
-  const [activeTab, setActiveTab] = useState(species[0]);
-  const [localBreedsBySpecies, setLocalBreedsBySpecies] = useState<Record<string, string[]>>(() => {
-    const init: Record<string, string[]> = {};
-    species.forEach((s: string) => {
-      init[s] = Array.isArray(breedsBySpecies[s]) ? [...breedsBySpecies[s]] : [];
-    });
-    return init;
-  });
-  const [newBreed, setNewBreed] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const next: Record<string, string[]> = {};
-    species.forEach((s: string) => {
-      next[s] = Array.isArray(breedsBySpecies[s]) ? [...breedsBySpecies[s]] : [];
-    });
-    setLocalBreedsBySpecies(next);
-    if (!species.includes(activeTab)) setActiveTab(species[0]);
-  }, [breedsBySpecies, speciesList]);
-
-  const currentBreeds = Array.isArray(localBreedsBySpecies[activeTab]) ? localBreedsBySpecies[activeTab] : [];
-  const setCurrentBreeds = (items: string[]) => {
-    setLocalBreedsBySpecies((prev) => ({ ...prev, [activeTab]: items }));
-  };
-
-  const handleAdd = () => {
-    const value = newBreed.trim();
-    if (!value) return;
-    const exists = currentBreeds.some((breed) => breed.trim().toLowerCase() === value.toLowerCase());
-    if (exists) {
-      toast.error('Esta raza ya existe');
-      return;
-    }
-    setCurrentBreeds([...currentBreeds, value]);
-    setNewBreed('');
-  };
-
-  const handleDelete = (index: number) => {
-    setCurrentBreeds(currentBreeds.filter((_, i) => i !== index));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      if (onSave) {
-        for (const s of species) {
-          const list = localBreedsBySpecies[s] || [];
-          const seen = new Set<string>();
-          const clean = list
-            .map((item) => item.trim())
-            .filter(Boolean)
-            .filter((item) => {
-              const key = item.toLowerCase();
-              if (seen.has(key)) return false;
-              seen.add(key);
-              return true;
-            });
-          await onSave(s, clean);
-        }
-      }
-      onAllSaved?.();
-      toast.success('Razas guardadas correctamente');
-      onClose();
-    } catch (e) {
-      // El toast de error lo muestra saveConfigurations en el padre
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogContent className="max-w-2xl">
-      <DialogHeader>
-        <DialogTitle>Configurar Razas</DialogTitle>
-        <DialogDescription>Gestiona las razas por especie. Las especies se cargan desde la configuración.</DialogDescription>
-      </DialogHeader>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap gap-1">
-          {species.map((s: string) => (
-            <TabsTrigger key={s} value={s} className="flex items-center gap-1">
-              {s === 'Perro' && <Dog className="h-4 w-4" />}
-              {s === 'Gato' && <Cat className="h-4 w-4" />}
-              {s}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value={activeTab} className="space-y-4 mt-4">
-          <div className="flex gap-2">
-            <Input
-              value={newBreed}
-              onChange={(e) => setNewBreed(e.target.value)}
-              placeholder={`Nueva raza de ${activeTab}...`}
-              onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
-            />
-            <Button type="button" onClick={handleAdd}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-            {currentBreeds.map((breed, index) => (
-              <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
-                <span className="text-sm">{breed}</span>
-                <Button size="sm" variant="ghost" onClick={() => handleDelete(index)} className="h-6 w-6 p-0 text-red-600">
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      <div className="flex justify-end gap-2 pt-4 border-t">
-        <Button variant="outline" onClick={onClose} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? 'Guardando...' : 'Guardar Configuración'}
-        </Button>
-      </div>
-    </DialogContent>
   );
 }

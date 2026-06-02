@@ -373,6 +373,47 @@ export const PET_BEHAVIORS = [
   "Obediente"
 ];
 
+export const DEFAULT_CLIENT_TAGS = [
+  "VIP",
+  "Nuevo",
+  "Frecuente",
+  "Referido",
+  "Moroso",
+  "Corporativo",
+];
+
+export const DEFAULT_PET_TAGS = [
+  "Senior",
+  "Cachorro",
+  "Requiere sedación",
+  "Alergias",
+  "Agresivo con extraños",
+  "Miedoso",
+];
+
+export const DEFAULT_APPOINTMENT_TAGS = [
+  "Urgente",
+  "Primera visita",
+  "Seguimiento",
+  "Reagendado",
+  "Confirmado",
+];
+
+export const DEFAULT_SERVICE_TAGS = [
+  "Premium",
+  "Paquete",
+  "Promoción",
+  "Suscripción",
+  "Express",
+];
+
+export const DEFAULT_STAFF_TAGS = [
+  "Revisión pendiente",
+  "Escalar",
+  "Documentación incompleta",
+  "Prioridad alta",
+];
+
 export const SERVICE_CATEGORIES = [
   "Baño",
   "Estética",
