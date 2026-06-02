@@ -24,16 +24,16 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           missing=0
-          for name in SSH_HOST SSH_USER DEPLOY_PATH; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Falta el secret $name. En frontend usa FRONTEND_DEPLOY_PATH (ej: /var/www/petflow/frontend/dist)"
-              missing=1
-            fi
-          done
-          if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo "::error::Falta el secret SSH_PRIVATE_KEY (copialo desde el repo backend)"
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::Falta SSH_HOST, SSH_USER o SSH_PRIVATE_KEY (copialos desde el repo backend)"
             missing=1
           fi
+          FRONTEND_PATH="${{ secrets.FRONTEND_DEPLOY_PATH }}"
+          if [ -z "$FRONTEND_PATH" ]; then
+            FRONTEND_PATH="/var/www/petflow/frontend/dist"
+            echo "Usando ruta frontend por defecto: $FRONTEND_PATH"
+          fi
+          echo "DEPLOY_PATH=$FRONTEND_PATH" >> "$GITHUB_ENV"
           exit "$missing"
 
       - name: Checkout codigo
