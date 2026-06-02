@@ -85,6 +85,7 @@ export function Appointments() {
   const [cloningAppointment, setCloningAppointment] = useState(false);
 
   const [newAppointmentInitialPet, setNewAppointmentInitialPet] = useState<{ petId?: string; clientId?: string; petName?: string; ownerName?: string } | null>(null);
+  const [newAppointmentInitialClient, setNewAppointmentInitialClient] = useState<{ clientId?: string; clientDocument?: string; clientName?: string } | null>(null);
 
   // Initial fetch
   useEffect(() => {
@@ -108,6 +109,12 @@ export function Appointments() {
     if (pending.action === 'new_appointment_with_pet') {
       setShowNewAppointment(true);
       setNewAppointmentInitialPet(pending.payload || null);
+      clearPendingAction();
+      return;
+    }
+    if (pending.action === 'new_appointment_with_client') {
+      setShowNewAppointment(true);
+      setNewAppointmentInitialClient(pending.payload || null);
       clearPendingAction();
     }
   }, []);
@@ -431,9 +438,16 @@ export function Appointments() {
 
           <NewAppointmentDialog 
             open={showNewAppointment} 
-            onOpenChange={(open) => { setShowNewAppointment(open); if (!open) setNewAppointmentInitialPet(null); }} 
+            onOpenChange={(open) => { 
+              setShowNewAppointment(open); 
+              if (!open) {
+                setNewAppointmentInitialPet(null);
+                setNewAppointmentInitialClient(null);
+              }
+            }} 
             onSuccess={() => fetchAppointments()}
             initialPetForNewAppointment={newAppointmentInitialPet}
+            initialClientForNewAppointment={newAppointmentInitialClient}
           />
           
           <RescheduleDialog

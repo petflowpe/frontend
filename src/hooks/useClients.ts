@@ -9,6 +9,9 @@ export interface Pet {
   breed: string;
   gender: 'Macho' | 'Hembra';
   birthDate: string; // YYYY-MM-DD
+  registrationDate?: string;
+  nextVaccinationDate?: string;
+  nextDewormingDate?: string;
   weight: number;
   color?: string;
   medicalNotes?: string;
@@ -25,10 +28,13 @@ export interface Client {
   documentNumber: string;
   email: string;
   phone: string;
+  phone1?: string;
   phone2?: string;
   address: string;
   district: string;
   notes: string;
+  criticalNote?: string;
+  criticalPetNote?: string;
   isActive: boolean;
   createdAt: string;
   pets: Pet[];
@@ -92,6 +98,8 @@ export const useClients = () => {
       distrito: client.district || null,
       provincia: (client as any).province || 'Lima',
       departamento: (client as any).department || 'Lima',
+      critical_note: (client as any).criticalNote || null,
+      critical_pet_note: (client as any).criticalPetNote || null,
       activo: client.isActive !== false,
     };
   };
@@ -105,10 +113,13 @@ export const useClients = () => {
       documentNumber: backendClient.numero_documento || '',
       email: backendClient.email || '',
       phone: backendClient.telefono || backendClient.telefono1 || '',
+      phone1: backendClient.telefono || backendClient.telefono1 || '',
       phone2: backendClient.telefono2 || undefined,
       address: backendClient.direccion || '',
       district: backendClient.distrito || '',
       notes: backendClient.notas || '',
+      criticalNote: backendClient.critical_note || '',
+      criticalPetNote: backendClient.critical_pet_note || '',
       isActive: backendClient.activo !== false,
       createdAt: backendClient.created_at || new Date().toISOString(),
       pets: backendClient.pets ? (Array.isArray(backendClient.pets) ? backendClient.pets.map((p: any) => fromBackendPet(p)) : []) : [],
@@ -134,6 +145,9 @@ export const useClients = () => {
     photoUrl: p.photo,
     age: p.age,
     size: p.size as Pet['size'],
+    registrationDate: p.fecha_registro || p.created_at || '',
+    nextVaccinationDate: p.next_vaccination_date || '',
+    nextDewormingDate: p.next_deworming_date || '',
   });
 
   const createClient = async (clientData: Omit<Client, 'id' | 'createdAt' | 'pets'>) => {
@@ -323,9 +337,12 @@ export const useClients = () => {
         breed: pet.breed || '',
         gender: pet.gender || 'Macho',
         birthDate: pet.birth_date || '',
+        registrationDate: pet.fecha_registro || pet.created_at || '',
         weight: parseFloat(pet.weight) || 0,
         color: pet.color || '',
         age: pet.age || 0,
+        nextVaccinationDate: pet.next_vaccination_date || '',
+        nextDewormingDate: pet.next_deworming_date || '',
       }));
 
       // Actualizar el cliente con sus mascotas

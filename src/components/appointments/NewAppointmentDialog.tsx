@@ -87,9 +87,11 @@ interface NewAppointmentDialogProps {
   newClient?: any; // Cliente recién creado para auto-seleccionar
   /** Al abrir desde Mascotas (botón Cita), pre-selecciona mascota y salta al paso de crear cita (3) */
   initialPetForNewAppointment?: { petId?: string; clientId?: string; petName?: string; ownerName?: string } | null;
+  /** Al abrir desde Clientes, pre-selecciona el cliente en paso 1 */
+  initialClientForNewAppointment?: { clientId?: string; clientDocument?: string; clientName?: string } | null;
 }
 
-export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClientRequest, newClient, initialPetForNewAppointment }: NewAppointmentDialogProps) {
+export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClientRequest, newClient, initialPetForNewAppointment, initialClientForNewAppointment }: NewAppointmentDialogProps) {
   const [step, setStep] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -184,6 +186,26 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
       setStep(3);
     })();
   }, [open, initialPetForNewAppointment?.petId, initialPetForNewAppointment?.clientId, clients, loadClientPets, setValue]);
+
+  useEffect(() => {
+    if (!open || !initialClientForNewAppointment || !clients?.length) return;
+    const clientId = String(initialClientForNewAppointment.clientId || '');
+    const clientDoc = String(initialClientForNewAppointment.clientDocument || '');
+    const client = clients.find((c: any) =>
+      (clientId && String(c.id) === clientId) ||
+      (clientDoc && String(c.documentNumber || '') === clientDoc)
+    );
+    if (!client) return;
+    setValue('client', {
+      id: client.id,
+      fullName: client.fullName,
+      documentNumber: client.documentNumber,
+      phone1: client.phone1,
+      address: client.address,
+      district: client.district,
+    });
+    setStep(1);
+  }, [open, initialClientForNewAppointment?.clientId, initialClientForNewAppointment?.clientDocument, clients, setValue]);
 
   const { filteredVehicles, loadingCoverage, hasCoverageFilter } = useAvailableVehiclesForAppointment(
     watchedClient?.district,

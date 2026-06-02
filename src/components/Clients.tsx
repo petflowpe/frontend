@@ -16,6 +16,9 @@ import { autoAssignClientToRoutes, determineClientZone } from '../lib/routeAutoA
 import { toast } from 'sonner';
 import { useClients } from '../hooks/useClients';
 import { EmptyState } from './EmptyState';
+import { setPendingAction } from '../utils/navigationBridge';
+import { apiClient } from '../utils/api/client';
+import { getRoleKey, type CurrentUserLike } from '../utils/permissions';
 // import { usePatients } from '../hooks/usePatients'; // Removed
 
 const LIMA_DISTRICTS = [
@@ -64,12 +67,15 @@ const LIMA_DISTRICTS = [
   { name: 'Villa María del Triunfo', code: '15816' }
 ];
 
-export function Clients() {
-  // Simulación de usuario actual - en producción esto vendría del contexto de autenticación
+export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (tab: string) => void; currentUser?: CurrentUserLike | null }) {
+  // Fallback demo si no llega usuario real desde App
   const [currentUser, setCurrentUser] = useState({
     name: 'Admin User',
-    role: 'Administrador' // Roles: Super Administrador, Administrador, Peluquero Canino, Recepcionista, Veterinario, etc.
+    role: 'Administrador'
   });
+  const effectiveRole = authUser ? getRoleKey(authUser) : currentUser.role;
+  const normalizedRole = (effectiveRole || '').toLowerCase();
+  const isAdminRole = ['super administrador', 'administrador', 'super_admin', 'company_admin', 'admin'].includes(normalizedRole);
 
   // Función para cambiar rol (solo para demostración - remover en producción)
   const toggleUserRole = () => {
@@ -86,8 +92,11 @@ export function Clients() {
   const [selectedPetId, setSelectedPetId] = useState<number | null>(null);
   const [editingClient, setEditingClient] = useState<any>(null);
   const [editingPet, setEditingPet] = useState<any>(null);
-  const [showNewAppointment, setShowNewAppointment] = useState(false);
   const [clientFichaTab, setClientFichaTab] = useState('detalles');
+  const [criticalClientNote, setCriticalClientNote] = useState('');
+  const [criticalPetNote, setCriticalPetNote] = useState('');
+  const [billingHistory, setBillingHistory] = useState<Array<any>>([]);
+  const [loadingBilling, setLoadingBilling] = useState(false);
 
   // Estados para configuraciones - REMOVIDOS (ahora están en PetsManagement)
 
@@ -368,9 +377,23 @@ export function Clients() {
   };
 
   const handleDeletePet = async (petId: any) => {
+    if (!isAdminRole) {
+      toast.error('Solo un administrador puede eliminar mascotas registradas');
+      return;
+    }
     if (selectedClient && window.confirm('¿Eliminar mascota?')) {
       await deletePet(selectedClient.id, petId);
     }
+  };
+
+  const goToAppointmentsFromClient = () => {
+    if (!selectedClient) return;
+    setPendingAction('appointments', 'new_appointment_with_client', {
+      clientId: String(selectedClient.id),
+      clientDocument: selectedClient.documentNumber,
+      clientName: selectedClient.fullName,
+    });
+    onNavigate?.('appointments');
   };
 
   // Al seleccionar un cliente, cargar sus mascotas desde la API para mostrarlas y asignar nuevas
@@ -390,6 +413,48 @@ export function Clients() {
     }
   }, [clients]);
 
+  useEffect(() => {
+    if (!selectedClient?.id) return;
+    setCriticalClientNote(selectedClient.criticalNote || '');
+    setCriticalPetNote(selectedClient.criticalPetNote || '');
+  }, [selectedClient?.id]);
+
+  useEffect(() => {
+    if (!selectedClient?.id || clientFichaTab !== 'facturacion') return;
+    const loadBillingHistory = async () => {
+      setLoadingBilling(true);
+      try {
+        const response = await apiClient.get<any>(`/clients/${selectedClient.id}/billing-history`);
+        const rows = (response?.data || response || []).map((r: any) => ({ ...r, _type: r.type || r._type || 'Comprobante' }));
+        setBillingHistory(rows);
+      } catch (e) {
+        setBillingHistory([]);
+      } finally {
+        setLoadingBilling(false);
+      }
+    };
+    loadBillingHistory();
+  }, [selectedClient?.id, clientFichaTab]);
+
+  const saveCriticalNotes = async () => {
+    if (!selectedClient?.id) return;
+    await updateClient(selectedClient.id, {
+      criticalNote: criticalClientNote,
+      criticalPetNote,
+    } as any);
+  };
+
+  const toDateValue = (value?: string) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const clientRegistrationDate = (() => {
+    const d = toDateValue(selectedClient?.registrationDate || selectedClient?.createdAt);
+    return d ? d.toLocaleDateString('es-PE') : '—';
+  })();
+
   const filteredClients = (clients || []).filter(client => {
     const pets = client.pets || [];
     return (
@@ -400,9 +465,34 @@ export function Clients() {
     );
   });
 
+  const selectedClientReminders = (() => {
+    const today = new Date();
+    const reminders: Array<{ key: string; text: string; level: 'warn' | 'info' }> = [];
+    (selectedClient?.pets || []).forEach((pet: any) => {
+      const birth = toDateValue(pet.birthDate || pet.birth_date);
+      if (birth) {
+        const next = new Date(today.getFullYear(), birth.getMonth(), birth.getDate());
+        if (next < today) next.setFullYear(today.getFullYear() + 1);
+        const days = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (days >= 0 && days <= 30) reminders.push({ key: `bday-${pet.id}`, text: `${pet.name}: cumpleaños en ${days} día(s)`, level: 'info' });
+      }
+      const vacc = toDateValue(pet.nextVaccinationDate || pet.next_vaccination_date);
+      if (vacc) {
+        const days = Math.ceil((vacc.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (days >= 0 && days <= 30) reminders.push({ key: `vacc-${pet.id}`, text: `${pet.name}: vacuna en ${days} día(s)`, level: 'warn' });
+      }
+      const deworm = toDateValue(pet.nextDewormingDate || pet.next_deworming_date);
+      if (deworm) {
+        const days = Math.ceil((deworm.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (days >= 0 && days <= 30) reminders.push({ key: `deworm-${pet.id}`, text: `${pet.name}: desparasitación en ${days} día(s)`, level: 'warn' });
+      }
+    });
+    return reminders;
+  })();
+
   if (selectedPetId) {
     return (
-      <div className="absolute inset-0 z-50 bg-background">
+      <div className="p-6">
         <PetProfile 
           petId={selectedPetId} 
           onClose={() => setSelectedPetId(null)} 
@@ -422,23 +512,23 @@ export function Clients() {
                 <Badge 
                   variant="outline" 
                   className={`cursor-pointer hover:opacity-80 transition-opacity ${
-                    currentUser.role === 'Super Administrador'
+                    normalizedRole === 'super administrador' || normalizedRole === 'super_admin' || normalizedRole === 'admin'
                       ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400'
-                      : currentUser.role === 'Administrador' 
+                      : normalizedRole === 'administrador' || normalizedRole === 'company_admin'
                       ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-950/30 dark:text-purple-400' 
                       : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/30 dark:text-blue-400'
                   }`}
-                  onClick={toggleUserRole}
-                  title="Click para cambiar rol (demo)"
+                  onClick={() => { if (!authUser) toggleUserRole(); }}
+                  title={authUser ? 'Rol del usuario autenticado' : 'Click para cambiar rol (demo)'}
                 >
                   <Shield className="h-3 w-3 mr-1" />
-                  {currentUser.role}
+                  {effectiveRole}
                 </Badge>
               </div>
               <p className="text-muted-foreground">Administra la información de tus clientes y sus mascotas</p>
             </div>
             <div className="flex gap-2">
-              {(currentUser.role === 'Super Administrador' || currentUser.role === 'Administrador') && (
+              {isAdminRole && (
                 <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
                   <DialogTrigger asChild>
                     <Button onClick={() => setEditingClient(null)}>
@@ -449,7 +539,7 @@ export function Clients() {
                   <ClientDialog
                     client={editingClient}
                     vehicles={vehicles}
-                    currentUserRole={currentUser.role}
+                    currentUserRole={effectiveRole}
                     onSave={handleSaveClient}
                     onClose={() => {
                       setShowNewClient(false);
@@ -613,7 +703,7 @@ export function Clients() {
                           e.stopPropagation();
                           setSelectedClient(client);
                           setClientFichaTab('citas');
-                          setShowNewAppointment(true);
+                          goToAppointmentsFromClient();
                         }}
                       >
                         <Calendar className="h-4 w-4 mr-1" />
@@ -696,7 +786,7 @@ export function Clients() {
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 items-end">
+                <div className="flex flex-wrap gap-2 items-start justify-end">
                   <Button
                     size="sm"
                     variant="outline"
@@ -723,8 +813,8 @@ export function Clients() {
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      setShowNewAppointment(true);
                       setClientFichaTab('citas');
+                      goToAppointmentsFromClient();
                     }}
                   >
                     <Calendar className="h-4 w-4 mr-1" />
@@ -737,7 +827,7 @@ export function Clients() {
               <Tabs value={clientFichaTab} onValueChange={setClientFichaTab}>
                 <TabsList className="w-full flex flex-wrap justify-start">
                   <TabsTrigger value="detalles">Detalles del cliente</TabsTrigger>
-                  <TabsTrigger value="pacientes">Pacientes</TabsTrigger>
+                  <TabsTrigger value="pacientes">Mascotas</TabsTrigger>
                   <TabsTrigger value="citas">Citas</TabsTrigger>
                   <TabsTrigger value="facturacion">Facturación</TabsTrigger>
                   <TabsTrigger value="recordatorios">Recordatorios</TabsTrigger>
@@ -759,6 +849,7 @@ export function Clients() {
                       <div><span className="text-muted-foreground">Provincia:</span> {selectedClient.province || 'Lima'}</div>
                       <div><span className="text-muted-foreground">Tipo cliente:</span> {selectedClient.clientType}</div>
                       <div><span className="text-muted-foreground">Nivel:</span> {selectedClient.level || '—'}</div>
+                      <div><span className="text-muted-foreground">Fecha de alta:</span> {clientRegistrationDate}</div>
                     </div>
                   </Card>
                 </TabsContent>
@@ -766,7 +857,7 @@ export function Clients() {
                 <TabsContent value="pacientes" className="mt-4">
                   <Card className="p-4">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold">Pacientes (mascotas)</h3>
+                      <h3 className="font-semibold">Mascotas</h3>
                       <Button
                         size="sm"
                         onClick={() => {
@@ -786,7 +877,8 @@ export function Clients() {
                             <th className="text-left p-2">Especie</th>
                             <th className="text-left p-2">Raza</th>
                             <th className="text-left p-2">F. Nacimiento</th>
-                            <th className="w-10"></th>
+                            <th className="text-left p-2">F. Alta</th>
+                            <th className="w-20"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -807,17 +899,32 @@ export function Clients() {
                                 {pet.birthDate ? new Date(pet.birthDate).toLocaleDateString('es-PE') : '—'}
                               </td>
                               <td className="p-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => {
-                                    setEditingPet(pet);
-                                    setShowNewPet(true);
-                                  }}
-                                >
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
+                                {pet.registrationDate ? new Date(pet.registrationDate).toLocaleDateString('es-PE') : '—'}
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => {
+                                      setEditingPet(pet);
+                                      setShowNewPet(true);
+                                    }}
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                  {isAdminRole && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-red-600"
+                                      onClick={() => handleDeletePet(pet.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -841,7 +948,7 @@ export function Clients() {
                       <Button
                         size="sm"
                         className="mt-3"
-                        onClick={() => setShowNewAppointment(true)}
+                        onClick={goToAppointmentsFromClient}
                       >
                         <Plus className="h-4 w-4 mr-1" />
                         Nueva cita
@@ -867,15 +974,56 @@ export function Clients() {
                         </span>
                       </div>
                     </div>
+                    <div className="mt-5">
+                      <h4 className="font-medium mb-2">Historial de comprobantes (boletas/facturas)</h4>
+                      {loadingBilling ? (
+                        <p className="text-sm text-muted-foreground">Cargando historial...</p>
+                      ) : billingHistory.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No hay boletas o facturas registradas para este cliente.</p>
+                      ) : (
+                        <div className="overflow-x-auto border rounded-md">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/40">
+                              <tr className="border-b">
+                                <th className="text-left p-2">Tipo</th>
+                                <th className="text-left p-2">Serie/Número</th>
+                                <th className="text-left p-2">Fecha</th>
+                                <th className="text-left p-2">Estado</th>
+                                <th className="text-right p-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {billingHistory.map((doc: any) => (
+                                <tr key={`${doc._type}-${doc.id}`} className="border-b last:border-b-0">
+                                  <td className="p-2">{doc._type}</td>
+                                  <td className="p-2">{doc.serie ? `${doc.serie}-${doc.correlativo ?? doc.numero ?? ''}` : (doc.numero || doc.id)}</td>
+                                  <td className="p-2">{doc.fecha_emision ? new Date(doc.fecha_emision).toLocaleDateString('es-PE') : '—'}</td>
+                                  <td className="p-2">{doc.estado_sunat || doc.status || '—'}</td>
+                                  <td className="p-2 text-right">{Number(doc.total ?? doc.monto_total ?? 0).toFixed(2)} S/</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
                   </Card>
                 </TabsContent>
 
                 <TabsContent value="recordatorios" className="mt-4">
                   <Card className="p-4">
                     <h3 className="font-semibold mb-4">Recordatorios</h3>
-                    <p className="text-muted-foreground text-sm">
-                      Sin recordatorios configurados.
-                    </p>
+                    {selectedClientReminders.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">Sin recordatorios próximos en 30 días.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {selectedClientReminders.map((r) => (
+                          <li key={r.key} className={`text-sm p-2 rounded-md border ${r.level === 'warn' ? 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200' : 'bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-200'}`}>
+                            {r.text}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </Card>
                 </TabsContent>
 
@@ -905,19 +1053,40 @@ export function Clients() {
                 <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
                   <StickyNote className="h-4 w-4" /> Nota crítica del cliente
                 </h4>
-                <p className="text-muted-foreground text-xs">Agregar nota</p>
+                <Textarea
+                  value={criticalClientNote}
+                  onChange={(e) => setCriticalClientNote(e.target.value)}
+                  placeholder="Escribe una alerta importante del cliente..."
+                  rows={3}
+                />
               </Card>
               <Card className="p-4">
                 <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
                   <StickyNote className="h-4 w-4" /> Nota crítica del paciente
                 </h4>
-                <p className="text-muted-foreground text-xs">Agregar nota</p>
+                <Textarea
+                  value={criticalPetNote}
+                  onChange={(e) => setCriticalPetNote(e.target.value)}
+                  placeholder="Escribe una alerta importante de una mascota..."
+                  rows={3}
+                />
+                <Button size="sm" className="mt-2 w-full" onClick={saveCriticalNotes}>
+                  Guardar notas críticas
+                </Button>
               </Card>
               <Card className="p-4">
                 <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
                   <Bell className="h-4 w-4" /> Recordatorios destacados
                 </h4>
-                <p className="text-muted-foreground text-xs">Sin recordatorios</p>
+                {selectedClientReminders.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">Sin recordatorios</p>
+                ) : (
+                  <ul className="text-xs space-y-1">
+                    {selectedClientReminders.slice(0, 5).map((r) => (
+                      <li key={`side-${r.key}`} className="text-muted-foreground">• {r.text}</li>
+                    ))}
+                  </ul>
+                )}
               </Card>
               <Card className="p-4">
                 <h4 className="font-medium text-sm flex items-center gap-2 mb-2">
@@ -938,6 +1107,7 @@ export function Clients() {
       {showNewPet && selectedClient && (
         <PetDialog
           pet={editingPet}
+          canEditRestrictedFields={!editingPet || isAdminRole}
           ownerLastName1={selectedClient.lastName1}
           ownerLastName2={selectedClient.lastName2}
           dogBreeds={PET_DOG_BREEDS}
@@ -952,45 +1122,6 @@ export function Clients() {
         />
       )}
 
-      {/* New Appointment Dialog */}
-      <Dialog open={showNewAppointment} onOpenChange={setShowNewAppointment}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Nueva Cita - {selectedClient?.fullName}</DialogTitle>
-            <DialogDescription>
-              Programa una nueva cita para este cliente
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="text-center p-8 border-2 border-dashed rounded-lg bg-muted/50">
-              <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-              <p className="text-muted-foreground mb-2">
-                Esta funcionalidad te redireccionará al módulo de Citas
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Cliente: <strong>{selectedClient?.fullName}</strong>
-              </p>
-              {selectedClient?.pets && selectedClient.pets.length > 0 && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Mascotas disponibles: {selectedClient.pets.map((p: any) => p.name).join(', ')}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowNewAppointment(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => {
-              setShowNewAppointment(false);
-              // Aquí se integraría con el módulo de Citas
-              alert('Esta funcionalidad se integrará con el módulo de Citas próximamente');
-            }}>
-              Ir a Citas
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -1000,7 +1131,8 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
   const [currentStep, setCurrentStep] = useState(1);
   
   // Verificar si el usuario puede editar campos protegidos
-  const canEditProtectedFields = !client || currentUserRole === 'Super Administrador' || currentUserRole === 'Administrador';
+  const roleKey = String(currentUserRole || '').toLowerCase();
+  const canEditProtectedFields = !client || ['super administrador', 'administrador', 'super_admin', 'company_admin', 'admin'].includes(roleKey);
   const [formData, setFormData] = useState({
     documentType: client?.documentType || 'DNI',
     documentNumber: client?.documentNumber || '',
@@ -1920,7 +2052,7 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
 }
 
 // Diálogo de Mascota con edad y etapa
-function PetDialog({ pet, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, temperaments, behaviors, onSave, onClose }: any) {
+function PetDialog({ pet, canEditRestrictedFields = true, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, temperaments, behaviors, onSave, onClose }: any) {
   const [formData, setFormData] = useState({
     name: pet?.name || '',
     ownerLastName1: pet?.ownerLastName1 || ownerLastName1,
@@ -2004,6 +2136,7 @@ function PetDialog({ pet, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, 
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+                disabled={pet && !canEditRestrictedFields}
               />
             </div>
             <div>
@@ -2012,6 +2145,7 @@ function PetDialog({ pet, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, 
                 value={formData.ownerLastName1}
                 onChange={(e) => setFormData({ ...formData, ownerLastName1: e.target.value })}
                 required
+                disabled={pet && !canEditRestrictedFields}
               />
             </div>
             <div>
@@ -2019,6 +2153,7 @@ function PetDialog({ pet, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, 
               <Input
                 value={formData.ownerLastName2}
                 onChange={(e) => setFormData({ ...formData, ownerLastName2: e.target.value })}
+                disabled={pet && !canEditRestrictedFields}
               />
             </div>
           </div>
@@ -2077,12 +2212,16 @@ function PetDialog({ pet, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, 
                 value={formData.breed}
                 onChange={(e) => setFormData({ ...formData, breed: e.target.value })}
                 required
+                disabled={pet && !canEditRestrictedFields}
               >
                 <option value="">Seleccionar...</option>
                 {availableBreeds.map((breed: string) => (
                   <option key={breed} value={breed}>{breed}</option>
                 ))}
               </select>
+              {pet && !canEditRestrictedFields && (
+                <p className="text-xs text-orange-600 mt-1">Solo administrador puede editar nombre, apellidos y raza.</p>
+              )}
             </div>
             <div>
               <Label>Tamaño</Label>
