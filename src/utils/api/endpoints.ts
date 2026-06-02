@@ -122,7 +122,12 @@ export const API = {
   units: { list: '/units', byId: (id: string | number) => `/units/${id}` },
   areas: { list: '/areas', byId: (id: string | number) => `/areas/${id}` },
   brands: { list: '/brands', byId: (id: string | number) => `/brands/${id}` },
-  suppliers: { list: '/suppliers', byId: (id: string | number) => `/suppliers/${id}` },
+  suppliers: {
+    list: '/suppliers',
+    byId: (id: string | number) => `/suppliers/${id}`,
+    toggleActive: (id: string | number) => `/suppliers/${id}/toggle-active`,
+    kpis: '/suppliers/kpis',
+  },
   purchaseOrders: {
     list: '/purchase-orders',
     byId: (id: string | number) => `/purchase-orders/${id}`,

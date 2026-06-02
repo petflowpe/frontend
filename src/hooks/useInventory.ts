@@ -11,6 +11,8 @@ export interface Product {
   categoryId?: number;
   brand: string;
   brandId?: number;
+  supplierId?: number;
+  supplierName?: string;
   areaId?: number;
   price: number;
   cost: number;
@@ -54,6 +56,12 @@ function fromBackendFormat(backendProduct: any): Product {
     categoryId: backendProduct.category_id ?? backendProduct.category?.id,
     brand: backendProduct.brand_relation?.name || backendProduct.brandRelation?.name || backendProduct.brand || '',
     brandId: backendProduct.brand_id ?? backendProduct.brandRelation?.id,
+    supplierId: backendProduct.supplier_id ?? backendProduct.supplierRelation?.id ?? backendProduct.supplier?.id,
+    supplierName:
+      backendProduct.supplier_relation?.name ||
+      backendProduct.supplierRelation?.name ||
+      backendProduct.supplier?.name ||
+      '',
     areaId: backendProduct.area_id ?? firstArea?.id ?? stocks[0]?.area_id,
     price: parseFloat(backendProduct.unit_price ?? backendProduct.sale_price ?? backendProduct.price) || 0,
     cost: parseFloat(backendProduct.cost_price ?? backendProduct.cost) || 0,
@@ -85,6 +93,7 @@ function toBackendFormat(
   if (product.code) payload.code = product.code;
   if (product.categoryId) payload.category_id = product.categoryId;
   if (product.brandId) payload.brand_id = product.brandId;
+  if (product.supplierId) payload.supplier_id = product.supplierId;
 
   const areaId = product.areaId ?? defaultAreaId;
   if (areaId) payload.area_id = areaId;

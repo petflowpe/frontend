@@ -39,131 +39,52 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
 
   // Handler para ver detalles de notificación
   const handleViewNotificationDetails = (notification: any) => {
-    // 🛡️ Validación defensiva inicial
     if (!notification || typeof notification !== 'object') {
-      console.error('❌ handleViewNotificationDetails recibió una notificación inválida:', notification);
       return;
     }
 
-    console.log('✅ handleViewNotificationDetails ejecutado con:', notification);
-    console.log('🔍 notification.type:', notification.type);
-    console.log('🔍 typeof notification.type:', typeof notification.type);
-    console.log('🔍 notification.relatedModule:', notification.relatedModule);
-    console.log('🔧 setActiveTab function:', setActiveTab);
-    console.log('⏰ TIMESTAMP:', new Date().toISOString());
-    
-    // 1. Normalización del tipo para evitar errores de casing o espacios
     const type = notification.type ? String(notification.type).toLowerCase().trim() : 'unknown';
-    
-    // 2. Prioridad a relatedModule si existe (Solución Robusta)
-    // Esto asegura que si la notificación tiene un módulo destino explícito, se use ese.
+
     if (notification.relatedModule && setActiveTab) {
-      console.log(`🚀 Navegando por relatedModule a: ${notification.relatedModule}`);
       setActiveTab(notification.relatedModule);
-      
-      // Mostrar toast informativo (pero no detener la ejecución para permitir lógica específica del switch si fuera necesaria para otros efectos)
-      // Sin embargo, para evitar doble navegación o efectos secundarios, podemos retornar aquí si solo queremos navegar.
-      // Pero el switch abajo tiene mensajes personalizados de toast. Vamos a dejar que el switch maneje el toast,
-      // pero evitamos que el switch intente navegar de nuevo si ya navegamos.
-      
-      // Mejor estrategia: Usar el switch para determinar el mensaje del toast, 
-      // pero usar relatedModule como la "fuente de la verdad" para la navegación.
     }
 
-    // Navegar al módulo correspondiente según el tipo de notificación
     switch (type) {
       case 'appointment':
-        console.log('📅 Detectado tipo appointment');
-        if (setActiveTab && !notification.relatedModule) {
-          console.log('⏰ Ejecutando setActiveTab("appointments")');
-          setActiveTab('appointments');
-        }
-        toast.info('Mostrando detalles de la cita', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('appointments');
+        toast.info('Mostrando detalles de la cita', { description: notification.title });
         break;
       case 'payment':
       case 'financial':
-        console.log('💰 Detectado tipo payment/financial');
-        if (setActiveTab && !notification.relatedModule) {
-          setActiveTab('payments');
-        }
-        toast.info('Mostrando detalles del pago', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('payments');
+        toast.info('Mostrando detalles del pago', { description: notification.title });
         break;
       case 'inventory':
-        console.log('📦 Detectado tipo inventory');
-        if (setActiveTab && !notification.relatedModule) {
-          setActiveTab('kardex');
-        }
-        toast.info('Mostrando detalles del inventario', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('kardex');
+        toast.info('Mostrando detalles del inventario', { description: notification.title });
         break;
       case 'vehicle':
-        console.log('🚗 Detectado tipo vehicle');
-        if (setActiveTab && !notification.relatedModule) {
-          setActiveTab('vehicles');
-        }
-        toast.info('Mostrando detalles del vehículo', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('vehicles');
+        toast.info('Mostrando detalles del vehículo', { description: notification.title });
         break;
       case 'client':
-        console.log('👥 Detectado tipo client');
-        if (setActiveTab && !notification.relatedModule) {
-          setActiveTab('clients');
-        }
-        toast.info('Mostrando detalles del cliente', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('clients');
+        toast.info('Mostrando detalles del cliente', { description: notification.title });
         break;
       case 'medical':
-        console.log('💊 Detectado tipo medical');
-        if (setActiveTab && !notification.relatedModule) {
-          setActiveTab('medical');
-        }
-        toast.info('Mostrando detalles médicos', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('medical');
+        toast.info('Mostrando detalles médicos', { description: notification.title });
         break;
       case 'staff':
-        console.log('👔 Detectado tipo staff');
-        if (setActiveTab && !notification.relatedModule) {
-          setActiveTab('staff');
-        }
-        toast.info('Mostrando detalles del personal', {
-          description: notification.title
-        });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('staff');
+        toast.info('Mostrando detalles del personal', { description: notification.title });
         break;
       default:
-        console.log(`📋 Tipo no reconocido (${type}). Fallback a default.`);
-        
-        // 🐛 CORRECCIÓN CRÍTICA:
-        // El caso default forzaba la navegación a 'notifications'.
-        // Si handleViewNotificationDetails se invoca dos veces (una correcta y una fallida/vacía),
-        // esto revertía la navegación.
-        // Solo navegamos a notifications si NO hay relatedModule y NO sabemos qué hacer.
-        // Si ya navegamos por relatedModule, NO hacemos nada aquí.
-        
-        if (setActiveTab && !notification.relatedModule) {
-           // Si el tipo es 'system' o 'audit', quizás queramos ir a notificaciones o settings
-           if (type === 'system' || type === 'audit') {
-             setActiveTab('notifications'); // O settings?
-           } else {
-             // Para tipos desconocidos, es mejor NO navegar para evitar bucles o redirecciones indeseadas.
-             // Solo mostramos el toast.
-             console.log('⚠️ No se realizará navegación automática para tipo desconocido para evitar loops.');
-           }
+        if (setActiveTab && !notification.relatedModule && (type === 'system' || type === 'audit')) {
+          setActiveTab('notifications');
         }
-        
-        toast.info('Ver detalles', {
-          description: notification.title
-        });
+        toast.info('Ver detalles', { description: notification.title });
     }
-    
-    console.log('🏁 handleViewNotificationDetails TERMINADO en:', new Date().toISOString());
   };
 
   const getPageTitle = (tab: string) => {

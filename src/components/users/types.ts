@@ -19,7 +19,7 @@ export interface User {
   role: string;
   roleKey?: string;
   role_id?: number;
-  status: 'active' | 'inactive' | 'suspended';
+  status: 'active' | 'inactive';
   createdAt: string;
   lastLogin?: string;
   avatar?: string;
@@ -36,7 +36,7 @@ export interface UserFormState {
   /** Sedes concretas cuando `allBranchesAccess` es false. */
   branchIds: number[];
   role_id: number;
-  status: 'active' | 'inactive' | 'suspended';
+  status: 'active' | 'inactive';
   password: string;
   confirmPassword: string;
 }

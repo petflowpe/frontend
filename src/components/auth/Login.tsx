@@ -16,7 +16,7 @@ import { apiClient } from '../../utils/api/client';
 const STORAGE_KEY_REMEMBER_EMAIL = 'smartpet_remember_email';
 
 /** Mostrar credenciales de prueba solo en desarrollo o si la env lo permite */
-const SHOW_DEV_CREDENTIALS = import.meta.env.DEV === true || import.meta.env.VITE_SHOW_DEV_CREDENTIALS === 'true';
+const SHOW_DEV_CREDENTIALS = import.meta.env.DEV === true;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -672,6 +672,7 @@ export const useSession = () => {
   };
   const clearSession = () => {
     localStorage.removeItem('smartpet_session');
+    localStorage.removeItem('smartpet_user');
     sessionStorage.removeItem('smartpet_session');
   };
   return { getSession, clearSession };

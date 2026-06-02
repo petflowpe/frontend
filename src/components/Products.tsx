@@ -12,13 +12,13 @@ import {
   TrendingUp,
   ArrowDown,
   ArrowUp,
-  MapPin,
   CheckCircle2,
   BarChart3
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useInventory, Product } from '../hooks/useInventory';
 import { useProductCatalog } from '../hooks/useProductCatalog';
+import { useSuppliers } from '../hooks/useSuppliers';
 import { ProductImage } from './ProductImage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -48,14 +48,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 export function Products() {
   const { user } = useAuth();
-  const companyId = user?.companyId ?? 1;
+  const companyId = user?.companyId;
+  if (!companyId) {
+    return (
+      <div className="p-6">
+        <p className="text-muted-foreground">No hay empresa asociada a su usuario. Contacte al administrador.</p>
+      </div>
+    );
+  }
   const { categories, brands, areas, loading: catalogLoading } = useProductCatalog(companyId);
+  const { suppliers, loading: suppliersLoading } = useSuppliers(companyId);
   const defaultAreaId = areas[0]?.id;
   const { products, loading, addProduct, updateProduct, deleteProduct, adjustStock, getInventoryMetrics } = useInventory(companyId, defaultAreaId);
   const metrics = getInventoryMetrics();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [supplierFilter, setSupplierFilter] = useState('all');
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -67,6 +76,8 @@ export function Products() {
     categoryId: undefined,
     brand: '',
     brandId: undefined,
+    supplierId: undefined,
+    supplierName: '',
     areaId: undefined,
     price: 0,
     cost: 0,
@@ -90,6 +101,8 @@ export function Products() {
         categoryId: categories[0]?.id,
         brand: '',
         brandId: brands[0]?.id,
+        supplierId: suppliers[0]?.id,
+        supplierName: suppliers[0]?.name || '',
         areaId: areas[0]?.id,
         price: 0,
         cost: 0,
@@ -122,7 +135,11 @@ export function Products() {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           p.code.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter || String(p.categoryId) === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesSupplier =
+      supplierFilter === 'all' ||
+      String(p.supplierId) === supplierFilter ||
+      (supplierFilter === 'none' && !p.supplierId);
+    return matchesSearch && matchesCategory && matchesSupplier;
   });
 
   const lowStockProducts = products.filter(p => p.minStock > 0 && p.stock <= p.minStock);
@@ -140,7 +157,7 @@ export function Products() {
           </h1>
           <p className="text-muted-foreground">
             Controla stock, precios y catálogo de productos
-            {(loading || catalogLoading) && ' · sincronizando...'}
+            {(loading || catalogLoading || suppliersLoading) && ' · sincronizando...'}
           </p>
         </div>
         <Button onClick={() => handleOpenModal()} className="bg-emerald-600 hover:bg-emerald-700">
@@ -237,6 +254,20 @@ export function Products() {
                   />
                 </div>
                 <div className="w-full md:w-[200px]">
+                  <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Proveedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los proveedores</SelectItem>
+                      <SelectItem value="none">Sin proveedor</SelectItem>
+                      {suppliers.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-full md:w-[200px]">
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                     <SelectTrigger>
                       <Filter className="w-4 h-4 mr-2" />
@@ -259,7 +290,7 @@ export function Products() {
                   <div className="col-span-3">Producto</div>
                   <div className="col-span-2">Precio</div>
                   <div className="col-span-3">Stock</div>
-                  <div className="col-span-2">Ubicación</div>
+                  <div className="col-span-2">Proveedor</div>
                   <div className="col-span-1 text-right">Acciones</div>
                 </div>
                 <div className="divide-y max-h-[600px] overflow-auto">
@@ -304,9 +335,8 @@ export function Products() {
                             <Progress value={stockPercentage} className={`h-2 ${isLowStock ? 'bg-red-100' : ''}`} indicatorClassName={isLowStock ? 'bg-red-500' : 'bg-emerald-500'} />
                           </div>
 
-                          <div className="col-span-2 text-sm text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {product.location || 'Sin asignar'}
+                          <div className="col-span-2 text-sm text-muted-foreground">
+                            {product.supplierName || 'Sin proveedor'}
                           </div>
 
                           <div className="col-span-1 flex justify-end">
@@ -453,6 +483,33 @@ export function Products() {
                 <SelectContent>
                   {categories.map(c => (
                     <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Proveedor</Label>
+              <Select
+                value={formData.supplierId ? String(formData.supplierId) : 'none'}
+                onValueChange={(val) => {
+                  if (val === 'none') {
+                    setFormData({ ...formData, supplierId: undefined, supplierName: '' });
+                    return;
+                  }
+                  const supplier = suppliers.find((s) => String(s.id) === val);
+                  setFormData({
+                    ...formData,
+                    supplierId: supplier?.id,
+                    supplierName: supplier?.name || '',
+                  });
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Seleccionar proveedor..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin proveedor</SelectItem>
+                  {suppliers.filter((s) => s.active).map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

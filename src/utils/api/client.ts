@@ -119,18 +119,19 @@ export class ApiClient {
     };
 
     const response = await fetch(url, config);
-    return handleApiResponse<T>(response);
+    return this.handleResponse<T>(response);
   }
 
   async put<T>(endpoint: string, data?: any, isFormData = false): Promise<T> {
     const headers: HeadersInit = {};
     if (!isFormData && data) headers['Content-Type'] = 'application/json';
+    headers['Accept'] = 'application/json';
     const token = this.getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const url = `${API_URL}${endpoint}`;
     const body = data ? (isFormData ? data : JSON.stringify(data)) : undefined;
     const response = await fetch(url, { method: 'PUT', headers, body });
-    return handleApiResponse<T>(response);
+    return this.handleResponse<T>(response);
   }
 
   async patch<T>(endpoint: string, data?: any): Promise<T> {

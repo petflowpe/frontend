@@ -357,6 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       // Limpiar token y estado local
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('smartpet_user');
       apiClient.setToken(null);
       setUser(null);
       setPets([]);

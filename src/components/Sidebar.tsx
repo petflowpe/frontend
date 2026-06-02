@@ -103,6 +103,7 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
     
     { id: 'services', label: 'Servicios', icon: Scissors, color: 'text-pink-500', section: 'operations' },
     { id: 'products', label: 'Productos', icon: Boxes, color: 'text-amber-500', section: 'operations' },
+    { id: 'suppliers', label: 'Proveedores', icon: Building2, color: 'text-indigo-500', section: 'operations' },
     { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-emerald-600', section: 'operations' },
     { id: 'purchases', label: 'Compras', icon: ShoppingBag, color: 'text-violet-500', section: 'operations' },
     
@@ -116,6 +117,7 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
     { id: 'payments', label: 'Pagos', icon: CreditCard, color: 'text-emerald-500', section: 'financial' },
     { id: 'staff', label: 'Personal', icon: UsersIcon, color: 'text-indigo-500', section: 'admin' },
     { id: 'cash-register', label: 'Cierre de Caja', icon: Calculator, color: 'text-green-500', section: 'financial' },
+    { id: 'financial', label: 'Gestión Financiera', icon: Wallet, color: 'text-emerald-600', section: 'financial' },
     { id: 'kardex', label: 'Kardex', icon: Layers, color: 'text-purple-500', section: 'operations' },
     { id: 'accounting', label: 'Contabilidad', icon: FileSpreadsheet, color: 'text-emerald-500', section: 'financial' },
     { id: 'exports', label: 'Informes', icon: FileText, color: 'text-blue-500', section: 'reports' },
@@ -148,8 +150,13 @@ export function Sidebar({ activeTab, setActiveTab, userPermissions, currentUser,
   // devueltos por el backend en /auth/login y /auth/me.
   // Si no hay usuario (dev), muestra todo.
   const filteredItems = useMemo(() => {
-    if (!currentUser) return menuItems;
-    return menuItems.filter(item => canAccessModule(currentUser, item.id));
+    const base = !currentUser
+      ? menuItems.filter((item) => item.id !== 'prueba' || import.meta.env.DEV)
+      : menuItems.filter((item) => {
+          if (item.id === 'prueba' && import.meta.env.PROD) return false;
+          return canAccessModule(currentUser, item.id);
+        });
+    return base;
   }, [currentUser, userPermissions]);
 
   // Agrupar items por sección (memoizado)

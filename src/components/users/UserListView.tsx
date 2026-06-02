@@ -37,6 +37,7 @@ interface UserListViewProps {
   setFilterStatus: (v: string) => void;
   apiRoles: Role[];
   filteredUsers: User[];
+  loading?: boolean;
   getRoleBadgeColor: (roleNameOrKey?: string) => string;
   getStatusBadge: (status: string) => ReactNode;
   formatDateTime: (value?: string) => string;
@@ -51,6 +52,11 @@ interface UserListViewProps {
   onDeleteUser: (userId: string) => void;
   isSuperAdminRole: (u: User) => boolean;
   currentUserId?: string;
+  canCreateUsers?: boolean;
+  canUpdateUsers?: boolean;
+  canDeleteUsers?: boolean;
+  canManageRoles?: boolean;
+  canManageBranches?: boolean;
 }
 
 export function UserListView({
@@ -63,6 +69,7 @@ export function UserListView({
   setFilterStatus,
   apiRoles,
   filteredUsers,
+  loading = false,
   getRoleBadgeColor,
   getStatusBadge,
   formatDateTime,
@@ -77,6 +84,11 @@ export function UserListView({
   onDeleteUser,
   isSuperAdminRole,
   currentUserId,
+  canCreateUsers = true,
+  canUpdateUsers = true,
+  canDeleteUsers = true,
+  canManageRoles = true,
+  canManageBranches = true,
 }: UserListViewProps) {
   return (
     <div className="animate-in fade-in duration-300 space-y-6">
@@ -106,19 +118,25 @@ export function UserListView({
           </div>
         </div>
         <div className="flex shrink-0 flex-row flex-wrap justify-end gap-2 md:justify-self-end">
-          <Button variant="outline" className="w-auto shrink-0" onClick={onConfigureBranches}>
-            <Building2 className="mr-2 h-4 w-4 text-cyan-500" />
-            Unidades / Sedes
-          </Button>
-          <Button variant="outline" className="w-auto shrink-0" onClick={onConfigureRoles}>
-            <SettingsIcon className="mr-2 h-4 w-4" />
-            Configurar Roles
-          </Button>
+          {canManageBranches ? (
+            <Button variant="outline" className="w-auto shrink-0" onClick={onConfigureBranches}>
+              <Building2 className="mr-2 h-4 w-4 text-cyan-500" />
+              Unidades / Sedes
+            </Button>
+          ) : null}
+          {canManageRoles ? (
+            <Button variant="outline" className="w-auto shrink-0" onClick={onConfigureRoles}>
+              <SettingsIcon className="mr-2 h-4 w-4" />
+              Configurar Roles
+            </Button>
+          ) : null}
 
-          <Button className="w-auto shrink-0" onClick={onNewUser}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Usuario
-          </Button>
+          {canCreateUsers ? (
+            <Button className="w-auto shrink-0" onClick={onNewUser}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Usuario
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -174,14 +192,19 @@ export function UserListView({
               <option value="all">Todos</option>
               <option value="active">Activos</option>
               <option value="inactive">Inactivos</option>
-              <option value="suspended">Suspendidos</option>
             </NativeSelect>
           </div>
         </div>
       </Card>
 
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        {filteredUsers.map((user) => (
+        {loading ? (
+          <Card className="col-span-full p-12 text-center">
+            <RefreshCw className="text-muted-foreground mx-auto mb-4 h-8 w-8 animate-spin" />
+            <p className="text-muted-foreground">Cargando usuarios...</p>
+          </Card>
+        ) : (
+          filteredUsers.map((user) => (
           <Card key={user.id} className="p-5 transition-shadow hover:shadow-lg">
             <div className="mb-3 flex items-start justify-between">
               <div className="flex items-start gap-3">
@@ -231,29 +254,35 @@ export function UserListView({
             <p className="text-muted-foreground mb-3 text-xs font-semibold">Permisos del rol gestionados en el backend.</p>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" className="min-w-[100px] flex-1" onClick={() => onEditUser(user)}>
-                <Edit className="mr-2 h-4 w-4" />
-                Editar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onToggleStatus(user.id)}
-                title={user.status === 'active' ? 'Desactivar usuario' : 'Activar usuario'}
-                aria-label={user.status === 'active' ? 'Desactivar usuario' : 'Activar usuario'}
-              >
-                {user.status === 'active' ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onResetPassword(user)}
-                title="Enviar enlace de recuperación de contraseña al correo"
-                aria-label="Recuperar contraseña por correo"
-              >
-                <Mail className="h-4 w-4" />
-              </Button>
-              {!isSuperAdminRole(user) && user.id !== currentUserId ? (
+              {canUpdateUsers ? (
+                <Button variant="outline" size="sm" className="min-w-[100px] flex-1" onClick={() => onEditUser(user)}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Editar
+                </Button>
+              ) : null}
+              {canUpdateUsers && user.id !== currentUserId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onToggleStatus(user.id)}
+                  title={user.status === 'active' ? 'Desactivar usuario' : 'Activar usuario'}
+                  aria-label={user.status === 'active' ? 'Desactivar usuario' : 'Activar usuario'}
+                >
+                  {user.status === 'active' ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                </Button>
+              ) : null}
+              {canUpdateUsers ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onResetPassword(user)}
+                  title="Enviar enlace de recuperación de contraseña al correo"
+                  aria-label="Recuperar contraseña por correo"
+                >
+                  <Mail className="h-4 w-4" />
+                </Button>
+              ) : null}
+              {canDeleteUsers && !isSuperAdminRole(user) && user.id !== currentUserId ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -266,10 +295,11 @@ export function UserListView({
               ) : null}
             </div>
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
-      {filteredUsers.length === 0 ? (
+      {!loading && filteredUsers.length === 0 ? (
         <Card className="p-12 text-center">
           <Users className="text-muted-foreground mx-auto mb-4 h-12 w-12 opacity-50" />
           <p className="text-lg font-semibold">No se encontraron usuarios</p>

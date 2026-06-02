@@ -14,10 +14,7 @@ const getEnv = (key: string): string | undefined => {
   return undefined;
 };
 
-const isDevelopment = () => {
-  const env = getEnv('NODE_ENV');
-  return !env || env === 'development';
-};
+const isDevelopment = () => import.meta.env.DEV === true;
 
 // Tipos para evitar errores si Sentry no está instalado
 type SentryType = any;
@@ -371,22 +368,18 @@ export const measurePerformance = async (
  * Configuración por defecto para SmartPet
  */
 export const initSmartPetErrorMonitoring = async (): Promise<void> => {
+  const dsn = getEnv('VITE_SENTRY_DSN') || getEnv('NEXT_PUBLIC_SENTRY_DSN');
   await initErrorMonitoring({
-    dsn: getEnv('NEXT_PUBLIC_SENTRY_DSN'),
-    environment: getEnv('NODE_ENV'),
-    enabled: !isDevelopment(),
+    dsn,
+    environment: import.meta.env.MODE,
+    enabled: import.meta.env.PROD && !!dsn,
     sampleRate: 1.0,
     tracesSampleRate: 0.1,
   });
 
-  console.log(`
-  ╔═══════════════════════════════════════╗
-  ║   🔍 Error Monitoring Initialized     ║
-  ║                                       ║
-  ║   Environment: ${getEnv('NODE_ENV')?.padEnd(24) || 'unknown'.padEnd(24)}║
-  ║   Sentry: ${!isDevelopment() ? 'Enabled ✅'.padEnd(28) : 'Disabled (dev) 🟡'.padEnd(28)}║
-  ╚═══════════════════════════════════════╝
-  `);
+  if (import.meta.env.DEV) {
+    console.info('[Sentry] Monitoreo desactivado en desarrollo');
+  }
 };
 
 export default errorMonitoring;

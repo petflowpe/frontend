@@ -28,6 +28,7 @@ const Calendar = lazy(() => import('./components/Calendar').then(m => ({ default
 const Clients = lazy(() => import('./components/Clients').then(m => ({ default: m.Clients })));
 const Services = lazy(() => import('./components/Services').then(m => ({ default: m.Services })));
 const Products = lazy(() => import('./components/Products').then(m => ({ default: m.Products })));
+const SuppliersManagement = lazy(() => import('./components/SuppliersManagement').then(m => ({ default: m.SuppliersManagement })));
 const Inventory = lazy(() => import('./components/Inventory').then(m => ({ default: m.Inventory })));
 const Purchases = lazy(() => import('./components/Purchases').then(m => ({ default: m.Purchases })));
 const MedicalCare = lazy(() => import('./components/MedicalCare').then(m => ({ default: m.MedicalCare })));
@@ -247,15 +248,17 @@ function AppContent() {
         }
 
         if (cancelled) return;
-        // Fallback: restaurar sesión desde localStorage (p. ej. tras timeout o sin red)
         const session = getSession();
         const storedUser = typeof window !== 'undefined' ? localStorage.getItem('smartpet_user') : null;
         const userFromStorage = storedUser ? (() => { try { return JSON.parse(storedUser); } catch { return null; } })() : (session?.user ?? null);
-        if (userFromStorage && (token || userFromStorage.id)) {
+        if (token && userFromStorage?.id) {
           setIsAuthenticated(true);
           setCurrentUser(userFromStorage);
-          if (token) apiClient.setToken(token);
+          apiClient.setToken(token);
         } else {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('smartpet_user');
+          apiClient.setToken(null);
           setIsAuthenticated(false);
           setCurrentUser(null);
         }
@@ -323,6 +326,7 @@ function AppContent() {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('smartpet_user');
       apiClient.setToken(null);
       clearSession();
       setIsAuthenticated(false);
@@ -465,6 +469,7 @@ function AppContent() {
       case 'pets': return <PetsManagement onNavigate={setActiveTab} />;
       case 'services': return <Services />;
       case 'products': return <Products />;
+      case 'suppliers': return <SuppliersManagement />;
       case 'inventory': return <Inventory />;
       case 'purchases': return <Purchases />;
       case 'medical': return <MedicalCare />;
@@ -482,7 +487,7 @@ function AppContent() {
       case 'exports': return <ExportsReports />;
       case 'notifications': return <NotificationsImproved onNavigate={setActiveTab} />;
       case 'user-settings': return <UserSettingsPage />;
-      case 'users': return <UserManagement currentUserId={currentUser.id} currentUserRole={currentUser.role} companyId={currentUser.companyId} />;
+      case 'users': return <UserManagement currentUser={currentUser} currentUserId={currentUser.id} companyId={currentUser.companyId} />;
       case 'companies': return <CompanyManagement />;
       case 'loyalty': return <LoyaltyProgram />;
       case 'reviews': return <ReviewsSystem />;

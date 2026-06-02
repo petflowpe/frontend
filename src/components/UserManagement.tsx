@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
+import { ApiValidationError } from '../utils/api/config';
 import { API } from '../utils/api/endpoints';
 import { useRoles } from '../hooks/useRoles';
 import { UserListView } from './users/UserListView';
@@ -12,21 +13,42 @@ import { Dialog, DialogContent } from './ui/dialog';
 import { ROLE_BADGE_COLORS } from './users/constants';
 import { RolesModule } from './roles/RolesModule';
 import { BranchesConfigModal } from './users/BranchesConfigModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
+import { hasPermission, isSuperAdmin, type CurrentUserLike } from '../utils/permissions';
+import { validateStaffPassword } from '../utils/passwordPolicy';
+
+const PRIVILEGED_ROLE_NAMES = new Set(['super_admin', 'api_client']);
+
+function formatApiError(error: unknown): string {
+  if (error instanceof ApiValidationError) {
+    return Object.values(error.errors ?? {}).flat().join(' ') || error.message;
+  }
+  return error instanceof Error ? error.message : 'Error inesperado';
+}
 
 export function UserManagement({
   currentUserId,
   companyId,
+  currentUser,
 }: {
   currentUserId?: string;
-  /** Reservado por si el módulo filtra acciones por rol en el futuro */
-  currentUserRole?: string;
-  /** Empresa actual (sedes / unidades). */
   companyId?: number | null;
+  currentUser?: CurrentUserLike | null;
 }) {
   const [mainSection, setMainSection] = useState<'users' | 'roles'>('users');
   const [currentView, setCurrentView] = useState<UserManagementView>('list');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [branchesModalOpen, setBranchesModalOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
@@ -35,6 +57,12 @@ export function UserManagement({
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const canCreateUsers = hasPermission(currentUser, ['users.create', 'users.manage']);
+  const canUpdateUsers = hasPermission(currentUser, ['users.update', 'users.manage']);
+  const canDeleteUsers = hasPermission(currentUser, ['users.delete', 'users.manage']);
+  const canManageRoles = hasPermission(currentUser, ['users.roles', 'users.manage']);
+  const canManageBranches = hasPermission(currentUser, ['users.manage', 'company.manage']);
 
   const [formData, setFormData] = useState<UserFormState>({
     name: '',
@@ -71,20 +99,13 @@ export function UserManagement({
       );
     } catch {
       setCompanyBranches([]);
+      toast.error('No se pudieron cargar las sedes de la empresa');
     }
   }, [companyId]);
 
   useEffect(() => {
     refreshCompanyBranches();
   }, [refreshCompanyBranches]);
-
-  useEffect(() => {
-    if (!branchesModalOpen) refreshCompanyBranches();
-  }, [branchesModalOpen, refreshCompanyBranches]);
-
-  useEffect(() => {
-    if (createModalOpen) refreshCompanyBranches();
-  }, [createModalOpen, refreshCompanyBranches]);
 
   const mapBackendToUser = (row: {
     id: number;
@@ -136,41 +157,36 @@ export function UserManagement({
     fetchRoles({ include_inactive: '1' });
   }, [fetchRoles]);
 
-  useEffect(() => {
-    if (mainSection !== 'users') setCreateModalOpen(false);
-  }, [mainSection]);
+  const assignableRoles = useMemo(() => {
+    const activeRoles = apiRoles.filter((role) => role.active !== false);
+    if (isSuperAdmin(currentUser)) return activeRoles;
+    return activeRoles.filter((role) => !PRIVILEGED_ROLE_NAMES.has(role.name));
+  }, [apiRoles, currentUser]);
 
-  useEffect(() => {
-    if (mainSection !== 'users') setBranchesModalOpen(false);
-  }, [mainSection]);
-
-  useEffect(() => {
-    if (filterRole === 'all') return;
-    if (!apiRoles.some((r) => String(r.id) === filterRole)) {
-      setFilterRole('all');
-    }
-  }, [apiRoles, filterRole]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/users', { per_page: '100' });
+      const params: Record<string, string> = { per_page: '100' };
+      if (companyId != null && companyId > 0) {
+        params.company_id = String(companyId);
+      }
+      const res = await apiClient.get(API.users.list, params);
       const raw = Array.isArray(res) ? res : (res as { data?: unknown[] })?.data;
       const data = Array.isArray(raw) ? raw : [];
       setUsers(data.map((r: unknown) => mapBackendToUser(r as Parameters<typeof mapBackendToUser>[0])));
     } catch (error) {
-      console.error(error);
+      if (import.meta.env.DEV) console.error(error);
       toast.error('No se pudieron cargar los usuarios');
       setUsers([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [companyId]);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -183,8 +199,7 @@ export function UserManagement({
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.id.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesRole =
-      filterRole === 'all' || String(user.role_id) === filterRole || user.role === filterRole;
+    const matchesRole = filterRole === 'all' || String(user.role_id) === filterRole;
     const matchesStatus = filterStatus === 'all' || user.status === filterStatus;
 
     return matchesSearch && matchesRole && matchesStatus;
@@ -202,34 +217,42 @@ export function UserManagement({
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Activo</Badge>;
       case 'inactive':
         return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300">Inactivo</Badge>;
-      case 'suspended':
-        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">Suspendido</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
   const handleToggleStatus = async (userId: string) => {
+    if (!canUpdateUsers) {
+      toast.error('No tiene permiso para cambiar el estado de usuarios');
+      return;
+    }
+    if (userId === currentUserId) {
+      toast.error('No puede desactivar su propia cuenta');
+      return;
+    }
     const user = users.find((u) => u.id === userId);
     if (!user) return;
     const newActive = user.status !== 'active';
     try {
-      await apiClient.put(`/users/${userId}`, { active: newActive });
+      await apiClient.put(API.users.update(userId), { active: newActive });
       setUsers(users.map((u) => (u.id === userId ? { ...u, status: newActive ? 'active' : 'inactive' } : u)));
       toast.success(newActive ? 'Usuario activado' : 'Usuario desactivado');
-    } catch {
-      toast.error('Error al cambiar estado');
+    } catch (error) {
+      toast.error(formatApiError(error));
     }
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm('¿Estás seguro de eliminar este usuario? Esta acción no se puede deshacer.')) return;
+  const confirmDeleteUser = async () => {
+    if (!deleteTargetId) return;
     try {
-      await apiClient.delete(`/users/${userId}?soft=1`);
-      setUsers(users.filter((u) => u.id !== userId));
+      await apiClient.delete(`${API.users.delete(deleteTargetId)}?soft=1`);
+      setUsers(users.filter((u) => u.id !== deleteTargetId));
       toast.success('Usuario desactivado correctamente');
-    } catch {
-      toast.error('Error al eliminar usuario');
+    } catch (error) {
+      toast.error(formatApiError(error));
+    } finally {
+      setDeleteTargetId(null);
     }
   };
 
@@ -243,7 +266,7 @@ export function UserManagement({
   };
 
   const applyNewUserFormDefaults = () => {
-    const defaultRole = apiRoles.find((r) => r.name === 'company_user') ?? apiRoles[0];
+    const defaultRole = assignableRoles.find((r) => r.name === 'company_user') ?? assignableRoles[0];
     setFormData({
       name: '',
       email: '',
@@ -279,12 +302,20 @@ export function UserManagement({
   };
 
   const handleOpenNewUser = () => {
+    if (!canCreateUsers) {
+      toast.error('No tiene permiso para crear usuarios');
+      return;
+    }
     setEditingUser(null);
     applyNewUserFormDefaults();
     setCreateModalOpen(true);
   };
 
   const handleEditUser = (user: User) => {
+    if (!canUpdateUsers) {
+      toast.error('No tiene permiso para editar usuarios');
+      return;
+    }
     setCreateModalOpen(false);
     setEditingUser(user);
     setFormData({
@@ -293,12 +324,7 @@ export function UserManagement({
       phone: user.phone,
       initials: user.initials ?? '',
       allBranchesAccess: user.allBranchesAccess !== false,
-      branchIds:
-        user.allBranchesAccess === false
-          ? user.branchIds && user.branchIds.length > 0
-            ? user.branchIds
-            : companyBranches.filter((b) => b.activo).map((b) => b.id)
-          : [],
+      branchIds: user.allBranchesAccess === false ? (user.branchIds ?? []) : [],
       role_id: user.role_id ?? 0,
       status: user.status,
       password: '',
@@ -313,9 +339,26 @@ export function UserManagement({
       return;
     }
 
+    if (!editingUser && !canCreateUsers) {
+      toast.error('No tiene permiso para crear usuarios');
+      return;
+    }
+    if (editingUser && !canUpdateUsers) {
+      toast.error('No tiene permiso para editar usuarios');
+      return;
+    }
+
     if (!editingUser && (!formData.password || !formData.confirmPassword)) {
       toast.error('Por favor ingresa una contraseña');
       return;
+    }
+
+    if (formData.password) {
+      const passwordError = validateStaffPassword(formData.password);
+      if (passwordError) {
+        toast.error(passwordError);
+        return;
+      }
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -362,15 +405,15 @@ export function UserManagement({
           active: formData.status === 'active',
           phone: formData.phone.trim() || undefined,
           initials: formData.initials.trim() || undefined,
+          ...(companyId ? { company_id: companyId } : {}),
           ...branchPayload,
         });
         toast.success('Usuario creado correctamente');
       }
       await fetchUsers();
       goToList();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error al guardar';
-      toast.error(msg);
+    } catch (error) {
+      toast.error(formatApiError(error));
     } finally {
       setLoading(false);
     }
@@ -392,23 +435,23 @@ export function UserManagement({
   const isSuperAdminRole = (u: User) => (u.roleKey ?? '').toLowerCase() === 'super_admin';
 
   const userFormRoleValue = useMemo(() => {
-    if (!apiRoles.length) return undefined;
-    if (apiRoles.some((r) => r.id === formData.role_id)) return String(formData.role_id);
-    return String(apiRoles[0].id);
-  }, [apiRoles, formData.role_id]);
+    if (!assignableRoles.length) return undefined;
+    if (assignableRoles.some((r) => r.id === formData.role_id)) return String(formData.role_id);
+    return String(assignableRoles[0].id);
+  }, [assignableRoles, formData.role_id]);
 
   useEffect(() => {
     if (currentView !== 'edit' && !createModalOpen) return;
-    if (!apiRoles.length) return;
-    if (!apiRoles.some((r) => r.id === formData.role_id)) {
-      setFormData((prev) => ({ ...prev, role_id: apiRoles[0].id }));
+    if (!assignableRoles.length) return;
+    if (!assignableRoles.some((r) => r.id === formData.role_id)) {
+      setFormData((prev) => ({ ...prev, role_id: assignableRoles[0].id }));
     }
-  }, [currentView, createModalOpen, apiRoles, formData.role_id]);
+  }, [currentView, createModalOpen, assignableRoles, formData.role_id]);
 
   const formViewProps = {
     formData,
     setFormData,
-    apiRoles,
+    apiRoles: assignableRoles,
     rolesLoading,
     userFormRoleValue,
     loading,
@@ -426,10 +469,10 @@ export function UserManagement({
           roles={apiRoles}
           loading={rolesLoading}
           fetchRoles={fetchRoles}
-          createRole={createRole}
-          updateRole={updateRole}
-          toggleRole={toggleRole}
-          deleteRole={deleteRole}
+          onCreate={createRole}
+          onUpdate={updateRole}
+          onToggle={toggleRole}
+          onDelete={deleteRole}
         />
       ) : null}
 
@@ -444,20 +487,38 @@ export function UserManagement({
           setFilterStatus={setFilterStatus}
           apiRoles={apiRoles}
           filteredUsers={filteredUsers}
+          loading={loading}
           getRoleBadgeColor={getRoleBadgeColor}
           getStatusBadge={getStatusBadge}
           formatDateTime={formatDateTime}
           onRefresh={handleRefresh}
           refreshing={refreshing}
-          onConfigureRoles={() => setMainSection('roles')}
+          onConfigureRoles={() => {
+            if (!canManageRoles) {
+              toast.error('No tiene permiso para gestionar roles');
+              return;
+            }
+            setMainSection('roles');
+          }}
           onConfigureBranches={handleConfigureBranches}
           onNewUser={handleOpenNewUser}
           onEditUser={handleEditUser}
           onToggleStatus={handleToggleStatus}
           onResetPassword={handleResetPassword}
-          onDeleteUser={handleDeleteUser}
+          onDeleteUser={(userId) => {
+            if (!canDeleteUsers) {
+              toast.error('No tiene permiso para eliminar usuarios');
+              return;
+            }
+            setDeleteTargetId(userId);
+          }}
           isSuperAdminRole={isSuperAdminRole}
           currentUserId={currentUserId}
+          canCreateUsers={canCreateUsers}
+          canUpdateUsers={canUpdateUsers}
+          canDeleteUsers={canDeleteUsers}
+          canManageRoles={canManageRoles}
+          canManageBranches={canManageBranches}
         />
       ) : null}
 
@@ -479,6 +540,23 @@ export function UserManagement({
       {mainSection === 'users' && currentView === 'edit' && editingUser ? (
         <UserEditView {...formViewProps} editingUser={editingUser} />
       ) : null}
+
+      <AlertDialog open={!!deleteTargetId} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Desactivar usuario?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El usuario quedará inactivo y no podrá acceder al sistema. Puede reactivarlo más tarde.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Desactivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
