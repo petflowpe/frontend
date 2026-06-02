@@ -11,72 +11,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  trigger-backend:
     runs-on: ubuntu-latest
-    env:
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_USER: ${{ secrets.SSH_USER }}
-      DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
-
     steps:
-      - name: Validar secrets requeridos
+      - name: Validar token de deploy
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          BACKEND_DEPLOY_TOKEN: ${{ secrets.BACKEND_DEPLOY_TOKEN }}
         run: |
-          missing=0
-          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo "::error::Falta SSH_HOST, SSH_USER o SSH_PRIVATE_KEY (copialos desde el repo backend)"
-            missing=1
-          fi
-          FRONTEND_PATH="${{ secrets.FRONTEND_DEPLOY_PATH }}"
-          if [ -z "$FRONTEND_PATH" ]; then
-            FRONTEND_PATH="/var/www/petflow/frontend/dist"
-            echo "Usando ruta frontend por defecto: $FRONTEND_PATH"
-          fi
-          echo "DEPLOY_PATH=$FRONTEND_PATH" >> "$GITHUB_ENV"
-          exit "$missing"
-
-      - name: Checkout codigo
-        uses: actions/checkout@v4
-
-      - name: Configurar Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Compilar SPA
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-        run: |
-          export VITE_API_URL="${VITE_API_URL:-https://api.petflow.com/api}"
-          npm ci
-          npm run build
-
-      - name: Configurar SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          if ! ssh-keyscan -H -T 20 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
-            echo "::error::No se pudo resolver el host SSH ($SSH_HOST). Verifica SSH_HOST."
+          if [ -z "$BACKEND_DEPLOY_TOKEN" ]; then
+            echo "::error::Falta BACKEND_DEPLOY_TOKEN en este repo."
+            echo "Crea un token en GitHub (Settings > Developer settings > Tokens) con acceso a petflowpe/backend"
+            echo "y guardalo como secret BACKEND_DEPLOY_TOKEN en petflowpe/frontend."
             exit 1
           fi
 
-      - name: Publicar build al VPS
-        run: |
-          ssh -i ~/.ssh/deploy_key \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=no \
-            "$SSH_USER@$SSH_HOST" \
-            "mkdir -p '$DEPLOY_PATH'"
-
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=no" \
-            build/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
-
-          echo "Deploy frontend completado en $DEPLOY_PATH"
+      - name: Disparar deploy frontend en backend
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.BACKEND_DEPLOY_TOKEN }}
+          repository: petflowpe/backend
+          event-type: deploy-frontend
+          client-payload: '{"ref":"${{ github.sha }}","source":"frontend-push"}'
