@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: deploy-frontend-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   trigger-backend:
