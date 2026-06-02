@@ -935,7 +935,7 @@ export function PetsManagement({
   const speciesOptions = speciesList.length ? speciesList : DEFAULT_SPECIES;
 
   if (profilePetId) {
-    return <PetProfile petId={profilePetId} onClose={() => setProfilePetId(null)} />;
+    return <PetProfile petId={profilePetId} onNavigate={onNavigate} onClose={() => setProfilePetId(null)} />;
   }
 
   return (

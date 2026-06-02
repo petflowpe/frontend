@@ -196,16 +196,33 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
       (clientDoc && String(c.documentNumber || '') === clientDoc)
     );
     if (!client) return;
-    setValue('client', {
-      id: client.id,
-      fullName: client.fullName,
-      documentNumber: client.documentNumber,
-      phone1: client.phone1,
-      address: client.address,
-      district: client.district,
-    });
-    setStep(1);
-  }, [open, initialClientForNewAppointment?.clientId, initialClientForNewAppointment?.clientDocument, clients, setValue]);
+
+    (async () => {
+      setValue('client', {
+        id: client.id,
+        fullName: client.fullName,
+        documentNumber: client.documentNumber,
+        phone1: client.phone1,
+        address: client.address,
+        district: client.district,
+      });
+
+      let clientPets = client.pets || [];
+      if (clientPets.length === 0 && loadClientPets) {
+        clientPets = await loadClientPets(String(client.id));
+      }
+
+      if (clientPets.length > 0) {
+        setValue('pet', {
+          id: clientPets[0].id,
+          name: clientPets[0].name,
+          breed: clientPets[0].breed || '',
+          size: clientPets[0].size,
+        });
+      }
+      setStep(1);
+    })();
+  }, [open, initialClientForNewAppointment?.clientId, initialClientForNewAppointment?.clientDocument, clients, setValue, loadClientPets]);
 
   const { filteredVehicles, loadingCoverage, hasCoverageFilter } = useAvailableVehiclesForAppointment(
     watchedClient?.district,

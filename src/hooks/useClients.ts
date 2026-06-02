@@ -5,6 +5,7 @@ import { apiClient } from '../utils/api/client';
 export interface Pet {
   id: string;
   name: string;
+  lastName?: string;
   species: string;
   breed: string;
   gender: 'Macho' | 'Hembra';
@@ -16,6 +17,10 @@ export interface Pet {
   color?: string;
   medicalNotes?: string;
   photoUrl?: string;
+  sterilized?: boolean;
+  lastVaccinationDate?: string;
+  lastDewormingDate?: string;
+  notes?: string;
   // Campos derivados para UI
   age?: number;
   size?: 'Pequeño' | 'Mediano' | 'Grande' | 'Gigante';
@@ -44,6 +49,7 @@ export interface Client {
   zone?: string;
   loyaltyPoints?: number;
   loyaltyLevel?: string;
+  petsCount?: number;
 }
 
 export const useClients = () => {
@@ -123,6 +129,7 @@ export const useClients = () => {
       isActive: backendClient.activo !== false,
       createdAt: backendClient.created_at || new Date().toISOString(),
       pets: backendClient.pets ? (Array.isArray(backendClient.pets) ? backendClient.pets.map((p: any) => fromBackendPet(p)) : []) : [],
+      petsCount: backendClient.pets_count ?? backendClient.petsCount ?? undefined,
       lastVisit: backendClient.fecha_ultima_visita || undefined,
       birthDate: backendClient.fecha_nacimiento || undefined,
       gender: backendClient.genero || undefined,
@@ -135,6 +142,7 @@ export const useClients = () => {
   const fromBackendPet = (p: any): Pet => ({
     id: String(p.id),
     name: p.name || '',
+    lastName: p.last_name || '',
     species: p.species || 'Perro',
     breed: p.breed || '',
     gender: (p.gender === 'Hembra' ? 'Hembra' : 'Macho') as 'Macho' | 'Hembra',
@@ -142,12 +150,16 @@ export const useClients = () => {
     weight: Number(p.weight) || 0,
     color: p.color,
     medicalNotes: p.notes,
+    notes: p.notes,
     photoUrl: p.photo,
     age: p.age,
     size: p.size as Pet['size'],
     registrationDate: p.fecha_registro || p.created_at || '',
     nextVaccinationDate: p.next_vaccination_date || '',
     nextDewormingDate: p.next_deworming_date || '',
+    lastVaccinationDate: p.last_vaccination_date || '',
+    lastDewormingDate: p.last_deworming_date || '',
+    sterilized: !!p.sterilized,
   });
 
   const createClient = async (clientData: Omit<Client, 'id' | 'createdAt' | 'pets'>) => {
@@ -197,6 +209,7 @@ export const useClients = () => {
       const backendPetData: any = {
         client_id: parseInt(clientId),
         name: petData.name,
+        last_name: (petData as any).lastName || null,
         species: petData.species,
         breed: petData.breed || null,
         gender: petData.gender || null,
@@ -227,6 +240,7 @@ export const useClients = () => {
       const newPet = {
         id: String(created?.id ?? ''),
         name: created?.name ?? petData.name,
+        lastName: created?.last_name ?? (petData as any).lastName ?? '',
         species: created?.species ?? petData.species,
         breed: created?.breed ?? petData.breed ?? '',
         gender: (created?.gender === 'Hembra' ? 'Hembra' : 'Macho') as 'Macho' | 'Hembra',
@@ -237,6 +251,13 @@ export const useClients = () => {
         photoUrl: created?.photo ?? (petData as any).photoUrl,
         age: created?.age ?? (petData as any).age,
         size: (created?.size ?? (petData as any).size) as Pet['size'],
+        registrationDate: created?.fecha_registro ?? created?.created_at ?? new Date().toISOString(),
+        nextVaccinationDate: created?.next_vaccination_date ?? (petData as any).nextVaccinationDate ?? '',
+        nextDewormingDate: created?.next_deworming_date ?? (petData as any).nextDewormingDate ?? '',
+        lastVaccinationDate: created?.last_vaccination_date ?? (petData as any).lastVaccinationDate ?? '',
+        lastDewormingDate: created?.last_deworming_date ?? (petData as any).lastDewormingDate ?? '',
+        sterilized: created?.sterilized ?? !!(petData as any).sterilized,
+        notes: created?.notes ?? (petData as any).notes ?? '',
       };
 
       // Actualizar estado local
@@ -258,11 +279,13 @@ export const useClients = () => {
   const updatePet = async (clientId: string, petId: string, updates: Partial<Pet>) => {
     try {
       const backendPetData: any = {};
+      const has = (key: string) => Object.prototype.hasOwnProperty.call(updates, key);
       if (updates.name) backendPetData.name = updates.name;
+      if (has('lastName')) backendPetData.last_name = (updates as any).lastName || null;
       if (updates.species) backendPetData.species = updates.species;
       if (updates.breed) backendPetData.breed = updates.breed;
       if (updates.gender) backendPetData.gender = updates.gender;
-      if (updates.birthDate) backendPetData.birth_date = updates.birthDate;
+      if (has('birthDate')) backendPetData.birth_date = updates.birthDate || null;
       if (updates.weight !== undefined) backendPetData.weight = updates.weight;
       if (updates.color) backendPetData.color = updates.color;
       if (updates.age !== undefined) backendPetData.age = updates.age;
@@ -271,16 +294,17 @@ export const useClients = () => {
       if (updates.behavior !== undefined) backendPetData.behavior = Array.isArray(updates.behavior) && updates.behavior.length > 0 ? updates.behavior : null;
       if (updates.sterilized !== undefined) backendPetData.sterilized = updates.sterilized;
       if (updates.sterilizationDate) backendPetData.sterilization_date = updates.sterilizationDate;
-      if (updates.lastVaccinationDate) backendPetData.last_vaccination_date = updates.lastVaccinationDate;
-      if (updates.nextVaccinationDate) backendPetData.next_vaccination_date = updates.nextVaccinationDate;
-      if (updates.lastDewormingDate) backendPetData.last_deworming_date = updates.lastDewormingDate;
-      if (updates.nextDewormingDate) backendPetData.next_deworming_date = updates.nextDewormingDate;
+      if (has('lastVaccinationDate')) backendPetData.last_vaccination_date = (updates as any).lastVaccinationDate || null;
+      if (has('nextVaccinationDate')) backendPetData.next_vaccination_date = updates.nextVaccinationDate || null;
+      if (has('lastDewormingDate')) backendPetData.last_deworming_date = (updates as any).lastDewormingDate || null;
+      if (has('nextDewormingDate')) backendPetData.next_deworming_date = updates.nextDewormingDate || null;
       if (updates.insuranceCompany) backendPetData.insurance_company = updates.insuranceCompany;
       if (updates.insurancePolicyNumber) backendPetData.insurance_policy_number = updates.insurancePolicyNumber;
       if (updates.emergencyContactName) backendPetData.emergency_contact_name = updates.emergencyContactName;
       if (updates.emergencyContactPhone) backendPetData.emergency_contact_phone = updates.emergencyContactPhone;
       if (updates.allergies !== undefined) backendPetData.allergies = Array.isArray(updates.allergies) && updates.allergies.length > 0 ? updates.allergies : null;
       if (updates.medications !== undefined) backendPetData.medications = Array.isArray(updates.medications) && updates.medications.length > 0 ? updates.medications : null;
+      if (has('notes')) backendPetData.notes = (updates as any).notes || null;
 
       await apiClient.put(`/pets/${petId}`, backendPetData);
 
@@ -333,6 +357,7 @@ export const useClients = () => {
       const mappedPets = pets.map((pet: any) => ({
         id: pet.id.toString(),
         name: pet.name,
+        lastName: pet.last_name || '',
         species: pet.species,
         breed: pet.breed || '',
         gender: pet.gender || 'Macho',
@@ -341,8 +366,12 @@ export const useClients = () => {
         weight: parseFloat(pet.weight) || 0,
         color: pet.color || '',
         age: pet.age || 0,
+        sterilized: !!pet.sterilized,
+        lastVaccinationDate: pet.last_vaccination_date || '',
+        lastDewormingDate: pet.last_deworming_date || '',
         nextVaccinationDate: pet.next_vaccination_date || '',
         nextDewormingDate: pet.next_deworming_date || '',
+        notes: pet.notes || '',
       }));
 
       // Actualizar el cliente con sus mascotas

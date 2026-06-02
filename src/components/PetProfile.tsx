@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -42,40 +42,81 @@ import {
 import { formatDate, calculatePetAge } from '../utils/helpers';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { apiClient } from '../utils/api/client';
+import { setPendingAction } from '../utils/navigationBridge';
 
 interface PetProfileProps {
-  petId: number;
+  petId: number | string;
   onClose: () => void;
+  onNavigate?: (tab: string) => void;
 }
 
-export function PetProfile({ petId, onClose }: PetProfileProps) {
+export function PetProfile({ petId, onClose, onNavigate }: PetProfileProps) {
   const [activeTab, setActiveTab] = useState('medical');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [medicalSubTab, setMedicalSubTab] = useState('timeline');
+  const [loading, setLoading] = useState(true);
+  const [petData, setPetData] = useState<any>(null);
+  const [timelineData, setTimelineData] = useState<any[]>([]);
 
-  // Datos de la mascota (normalmente vendría de props o estado global)
-  const pet = {
-    id: petId,
-    name: 'Max',
-    species: 'Perro',
-    breed: 'Golden Retriever',
-    birthDate: '2020-03-15',
-    weight: '32.5 kg',
-    color: 'Dorado',
-    gender: 'Macho',
-    microchip: 'ESP982000123456789',
-    photo: 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=300',
-    notes: 'Muy sociable y activo. Le gusta el agua.',
-    owner: {
-      name: 'María González',
-      phone: '+34 612 345 678',
-      email: 'maria.gonzalez@email.com',
-      address: 'Calle Mayor 123, 28001 Madrid'
-    }
-  };
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
+        setLoading(true);
+        const [petResponse, timelineResponse] = await Promise.all([
+          apiClient.get<any>(`/pets/${petId}`),
+          apiClient.get<any>(`/pets/${petId}/timeline`),
+        ]);
+        if (!mounted) return;
+        const p = petResponse?.data || petResponse;
+        const timeline = timelineResponse?.data?.timeline || [];
+        setPetData(p);
+        setTimelineData(Array.isArray(timeline) ? timeline : []);
+      } catch (e: any) {
+        toast.error(e?.message || 'No se pudo cargar el perfil de mascota');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    run();
+    return () => { mounted = false; };
+  }, [petId]);
 
-  // Historial Clínico Unificado (Mock Data)
-  const clinicalHistory = [
+  const pet = useMemo(() => {
+    const owner = petData?.client || petData?.owners?.[0] || {};
+    const photoPath = petData?.photo || petData?.photos?.[0]?.url || petData?.photos?.[0]?.path;
+    const photo = photoPath
+      ? (String(photoPath).startsWith('http') ? photoPath : `${import.meta.env.VITE_API_URL?.replace(/\/api$/, '') || 'http://127.0.0.1:8000'}/storage/${String(photoPath).replace(/^\/+/, '')}`)
+      : 'https://via.placeholder.com/150/e2e8f0/64748b?text=PET';
+    return {
+      id: petData?.id ?? petId,
+      name: petData?.name || 'Mascota',
+      lastName: petData?.last_name || '',
+      species: petData?.species || '—',
+      breed: petData?.breed || '—',
+      birthDate: petData?.birth_date || '',
+      weight: petData?.weight ? `${petData.weight} kg` : '—',
+      color: petData?.color || '—',
+      gender: petData?.gender || '—',
+      microchip: petData?.microchip || '—',
+      photo,
+      notes: petData?.notes || 'Sin notas registradas.',
+      owner: {
+        name: owner?.razon_social || 'Sin tutor',
+        phone: owner?.telefono || owner?.telefono1 || '—',
+        email: owner?.email || '—',
+        address: [owner?.direccion, owner?.distrito].filter(Boolean).join(' - ') || '—',
+        district: owner?.distrito || '—',
+        documentNumber: owner?.numero_documento || '—',
+        registrationDate: owner?.fecha_registro || owner?.created_at || null,
+      },
+      petsCount: (petData?.client?.pets_count ?? petData?.owners?.[0]?.pets_count ?? null),
+    };
+  }, [petData, petId]);
+
+  // Historial Clínico Unificado (fallback mock)
+  const clinicalHistoryFallback = [
     {
       id: 'REC-101',
       type: 'consultation',
@@ -122,7 +163,7 @@ export function PetProfile({ petId, onClose }: PetProfileProps) {
   ];
 
   // Historial de Vacunas (Recuperado)
-  const vaccineHistory = [
+  const vaccineHistoryFallback = [
     {
       id: 1,
       name: 'Vacuna Quintuple (1ra Dosis)',
@@ -283,29 +324,77 @@ export function PetProfile({ petId, onClose }: PetProfileProps) {
   };
 
   // Handlers para botones
-  const handleNewPurchase = () => {
-    toast.success('🛒 Nueva compra iniciada', {
-      description: 'Redirigiendo al catálogo de productos...'
+  const clinicalHistory = useMemo(() => {
+    if (!timelineData.length) return clinicalHistoryFallback;
+    return timelineData.map((event: any) => ({
+      id: `EV-${event.id}`,
+      type: event.type === 'vaccine' ? 'vaccine' : 'consultation',
+      title: event.title || event.event_type || 'Atención',
+      date: event.occurred_at || new Date().toISOString().slice(0, 10),
+      doctor: 'Equipo médico',
+      reason: event.title || event.event_type || 'Seguimiento clínico',
+      diagnosis: event.description || 'Sin diagnóstico detallado',
+      vitals: {
+        weight: pet.weight !== '—' ? pet.weight : '--',
+        temp: '--',
+        pulse: '--',
+      },
+      treatment: [event.event_type || 'Atención general'],
+      observations: event.description || 'Sin observaciones',
+      evidence: [],
+      status: 'completed',
+    }));
+  }, [timelineData, pet.weight]);
+
+  const vaccineHistory = useMemo(() => {
+    const fromTimeline = timelineData
+      .filter((event: any) => event.type === 'vaccine')
+      .map((event: any, idx: number) => ({
+        id: event.id || idx + 1,
+        name: event.title || event.event_type || 'Vacuna',
+        date: event.occurred_at || new Date().toISOString().slice(0, 10),
+        status: 'completed',
+        type: 'vaccine',
+        nextDue: event.next_due_date || null,
+        vet: 'Equipo médico',
+      }));
+
+    if (fromTimeline.length > 0) return fromTimeline;
+    return vaccineHistoryFallback;
+  }, [timelineData]);
+
+  const openModule = (tab: string, action: string) => {
+    setPendingAction(tab, action, {
+      petId: String(pet.id),
+      petName: `${pet.name} ${pet.lastName || ''}`.trim(),
+      clientName: pet.owner.name,
+      clientDocument: pet.owner.documentNumber,
     });
+    onNavigate?.(tab);
+  };
+
+  const handleNewPurchase = () => {
+    openModule('products', 'new_purchase_for_pet');
+    toast.success('Abriendo Productos con mascota preseleccionada');
   };
 
   const handleNewAppointment = () => {
-    toast.success('📅 Nueva cita iniciada', {
-      description: 'Abriendo calendario de disponibilidad...'
-    });
+    openModule('appointments', 'new_appointment_with_pet');
+    toast.success('Abriendo Citas con tutor/mascota preseleccionados');
   };
 
   const handleNewTreatment = () => {
-    toast.success('💉 Nuevo tratamiento registrado', {
-      description: 'Se ha abierto el formulario médico'
-    });
+    openModule('medical', 'new_medical_attention_for_pet');
+    toast.success('Abriendo módulo clínico para nueva atención');
   };
 
   const handleDownloadHistory = () => {
-    toast.success('📥 Historial descargado', {
-      description: `Historial de ${pet.name} exportado a PDF`
-    });
+    window.print();
   };
+
+  if (loading) {
+    return <div className="p-6 text-sm text-muted-foreground">Cargando perfil de mascota...</div>;
+  }
 
   return (
     <div className="bg-background min-h-screen p-6 animate-fade-in">
@@ -432,34 +521,34 @@ export function PetProfile({ petId, onClose }: PetProfileProps) {
                         {/* Header Info */}
                         <div>
                            <div className="flex items-center gap-3 mb-1">
-                              <h2 className="text-xl font-bold text-white tracking-tight uppercase">LUIS BAROC</h2>
+                              <h2 className="text-xl font-bold text-white tracking-tight uppercase">{pet.owner.name}</h2>
                               <Badge variant="outline" className="border-slate-600 text-slate-400 h-5 text-[10px] px-2 font-normal rounded-md">Normal</Badge>
                               <Badge className="bg-green-900/30 text-green-400 border border-green-900/50 h-5 text-[10px] px-2 font-normal rounded-md">Activo</Badge>
                            </div>
-                           <p className="text-xs text-slate-500 font-medium">Registro cliente: 9/1/2026</p>
+                           <p className="text-xs text-slate-500 font-medium">Registro cliente: {pet.owner.registrationDate ? formatDate(pet.owner.registrationDate) : '—'}</p>
                         </div>
 
                         {/* Data Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                            <div className="flex items-center gap-2 text-slate-400">
                               <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                              <span className="font-medium">DNI: 12345678</span>
+                              <span className="font-medium">DNI: {pet.owner.documentNumber}</span>
                            </div>
                            <div className="flex items-center gap-2 text-slate-400">
                               <Phone className="h-4 w-4 text-green-500 shrink-0" />
-                              <span className="font-medium">981309187</span>
+                              <span className="font-medium">{pet.owner.phone}</span>
                            </div>
                            <div className="flex items-center gap-2 text-slate-400">
                               <Mail className="h-4 w-4 text-purple-500 shrink-0" />
-                              <span className="uppercase font-medium">LU@GMAIL.COM</span>
+                              <span className="uppercase font-medium">{pet.owner.email}</span>
                            </div>
                            <div className="flex items-center gap-2 text-slate-400">
                               <Bug className="h-4 w-4 text-pink-500 shrink-0" />
-                              <span className="font-medium">1 mascota(s)</span>
+                              <span className="font-medium">{pet.petsCount ?? 1} mascota(s)</span>
                            </div>
                            <div className="flex items-center gap-2 text-slate-400 col-span-1 md:col-span-2">
                               <MapPin className="h-4 w-4 text-red-500 shrink-0" />
-                              <span className="font-medium">Miraflores</span>
+                              <span className="font-medium">{pet.owner.district}</span>
                            </div>
                         </div>
 
@@ -476,36 +565,6 @@ export function PetProfile({ petId, onClose }: PetProfileProps) {
                      </div>
                   </div>
 
-                  {/* Right Column: Balance & Action (Desktop) */}
-                  <div className="hidden md:flex flex-col items-end gap-2 shrink-0">
-                     {/* Botón Agregar Mascota (Arriba del saldo) */}
-                     <Button 
-                        size="sm"
-                        className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 border border-indigo-500/20 h-8 text-xs font-bold uppercase tracking-wide px-4 mb-1 transition-all"
-                        onClick={() => toast.success('Agregar mascota', { description: 'Abriendo formulario de registro...' })}
-                     >
-                        <Plus className="h-3.5 w-3.5 mr-1.5" />
-                        Agregar Mascota
-                     </Button>
-
-                     <div className="border border-green-800/60 bg-green-950/30 rounded-xl px-5 py-2 text-center min-w-[110px]">
-                        <div className="text-2xl font-bold text-green-500 leading-none mb-0.5">0 S/</div>
-                        <div className="text-[10px] text-green-600 font-medium">0 citas</div>
-                     </div>
-                     
-                     <Button className="bg-blue-600 hover:bg-blue-500 text-white w-full shadow-lg shadow-blue-900/20 font-medium h-9" onClick={handleNewAppointment}>
-                        <Calendar className="h-4 w-4 mr-2" />
-                        Nueva Cita
-                     </Button>
-                  </div>
-               </div>
-               
-               {/* Mobile Actions Overlay */}
-               <div className="xl:hidden mt-6 pt-4 border-t border-slate-800 flex justify-end">
-                  <Button className="bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 h-9 text-xs" onClick={handleNewAppointment}>
-                     <Calendar className="h-3.5 w-3.5 mr-2" />
-                     Nueva Cita
-                  </Button>
                </div>
             </div>
           </Card>

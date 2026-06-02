@@ -210,7 +210,6 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
     updatePet, 
     deletePet, 
     loadClientPets,
-    fetchClients 
   } = useClients();
 
   // const { createPatient, updatePatient, deletePatient } = usePatients(); // Removed
@@ -338,27 +337,24 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
   const handleSavePet = async (petData: any) => {
     if (selectedClient) {
       try {
-        // Construir notas médicas combinando campos extra que no tienen columna propia aún
-        let medicalNotes = petData.notes || '';
-        const extraInfo = [];
-        if (petData.activePlan) extraInfo.push(`Plan: ${petData.activePlan}`);
-        if (petData.chip) extraInfo.push(`Chip: ${petData.chip}`);
-        if (petData.temperament) extraInfo.push(`Carácter: ${petData.temperament}`);
-        if (petData.lastVaccinationDate) extraInfo.push(`Últ. Vacuna: ${petData.lastVaccinationDate}`);
-        
-        if (extraInfo.length > 0) {
-          medicalNotes += `\n[Info Extra: ${extraInfo.join(', ')}]`;
-        }
-
         const newPetData = {
           name: petData.name,
+          lastName: petData.lastName || '',
           species: petData.species,
           breed: petData.breed,
           birthDate: petData.birthDate || '',
           gender: petData.sex,
           weight: petData.weight || 0,
-          medicalNotes: medicalNotes,
-          photoUrl: petData.image
+          medicalNotes: petData.notes || '',
+          notes: petData.notes || '',
+          photoUrl: petData.image,
+          sterilized: petData.status === 'Castrado' || petData.status === 'Esterilizada',
+          lastVaccinationDate: petData.lastVaccinationDate || '',
+          lastDewormingDate: petData.lastDewormingDate || '',
+          nextVaccinationDate: petData.nextVaccinationDate || '',
+          nextDewormingDate: petData.nextDewormingDate || '',
+          temperament: petData.temperament || '',
+          behavior: petData.behavior || [],
         };
 
         if (editingPet) {
@@ -495,6 +491,7 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
       <div className="p-6">
         <PetProfile 
           petId={selectedPetId} 
+          onNavigate={onNavigate}
           onClose={() => setSelectedPetId(null)} 
         />
       </div>
@@ -529,24 +526,10 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
             </div>
             <div className="flex gap-2">
               {isAdminRole && (
-                <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
-                  <DialogTrigger asChild>
-                    <Button onClick={() => setEditingClient(null)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Nuevo Cliente
-                    </Button>
-                  </DialogTrigger>
-                  <ClientDialog
-                    client={editingClient}
-                    vehicles={vehicles}
-                    currentUserRole={effectiveRole}
-                    onSave={handleSaveClient}
-                    onClose={() => {
-                      setShowNewClient(false);
-                      setEditingClient(null);
-                    }}
-                  />
-                </Dialog>
+                <Button onClick={() => { setEditingClient(null); setShowNewClient(true); }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuevo Cliente
+                </Button>
               )}
             </div>
           </div>
@@ -633,7 +616,7 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
                           </div>
                           <div className="flex items-center space-x-2">
                             <PawPrint className="h-4 w-4 text-pink-500" />
-                            <span>{pets.length} mascota(s)</span>
+                            <span>{(client.petsCount ?? pets.length ?? 0)} mascota(s)</span>
                           </div>
                         </div>
                         {pets.length > 0 && (
@@ -1102,6 +1085,19 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
           </div>
         </div>
       )}
+
+      <Dialog open={showNewClient} onOpenChange={(open) => { setShowNewClient(open); if (!open) setEditingClient(null); }}>
+        <ClientDialog
+          client={editingClient}
+          vehicles={vehicles}
+          currentUserRole={effectiveRole}
+          onSave={handleSaveClient}
+          onClose={() => {
+            setShowNewClient(false);
+            setEditingClient(null);
+          }}
+        />
+      </Dialog>
 
       {/* Pet Dialog */}
       {showNewPet && selectedClient && (
@@ -2053,36 +2049,51 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
 
 // Diálogo de Mascota con edad y etapa
 function PetDialog({ pet, canEditRestrictedFields = true, ownerLastName1, ownerLastName2, dogBreeds, catBreeds, temperaments, behaviors, onSave, onClose }: any) {
-  const [formData, setFormData] = useState({
-    name: pet?.name || '',
-    ownerLastName1: pet?.ownerLastName1 || ownerLastName1,
-    ownerLastName2: pet?.ownerLastName2 || ownerLastName2,
-    registrationCode: pet?.registrationCode || '',
-    registrationDate: pet?.registrationDate || new Date().toISOString(),
-    birthDate: pet?.birthDate || '',
-    age: pet?.age || 0,
-    stage: pet?.stage || 'Cachorro',
-    species: pet?.species || 'Perro',
-    breed: pet?.breed || '',
-    size: pet?.size || 'Mediano',
-    sex: pet?.sex || 'Macho',
-    status: pet?.status || 'Intacto',
-    coatLength: pet?.coatLength || 'Corto',
-    weight: pet?.weight || 0,
-    temperament: pet?.temperament || 'Tranquilo',
-    activity: pet?.activity || 'Moderada',
-    behavior: pet?.behavior || 'Amigable',
-    chip: pet?.chip || '',
-    deceased: pet?.deceased || false,
-    dischargeDate: pet?.dischargeDate || '',
-    activePlan: pet?.activePlan || '',
-    notes: pet?.notes || '',
-    lastVisit: pet?.lastVisit || '',
+  const buildInitialFormData = (rawPet: any) => {
+    const lastNameParts = String(rawPet?.lastName || '').trim().split(/\s+/).filter(Boolean);
+    const ownerLn1 = rawPet?.ownerLastName1 || lastNameParts[0] || ownerLastName1 || '';
+    const ownerLn2 = rawPet?.ownerLastName2 || lastNameParts.slice(1).join(' ') || ownerLastName2 || '';
+    const petGender = rawPet?.sex || rawPet?.gender || 'Macho';
+    const petSterilized = rawPet?.status ? rawPet.status !== 'Intacto' : !!rawPet?.sterilized;
+
+    return {
+    name: rawPet?.name || '',
+    ownerLastName1: ownerLn1,
+    ownerLastName2: ownerLn2,
+    registrationCode: rawPet?.registrationCode || '',
+    registrationDate: rawPet?.registrationDate || new Date().toISOString(),
+    birthDate: rawPet?.birthDate || '',
+    age: rawPet?.age || 0,
+    stage: rawPet?.stage || 'Cachorro',
+    species: rawPet?.species || 'Perro',
+    breed: rawPet?.breed || '',
+    size: rawPet?.size || 'Mediano',
+    sex: petGender,
+    status: petSterilized ? (petGender === 'Hembra' ? 'Esterilizada' : 'Castrado') : 'Intacto',
+    coatLength: rawPet?.coatLength || 'Corto',
+    weight: rawPet?.weight || 0,
+    temperament: rawPet?.temperament || 'Tranquilo',
+    activity: rawPet?.activity || 'Moderada',
+    behavior: rawPet?.behavior || 'Amigable',
+    chip: rawPet?.chip || '',
+    deceased: rawPet?.deceased || false,
+    dischargeDate: rawPet?.dischargeDate || '',
+    activePlan: rawPet?.activePlan || '',
+    notes: rawPet?.notes || rawPet?.medicalNotes || '',
+    lastVisit: rawPet?.lastVisit || '',
     // Campos médicos obligatorios
-    lastDewormingDate: pet?.lastDewormingDate || '',
-    lastFleaTreatmentDate: pet?.lastFleaTreatmentDate || '',
-    lastVaccinationDate: pet?.lastVaccinationDate || ''
-  });
+    lastDewormingDate: rawPet?.lastDewormingDate || '',
+    lastFleaTreatmentDate: rawPet?.lastFleaTreatmentDate || '',
+    lastVaccinationDate: rawPet?.lastVaccinationDate || '',
+    nextVaccinationDate: rawPet?.nextVaccinationDate || '',
+    nextDewormingDate: rawPet?.nextDewormingDate || '',
+  };
+  };
+  const [formData, setFormData] = useState(buildInitialFormData(pet));
+
+  useEffect(() => {
+    setFormData(buildInitialFormData(pet));
+  }, [pet, ownerLastName1, ownerLastName2]);
 
   // Calcular edad y etapa desde fecha de nacimiento
   const calculateAgeAndStage = (birthDate: string) => {
