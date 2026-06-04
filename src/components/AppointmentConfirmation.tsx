@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Bell, Check, X, Clock, MessageSquare, Phone, Mail, Calendar } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Bell, Check, Clock, Phone, Mail, Calendar, Loader2, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -11,6 +11,7 @@ import { Progress } from './ui/progress';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { formatDate } from '../utils/helpers';
+import { useAppointments } from '../hooks/useAppointments';
 
 interface Appointment {
   id: string;
@@ -39,55 +40,48 @@ interface CancellationPolicy {
 }
 
 export function AppointmentConfirmation() {
-  const [appointments, setAppointments] = useState<Appointment[]>([
-    {
-      id: 'APT-001',
-      clientName: 'María García',
-      petName: 'Max',
-      service: 'Baño y Corte',
-      date: '2024-12-20',
-      time: '10:00',
-      phone: '+51 987654321',
-      email: 'maria@email.com',
-      confirmed: false,
-      remindersSent: {
-        reminder24h: false,
-        reminder2h: false
-      }
-    },
-    {
-      id: 'APT-002',
-      clientName: 'Juan Pérez',
-      petName: 'Luna',
-      service: 'Corte de Pelo',
-      date: '2024-12-20',
-      time: '14:00',
-      phone: '+51 912345678',
-      email: 'juan@email.com',
-      confirmed: true,
-      confirmationMethod: 'whatsapp',
-      confirmationDate: '2024-12-19T10:30:00',
-      remindersSent: {
-        reminder24h: true,
-        reminder2h: false
-      }
-    },
-    {
-      id: 'APT-003',
-      clientName: 'Sandra López',
-      petName: 'Rocky',
-      service: 'Baño Medicado',
-      date: '2024-12-21',
-      time: '09:00',
-      phone: '+51 998877665',
-      email: 'sandra@email.com',
-      confirmed: false,
-      remindersSent: {
-        reminder24h: false,
-        reminder2h: false
-      }
-    }
-  ]);
+  const {
+    appointments: rawAppointments,
+    loading,
+    refreshAppointments,
+    confirmAppointment,
+    sendAppointmentReminder,
+  } = useAppointments();
+
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('en-CA');
+    const in7 = new Date();
+    in7.setDate(in7.getDate() + 7);
+    refreshAppointments({
+      date_from: today,
+      date_to: in7.toLocaleDateString('en-CA'),
+      per_page: 100,
+    });
+  }, [refreshAppointments]);
+
+  const appointments: Appointment[] = useMemo(
+    () =>
+      rawAppointments
+        .filter((a) => a.status !== 'cancelled')
+        .map((a) => ({
+          id: a.id,
+          clientName: a.clientName || a.client || 'Cliente',
+          petName: a.petName || a.pet || 'Mascota',
+          service: a.serviceType || a.reason || 'Servicio',
+          date: a.date,
+          time: (a.time || '').slice(0, 5),
+          phone: a.clientPhone || a.phone || '',
+          email: '',
+          confirmed: a.status === 'confirmed' || a.status === 'in-progress' || a.status === 'completed',
+          remindersSent: {
+            reminder24h: !!a.reminderSent,
+            reminder2h: false,
+          },
+          confirmationMethod: undefined,
+          confirmationDate: undefined,
+        })),
+    [rawAppointments]
+  );
 
   const [policies, setPolicies] = useState<CancellationPolicy[]>([
     {
@@ -119,67 +113,27 @@ export function AppointmentConfirmation() {
     requireConfirmation: true
   });
 
-  // Simular envío automático de recordatorios
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setAppointments(prev => prev.map(apt => {
-        const aptDate = new Date(`${apt.date}T${apt.time}`);
-        const now = new Date();
-        const hoursUntil = (aptDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-        const updated = { ...apt };
-
-        // Recordatorio 24 horas antes
-        if (hoursUntil <= 24 && hoursUntil > 23 && !apt.remindersSent.reminder24h && autoReminders.reminder24h) {
-          updated.remindersSent.reminder24h = true;
-          // En producción, aquí se enviaría el recordatorio real
-        }
-
-        // Recordatorio 2 horas antes
-        if (hoursUntil <= 2 && hoursUntil > 1 && !apt.remindersSent.reminder2h && autoReminders.reminder2h) {
-          updated.remindersSent.reminder2h = true;
-          // En producción, aquí se enviaría el recordatorio real
-        }
-
-        return updated;
-      }));
-    }, 60000); // Verificar cada minuto
-
-    return () => clearInterval(interval);
-  }, [autoReminders]);
-
-  const handleConfirm = (appointmentId: string, method: 'sms' | 'whatsapp' | 'email' | 'phone') => {
-    setAppointments(prev => prev.map(apt =>
-      apt.id === appointmentId
-        ? {
-            ...apt,
-            confirmed: true,
-            confirmationMethod: method,
-            confirmationDate: new Date().toISOString()
-          }
-        : apt
-    ));
-    toast.success('Cita confirmada exitosamente');
+  const handleConfirm = async (
+    appointmentId: string,
+    _method: 'sms' | 'whatsapp' | 'email' | 'phone'
+  ) => {
+    try {
+      await confirmAppointment(appointmentId);
+      toast.success('Cita confirmada en el sistema');
+    } catch {
+      toast.error('No se pudo confirmar la cita');
+    }
   };
 
-  const handleSendReminder = (appointmentId: string, type: '24h' | '2h') => {
-    const appointment = appointments.find(a => a.id === appointmentId);
+  const handleSendReminder = async (appointmentId: string) => {
+    const appointment = appointments.find((a) => a.id === appointmentId);
     if (!appointment) return;
-
-    // En producción, aquí se enviaría el recordatorio por WhatsApp/SMS/Email
-    toast.success(`Recordatorio enviado a ${appointment.clientName}`);
-
-    setAppointments(prev => prev.map(apt =>
-      apt.id === appointmentId
-        ? {
-            ...apt,
-            remindersSent: {
-              ...apt.remindersSent,
-              [type === '24h' ? 'reminder24h' : 'reminder2h']: true
-            }
-          }
-        : apt
-    ));
+    try {
+      await sendAppointmentReminder(appointmentId);
+      toast.success(`Recordatorio registrado para ${appointment.clientName}`);
+    } catch {
+      toast.error('No se pudo enviar el recordatorio');
+    }
   };
 
   const handleTogglePolicy = (policyId: string) => {
@@ -193,7 +147,10 @@ export function AppointmentConfirmation() {
     total: appointments.length,
     confirmed: appointments.filter(a => a.confirmed).length,
     pending: appointments.filter(a => !a.confirmed).length,
-    confirmationRate: (appointments.filter(a => a.confirmed).length / appointments.length) * 100
+    confirmationRate:
+      appointments.length > 0
+        ? (appointments.filter((a) => a.confirmed).length / appointments.length) * 100
+        : 0,
   };
 
   return (
@@ -204,9 +161,30 @@ export function AppointmentConfirmation() {
             Confirmación de Citas
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            Gestiona confirmaciones y recordatorios automáticos
+            Citas reales próximos 7 días — confirmar y enviar recordatorios
           </p>
         </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const today = new Date().toLocaleDateString('en-CA');
+            const in7 = new Date();
+            in7.setDate(in7.getDate() + 7);
+            refreshAppointments({
+              date_from: today,
+              date_to: in7.toLocaleDateString('en-CA'),
+              per_page: 100,
+            });
+          }}
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Actualizar
+        </Button>
       </div>
 
       {/* Métricas */}
@@ -383,7 +361,7 @@ export function AppointmentConfirmation() {
                               </>
                             )}
                             {!reminder24h && (
-                              <Button size="sm" variant="outline" onClick={() => handleSendReminder(appointment.id, '24h')}>
+                              <Button size="sm" variant="outline" onClick={() => handleSendReminder(appointment.id)}>
                                 <Bell className="w-4 h-4 mr-2" />
                                 Recordatorio 24h
                               </Button>

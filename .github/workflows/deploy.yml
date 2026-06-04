@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - barco
   workflow_dispatch:
 
 concurrency:

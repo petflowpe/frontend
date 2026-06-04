@@ -47,196 +47,107 @@ export interface Invoice {
   formaPago: string;
   estado: 'pagada' | 'pendiente' | 'vencida' | 'anulada';
   notas: string;
+  documentType: 'factura' | 'boleta';
+  numeroCompleto?: string;
+  estadoSunat?: string;
 }
 
-// useInvoices ahora usa el backend Laravel directamente
-
-const INITIAL_INVOICES: Invoice[] = [
-  {
-    id: 'FAC-2024-00124',
-    serie: 'F001',
-    numero: '00124',
-    fecha: '2024-12-01',
-    hora: '14:30:00',
-    cliente: {
-      id: 2,
-      nombre: 'María García',
-      documento: '87654321',
-      direccion: 'Av. Javier Prado 456, Lima'
-    },
-    mascota: {
-      id: 1,
-      nombre: 'Max',
-      raza: 'Golden Retriever'
-    },
-    puntoVenta: {
-      tipo: 'vehiculo',
-      id: 'vehiculo-1',
-      codigo: 'VEH-001',
-      nombre: 'Móvil 1',
-      placa: 'ABC-123',
-      conductor: 'Carlos Méndez'
-    },
-    origen: 'cita',
-    citaId: 'C-0045',
-    items: [
-      { tipo: 'servicio', codigo: 'BA-COR-001', descripcion: 'Baño + Corte Completo', cantidad: 1, precioUnitario: 65.00, costo: 22.00, subtotal: 65.00 },
-      { tipo: 'producto', codigo: 'AC-COL-001', descripcion: 'Collar Antipulgas', cantidad: 1, precioUnitario: 25.00, costo: 15.00, subtotal: 25.00 },
-    ],
-    subtotal: 90.00,
-    descuento: 0,
-    igv: 16.20,
-    total: 106.20,
-    formaPago: 'tarjeta',
-    estado: 'pagada',
-    notas: ''
-  },
-  {
-    id: 'FAC-2024-00125',
-    serie: 'F001',
-    numero: '00125',
-    fecha: '2024-11-30',
-    hora: '16:00:00',
-    cliente: {
-      id: 3,
-      nombre: 'Carlos Rodríguez',
-      documento: '45678912',
-      direccion: 'Calle Las Flores 789, Lima'
-    },
-    mascota: null,
-    puntoVenta: {
-      tipo: 'tienda',
-      id: 'tienda-1',
-      codigo: 'TND-001',
-      nombre: 'Tienda Principal',
-      placa: null,
-      conductor: null
-    },
-    origen: 'venta_directa',
-    citaId: null,
-    items: [
-      { tipo: 'producto', codigo: 'AL-ROY-001', descripcion: 'Royal Canin Adult 15kg', cantidad: 2, precioUnitario: 45.99, costo: 32.00, subtotal: 91.98 },
-      { tipo: 'producto', codigo: 'SU-VIT-001', descripcion: 'Vitaminas MultiVet', cantidad: 1, precioUnitario: 29.99, costo: 18.00, subtotal: 29.99 },
-    ],
-    subtotal: 121.97,
-    descuento: 0,
-    igv: 21.95,
-    total: 143.92,
-    formaPago: 'efectivo',
-    estado: 'pagada',
-    notas: 'Venta directa en tienda'
-  },
-  {
-    id: 'FAC-2024-00126',
-    serie: 'F001',
-    numero: '00126',
-    fecha: '2024-11-29',
-    hora: '11:20:00',
-    cliente: {
-      id: 1,
-      nombre: 'Juan Pérez',
-      documento: '12345678',
-      direccion: 'Av. Principal 123, Lima'
-    },
-    mascota: {
-      id: 2,
-      nombre: 'Luna',
-      raza: 'Husky'
-    },
-    puntoVenta: {
-      tipo: 'vehiculo',
-      id: 'vehiculo-1',
-      codigo: 'VEH-001',
-      nombre: 'Móvil 1',
-      placa: 'ABC-123',
-      conductor: 'Carlos Méndez'
-    },
-    origen: 'cita',
-    citaId: 'C-0042',
-    items: [
-      { tipo: 'servicio', codigo: 'BA-MED-001', descripcion: 'Baño Medicinal', cantidad: 1, precioUnitario: 55.00, costo: 20.00, subtotal: 55.00 },
-    ],
-    subtotal: 55.00,
-    descuento: 0,
-    igv: 9.90,
-    total: 64.90,
-    formaPago: 'efectivo',
-    estado: 'pendiente',
-    notas: 'Pendiente de pago'
-  }
-];
+function mapDocumentStatus(status: string | undefined): Invoice['estado'] {
+  if (status === 'PAID' || status === 'pagada') return 'pagada';
+  if (status === 'PENDING' || status === 'pendiente') return 'pendiente';
+  if (status === 'CANCELLED' || status === 'anulada') return 'anulada';
+  return 'pendiente';
+}
 
 export const useInvoices = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Convertir formato backend a frontend
-  const fromBackendFormat = (backendInvoice: any): Invoice => {
+  const mapItems = (items: any[]) =>
+    (items || []).map((item: any) => ({
+      tipo: (item.item_type === 'SERVICIO' ? 'servicio' : 'producto') as 'servicio' | 'producto',
+      codigo: item.code || item.sku || '',
+      descripcion: item.name || item.description || '',
+      cantidad: parseFloat(item.quantity) || 0,
+      precioUnitario: parseFloat(item.unit_price) || 0,
+      costo: parseFloat(item.cost_price) || 0,
+      subtotal: parseFloat(item.subtotal) || 0,
+    }));
+
+  const fromBackendFormat = (row: any, documentType: 'factura' | 'boleta'): Invoice => {
+    const total =
+      parseFloat(row.mto_imp_venta) ||
+      parseFloat(row.total) ||
+      0;
+
     return {
-      id: backendInvoice.id?.toString() || backendInvoice.serie_numero || '',
-      serie: backendInvoice.serie || '',
-      numero: backendInvoice.numero?.toString() || '',
-      fecha: backendInvoice.fecha_emision || backendInvoice.date || '',
-      hora: backendInvoice.hora || '00:00:00',
+      id: row.id?.toString() || '',
+      documentType,
+      numeroCompleto: row.numero_completo || `${row.serie || ''}-${row.numero || ''}`,
+      serie: row.serie || '',
+      numero: row.numero?.toString() || '',
+      fecha: row.fecha_emision || row.date || '',
+      hora: row.hora || '00:00:00',
       cliente: {
-        id: backendInvoice.client_id || backendInvoice.client?.id || 0,
-        nombre: backendInvoice.client?.razon_social || backendInvoice.client?.nombre_comercial || '',
-        documento: backendInvoice.client?.numero_documento || '',
-        direccion: backendInvoice.client?.direccion || '',
+        id: row.client_id || row.client?.id || 0,
+        nombre: row.client?.razon_social || row.client?.nombre_comercial || '',
+        documento: row.client?.numero_documento || '',
+        direccion: row.client?.direccion || '',
       },
-      mascota: backendInvoice.pet_id ? {
-        id: backendInvoice.pet_id || backendInvoice.pet?.id || 0,
-        nombre: backendInvoice.pet?.name || '',
-        raza: backendInvoice.pet?.breed || '',
-      } : null,
+      mascota: row.pet_id
+        ? {
+            id: row.pet_id || row.pet?.id || 0,
+            nombre: row.pet?.name || '',
+            raza: row.pet?.breed || '',
+          }
+        : null,
       puntoVenta: {
-        tipo: backendInvoice.branch_id ? 'tienda' : 'vehiculo',
-        id: backendInvoice.branch_id?.toString() || backendInvoice.vehicle_id?.toString() || '',
-        codigo: backendInvoice.branch?.codigo || backendInvoice.vehicle?.placa || '',
-        nombre: backendInvoice.branch?.nombre || backendInvoice.vehicle?.name || '',
-        placa: backendInvoice.vehicle?.placa || null,
+        tipo: row.branch_id ? 'tienda' : 'vehiculo',
+        id: row.branch_id?.toString() || row.vehicle_id?.toString() || '',
+        codigo: row.branch?.codigo || row.vehicle?.placa || '',
+        nombre: row.branch?.nombre || row.vehicle?.name || '',
+        placa: row.vehicle?.placa || null,
         conductor: null,
       },
-      origen: backendInvoice.appointment_id ? 'cita' : 'venta_directa',
-      citaId: backendInvoice.appointment_id?.toString() || null,
-      items: (backendInvoice.items || []).map((item: any) => ({
-        tipo: item.item_type === 'SERVICIO' ? 'servicio' : 'producto',
-        codigo: item.code || item.sku || '',
-        descripcion: item.name || item.description || '',
-        cantidad: parseFloat(item.quantity) || 0,
-        precioUnitario: parseFloat(item.unit_price) || 0,
-        costo: parseFloat(item.cost_price) || 0,
-        subtotal: parseFloat(item.subtotal) || 0,
-      })),
-      subtotal: parseFloat(backendInvoice.subtotal) || 0,
-      descuento: parseFloat(backendInvoice.discount) || 0,
-      igv: parseFloat(backendInvoice.tax_amount) || parseFloat(backendInvoice.igv) || 0,
-      total: parseFloat(backendInvoice.total) || 0,
-      formaPago: backendInvoice.payment_method || 'efectivo',
-      estado: backendInvoice.status === 'PAID' ? 'pagada' : 
-              backendInvoice.status === 'PENDING' ? 'pendiente' :
-              backendInvoice.status === 'CANCELLED' ? 'anulada' : 'pendiente',
-      notas: backendInvoice.notes || '',
+      origen: row.appointment_id ? 'cita' : 'venta_directa',
+      citaId: row.appointment_id?.toString() || null,
+      items: mapItems(row.items),
+      subtotal: parseFloat(row.sub_total) || parseFloat(row.subtotal) || 0,
+      descuento: parseFloat(row.discount) || 0,
+      igv: parseFloat(row.mto_igv) || parseFloat(row.tax_amount) || 0,
+      total,
+      formaPago: row.payment_method || 'efectivo',
+      estado: mapDocumentStatus(row.status),
+      estadoSunat: row.estado_sunat,
+      notas: row.notes || '',
     };
   };
 
   const fetchInvoices = useCallback(async (filters?: { date?: string; clientId?: string; status?: string }) => {
     setLoading(true);
     try {
-      const params: Record<string, any> = {};
+      const params: Record<string, string | number> = { per_page: 200 };
       if (filters?.date) params.date = filters.date;
       if (filters?.clientId) params.client_id = filters.clientId;
       if (filters?.status) params.status = filters.status;
 
-      const response = await apiClient.get<{ data: any[]; meta?: any } | any[]>('/invoices', params);
-      
-      const invoicesArray = Array.isArray(response) ? response : (response.data || []);
-      const mappedInvoices = invoicesArray.map(fromBackendFormat);
-      
-      setInvoices(mappedInvoices);
-    } catch (e: any) {
-      console.error("Error loading invoices", e);
-      toast.error(e.message || "Error cargando facturas del servidor");
+      const [invRes, bolRes] = await Promise.all([
+        apiClient.get<{ data: any[] } | any[]>('/invoices', params).catch(() => []),
+        apiClient.get<{ data: any[] } | any[]>('/boletas', params).catch(() => []),
+      ]);
+
+      const invRows = Array.isArray(invRes) ? invRes : (invRes as { data?: any[] }).data || [];
+      const bolRows = Array.isArray(bolRes) ? bolRes : (bolRes as { data?: any[] }).data || [];
+
+      const merged = [
+        ...invRows.map((r) => fromBackendFormat(r, 'factura')),
+        ...bolRows.map((r) => fromBackendFormat(r, 'boleta')),
+      ].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+      setInvoices(merged);
+    } catch (e: unknown) {
+      console.error('Error loading documents', e);
+      toast.error(e instanceof Error ? e.message : 'Error cargando comprobantes');
     } finally {
       setLoading(false);
     }
@@ -274,11 +185,10 @@ export const useInvoices = () => {
       const response = await apiClient.post<{ data: any }>('/invoices', backendData);
       
       const backendInvoice = response.data || response;
-      const newInvoice = fromBackendFormat(backendInvoice);
+      const newInvoice = fromBackendFormat(backendInvoice, 'factura');
 
       if (!isInitial) {
         setInvoices(prev => [newInvoice, ...prev]);
-        toast.success('Factura registrada');
       }
       return newInvoice;
     } catch (e: any) {
@@ -318,27 +228,36 @@ export const useInvoices = () => {
     }
   };
 
-  const deleteInvoice = async (id: string) => {
+  const deleteInvoice = async (id: string, documentType: Invoice['documentType'] = 'factura') => {
+    if (documentType === 'boleta') {
+      toast.error('Elimine la boleta desde Facturación SUNAT');
+      return;
+    }
     try {
       await apiClient.delete(`/invoices/${id}`);
-      setInvoices(prev => prev.filter(inv => inv.id !== id));
+      setInvoices((prev) => prev.filter((inv) => inv.id !== id || inv.documentType !== 'factura'));
       toast.success('Factura eliminada correctamente');
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      toast.error(e.message || 'Error al eliminar factura');
+      toast.error(e instanceof Error ? e.message : 'Error al eliminar factura');
     }
   };
 
-  /** Descargar factura en PDF o XML (para portal cliente o listado) */
-  const downloadInvoice = async (id: string, format: 'PDF' | 'XML') => {
+  const downloadInvoice = async (
+    id: string,
+    format: 'PDF' | 'XML',
+    documentType: Invoice['documentType'] = 'factura'
+  ) => {
     try {
-      const path = format === 'PDF' ? `/invoices/${id}/download-pdf` : `/invoices/${id}/download-xml`;
+      const base = documentType === 'boleta' ? '/boletas' : '/invoices';
+      const path =
+        format === 'PDF' ? `${base}/${id}/download-pdf` : `${base}/${id}/download-xml`;
       const ext = format === 'PDF' ? 'pdf' : 'xml';
-      await apiClient.downloadFile(path, `factura-${id}.${ext}`);
+      await apiClient.downloadFile(path, `${documentType}-${id}.${ext}`);
       toast.success(`Descargando ${format}...`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      toast.error(e.message || `Error al descargar ${format}`);
+      toast.error(e instanceof Error ? e.message : `Error al descargar ${format}`);
     }
   };
 

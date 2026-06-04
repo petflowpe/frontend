@@ -3,6 +3,15 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { apiClient } from '../utils/api/client';
+import {
+  normalizeStatusFromBackend,
+  normalizeStatusToBackend,
+  normalizeTimeFromBackend,
+  normalizeDateFromBackend,
+  getStoredCompanyId,
+  inferServiceCategory,
+  mapRecurrenceTypeToBackend,
+} from '../utils/appointmentMappers';
 
 /** Formatea fecha y hora de cita para mensajes (evita ISO crudo y zona horaria) */
 function formatAppointmentDateTime(dateStr: string, timeStr?: string): string {
@@ -47,11 +56,13 @@ export interface Appointment {
   petBreed?: string; // Snapshot
   serviceType: string;
   reason: string;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
+  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no_show';
+  trackingCode?: string;
   duration: number; // minutes
   notes: string;
   totalAmount?: number;
   invoiced: boolean;
+  documentNumber?: string;
   recurring?: boolean;
   createdAt: string;
   // Extra properties for compatibility
@@ -99,29 +110,43 @@ export const useAppointments = () => {
       }];
     }
 
+    const vehicleRaw = backendAppointment.vehicle;
+    const vehicle = vehicleRaw
+      ? {
+          id: String(vehicleRaw.id),
+          name: vehicleRaw.name || vehicleRaw.placa || `Vehículo ${vehicleRaw.id}`,
+          driver: vehicleRaw.driver_name || vehicleRaw.driver || '',
+          driverName: vehicleRaw.driver_name || vehicleRaw.driver || '',
+        }
+      : undefined;
+
     return {
       id: backendAppointment.id.toString(),
-      date: backendAppointment.date,
-      time: backendAppointment.time,
+      date: normalizeDateFromBackend(backendAppointment.date),
+      time: normalizeTimeFromBackend(backendAppointment.time),
       clientId: backendAppointment.client_id?.toString() || '',
       clientName: backendAppointment.client?.razon_social || backendAppointment.client?.nombre_comercial || '',
       clientPhone: backendAppointment.client?.telefono || '',
       petId: backendAppointment.pet_id?.toString() || '',
       petName: backendAppointment.pet?.name || '',
       petBreed: backendAppointment.pet?.breed || '',
-      serviceType: backendAppointment.service_type || '',
+      serviceType: backendAppointment.service_name || backendAppointment.service_type || '',
       reason: backendAppointment.notes || '',
-      status: backendAppointment.status?.toLowerCase() || 'pending',
+      status: normalizeStatusFromBackend(backendAppointment.status),
       duration: backendAppointment.duration || 60,
       notes: backendAppointment.notes || '',
       totalAmount: parseFloat(backendAppointment.total) || 0,
       totalPrice: parseFloat(backendAppointment.total) || 0,
-      invoiced: backendAppointment.payment_status === 'Pagado',
+      invoiced: !!(backendAppointment.boleta_id || backendAppointment.invoice_id),
+      documentNumber: backendAppointment.boleta?.numero_completo
+        || backendAppointment.invoice?.numero_completo
+        || undefined,
       address: backendAppointment.address || '',
       district: backendAppointment.district || '',
-      groomer: backendAppointment.user?.name || '',
+      groomer: backendAppointment.user?.name || vehicle?.driverName || '',
       groomerId: backendAppointment.user_id || undefined,
-      vehicle: backendAppointment.vehicle || undefined,
+      vehicle,
+      trackingCode: backendAppointment.tracking_code || undefined,
       items: items.length > 0 ? items : undefined,
       recurring: backendAppointment.is_recurring || false,
       recurrenceSeriesId: backendAppointment.recurrence_series_id,
@@ -134,19 +159,44 @@ export const useAppointments = () => {
     };
   };
 
-  const loadAppointments = useCallback(async (filters?: { date?: string, month?: string, limit?: number, status?: string }) => {
+  const loadAppointments = useCallback(async (filters?: {
+    date?: string;
+    date_from?: string;
+    date_to?: string;
+    month?: string;
+    limit?: number;
+    status?: string;
+    vehicle_id?: number | string;
+  }) => {
     setLoading(true);
     try {
       const params: Record<string, any> = {};
       if (filters?.date) params.date = filters.date;
+      if (filters?.date_from) params.date_from = filters.date_from;
+      if (filters?.date_to) params.date_to = filters.date_to;
       if (filters?.status) params.status = filters.status;
-      if (filters?.limit) params.per_page = filters.limit;
+      if (filters?.vehicle_id) params.vehicle_id = filters.vehicle_id;
+      const perPage = filters?.limit ?? 100;
+      params.per_page = perPage;
+      params.company_id = getStoredCompanyId();
 
-      const response = await apiClient.get<{ data: any[]; meta?: any } | any[]>('/appointments', params);
-      
-      const appointmentsArray = Array.isArray(response) ? response : (response.data || []);
-      const mappedAppointments = appointmentsArray.map(fromBackendFormat);
-      
+      const allRows: any[] = [];
+      let page = 1;
+      let lastPage = 1;
+
+      do {
+        const response = await apiClient.get<{ data: any[]; meta?: any } | any[]>(
+          '/appointments',
+          { ...params, page }
+        );
+        const batch = Array.isArray(response) ? response : (response.data || []);
+        allRows.push(...batch);
+        const meta = Array.isArray(response) ? undefined : response.meta;
+        lastPage = meta?.last_page ?? 1;
+        page += 1;
+      } while (page <= lastPage);
+
+      const mappedAppointments = allRows.map(fromBackendFormat);
       setAppointments(mappedAppointments);
     } catch (e: any) {
       toast.error("Error al cargar citas", {
@@ -163,55 +213,108 @@ export const useAppointments = () => {
   }, [loadAppointments]);
 
   // Convertir formato frontend a backend
-  const toBackendFormat = (appointment: Partial<Appointment>): any => {
+  const toBackendFormat = (appointment: Partial<Appointment> & { totalDuration?: number }): any => {
     const rawVehicleId = appointment.vehicle?.id ?? (typeof appointment.vehicle === 'object' ? undefined : appointment.vehicle);
     const vehicleIdNum = rawVehicleId != null ? parseInt(String(rawVehicleId), 10) : NaN;
     const vehicle_id = Number.isInteger(vehicleIdNum) ? vehicleIdNum : null;
 
+    const primaryService =
+      appointment.items?.find((i) => i.type === 'service') ?? appointment.items?.[0];
+    const serviceName =
+      primaryService?.name || appointment.serviceType || 'Servicio';
+    const serviceTypeCode = primaryService?.id
+      ? String(primaryService.id)
+      : appointment.serviceType || serviceName;
+    const serviceIdNum = primaryService?.id
+      ? parseInt(String(primaryService.id), 10)
+      : NaN;
+
+    const totalPrice = appointment.totalAmount ?? appointment.totalPrice ?? 0;
+    const itemsDuration = appointment.items?.reduce(
+      (sum, i) => sum + (i.type === 'service' ? i.duration || 0 : 0),
+      0
+    );
+    const duration =
+      appointment.duration ??
+      (appointment as { totalDuration?: number }).totalDuration ??
+      (itemsDuration && itemsDuration > 0 ? itemsDuration : 60);
+
     const backendData: any = {
       client_id: parseInt(appointment.clientId || '0', 10),
       pet_id: parseInt(appointment.petId || '0', 10),
-      company_id: 1,
-      service_type: appointment.serviceType || '',
-      service_name: appointment.serviceType || '',
-      service_category: appointment.serviceType?.toLowerCase().includes('movilvet') ? 'MovilVet' : 'Peluquería',
-      date: appointment.date || '',
-      time: appointment.time || '',
-      duration: appointment.duration ?? 60,
+      company_id: getStoredCompanyId(),
+      service_type: serviceTypeCode,
+      service_name: serviceName,
+      service_category: inferServiceCategory(serviceName, appointment.serviceType),
+      date: normalizeDateFromBackend(appointment.date) || appointment.date || '',
+      time: normalizeTimeFromBackend(appointment.time) || appointment.time || '',
+      duration,
       address: appointment.address || '',
       district: appointment.district || '',
-      price: appointment.totalAmount ?? appointment.totalPrice ?? 0,
+      price: totalPrice,
       discount: 0,
-      total: appointment.totalAmount ?? appointment.totalPrice ?? 0,
+      total: totalPrice,
       notes: appointment.notes || appointment.reason || '',
       vehicle_id,
       user_id: appointment.groomerId || null,
     };
 
-    // Agregar items si existen (servicios y productos)
+    if (Number.isInteger(serviceIdNum)) {
+      backendData.service_id = serviceIdNum;
+    }
+
+    if (appointment.recurring) {
+      backendData.is_recurring = true;
+      backendData.recurrence_type = mapRecurrenceTypeToBackend(appointment.recurrenceType);
+      backendData.recurrence_occurrences = appointment.recurrenceOccurrences ?? 4;
+      backendData.recurrence_series_id = appointment.recurrenceSeriesId;
+      backendData.recurrence_days = appointment.recurrenceDays ?? [];
+      backendData.recurrence_fixed_time = appointment.recurrenceFixedTime ?? true;
+    }
+
     if (appointment.items && appointment.items.length > 0) {
-      backendData.items = appointment.items.map(item => ({
-        item_id: typeof item.id === 'number' ? item.id : parseInt(item.id.toString()),
-        item_type: item.type === 'service' ? 'SERVICIO' : 'PRODUCTO',
-        quantity: item.quantity || 1,
-        price: item.price || 0,
-        duration: item.duration || null,
-        name: item.name || '',
-      }));
+      backendData.items = appointment.items.map((item) => {
+        const itemId = parseInt(String(item.id), 10);
+        return {
+          item_id: Number.isInteger(itemId) ? itemId : null,
+          item_type: item.type === 'service' ? 'SERVICIO' : 'PRODUCTO',
+          quantity: item.quantity || 1,
+          price: item.price || 0,
+          duration: item.duration || null,
+          name: item.name || '',
+        };
+      });
     }
 
     return backendData;
+  };
+
+  const applyBackendAppointmentToState = (backendAppointment: any, id?: string) => {
+    const mapped = fromBackendFormat(backendAppointment);
+    const targetId = id ?? mapped.id;
+    setAppointments((prev) => {
+      const exists = prev.some((a) => a.id === targetId);
+      if (exists) {
+        return prev.map((a) => (a.id === targetId ? mapped : a));
+      }
+      return [...prev, mapped];
+    });
+    return mapped;
   };
 
   const createAppointment = async (data: Omit<Appointment, 'id' | 'createdAt' | 'invoiced'>) => {
     try {
       const backendData = toBackendFormat(data);
       const response = await apiClient.post<{ data: any }>('/appointments', backendData);
-      
-      const backendAppointment = response.data || response;
-      const newAppointment = fromBackendFormat(backendAppointment);
 
-      setAppointments(prev => [...prev, newAppointment]);
+      const backendAppointment = (response as { data?: any }).data ?? response;
+      const createdList = Array.isArray(backendAppointment)
+        ? backendAppointment
+        : [backendAppointment];
+
+      const mappedList = createdList.map(fromBackendFormat);
+      setAppointments((prev) => [...prev, ...mappedList]);
+      const newAppointment = mappedList[0];
       const friendlyDateTime = formatAppointmentDateTime(newAppointment.date, newAppointment.time);
       toast.success('Cita agendada correctamente', {
         description: friendlyDateTime ? `El ${friendlyDateTime}` : 'Tu cita fue registrada correctamente.'
@@ -253,26 +356,53 @@ export const useAppointments = () => {
     return d.length >= 10 ? d.slice(0, 10) : d;
   };
 
+  const changeAppointmentStatus = async (
+    id: string,
+    status: 'Pendiente' | 'Confirmada' | 'En Proceso' | 'Completada' | 'Cancelada',
+    cancellationReason?: string
+  ) => {
+    const response = await apiClient.post<{ data: any }>(`/appointments/${id}/change-status`, {
+      status,
+      ...(cancellationReason ? { cancellation_reason: cancellationReason } : {}),
+    });
+    const backendAppointment = (response as { data?: any }).data ?? response;
+    return applyBackendAppointmentToState(backendAppointment, id);
+  };
+
+  const confirmAppointment = async (id: string) => {
+    const response = await apiClient.post<{ data: any }>(`/appointments/${id}/confirm`, {});
+    const backendAppointment = (response as { data?: any }).data ?? response;
+    return applyBackendAppointmentToState(backendAppointment, id);
+  };
+
+  const sendAppointmentReminder = async (id: string) => {
+    const response = await apiClient.post<{ data: any }>(`/appointments/${id}/send-reminder`, {});
+    const backendAppointment = (response as { data?: any }).data ?? response;
+    return applyBackendAppointmentToState(backendAppointment, id);
+  };
+
   const updateAppointment = async (id: string, updates: Partial<Appointment>) => {
     try {
+      if (updates.status && Object.keys(updates).length === 1) {
+        const backendStatus = normalizeStatusToBackend(updates.status);
+        if (backendStatus) {
+          const mapped = await changeAppointmentStatus(
+            id,
+            backendStatus as 'Pendiente' | 'Confirmada' | 'En Proceso' | 'Completada' | 'Cancelada',
+            updates.status === 'cancelled' ? 'Cancelada desde el sistema' : undefined
+          );
+          toast.success(
+            updates.status === 'cancelled' ? 'Cita cancelada correctamente' : 'Cita actualizada correctamente'
+          );
+          return mapped;
+        }
+      }
+
       const backendData: any = {};
 
-      // Mapear campos del frontend al backend (formatos que acepta el backend)
-      const statusMap: Record<string, string> = {
-        'pending': 'Pendiente',
-        'pendiente': 'Pendiente',
-        'confirmed': 'Confirmada',
-        'confirmada': 'Confirmada',
-        'completed': 'Completada',
-        'completada': 'Completada',
-        'cancelled': 'Cancelada',
-        'cancelada': 'Cancelada',
-        'no_show': 'Cancelada',
-        'in-progress': 'En Proceso',
-        'en proceso': 'En Proceso',
-      };
       if (updates.status) {
-        backendData.status = statusMap[String(updates.status).toLowerCase()] || updates.status;
+        const backendStatus = normalizeStatusToBackend(updates.status);
+        if (backendStatus) backendData.status = backendStatus;
       }
       const normDate = normalizeDateForBackend(updates.date);
       if (normDate) backendData.date = normDate;
@@ -289,15 +419,21 @@ export const useAppointments = () => {
       if (Number.isInteger(vehicleIdNum)) backendData.vehicle_id = vehicleIdNum;
       if (updates.groomerId) backendData.user_id = updates.groomerId;
 
-      await apiClient.put(`/appointments/${id}`, backendData);
-
-      // Actualizar estado local
-      const current = appointments.find(a => a.id === id);
-      if (current) {
-        const updated = { ...current, ...updates };
-        setAppointments(prev => prev.map(a => a.id === id ? updated : a));
-        toast.success(updates.status === 'cancelled' ? 'Cita cancelada correctamente' : 'Cita actualizada correctamente');
+      const response = await apiClient.put<{ data: any }>(`/appointments/${id}`, backendData);
+      const backendAppointment = (response as { data?: any }).data ?? response;
+      if (backendAppointment?.id) {
+        applyBackendAppointmentToState(backendAppointment, id);
+      } else {
+        const current = appointments.find((a) => a.id === id);
+        if (current) {
+          const updated = { ...current, ...updates };
+          if (updates.status) {
+            updated.status = normalizeStatusFromBackend(updates.status);
+          }
+          setAppointments((prev) => prev.map((a) => (a.id === id ? updated : a)));
+        }
       }
+      toast.success(updates.status === 'cancelled' ? 'Cita cancelada correctamente' : 'Cita actualizada correctamente');
     } catch (e: any) {
       const description =
         e.errors && typeof e.errors === 'object'
@@ -341,11 +477,14 @@ export const useAppointments = () => {
     appointments,
     loading,
     createAppointment,
-    addAppointment: createAppointment, // Alias para compatibilidad
+    addAppointment: createAppointment,
     updateAppointment,
+    changeAppointmentStatus,
+    confirmAppointment,
+    sendAppointmentReminder,
     deleteAppointment,
     getAppointmentsByDate,
     getUpcomingAppointments,
-    refreshAppointments: loadAppointments
+    refreshAppointments: loadAppointments,
   };
 };

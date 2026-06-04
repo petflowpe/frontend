@@ -29,6 +29,7 @@ import { Tooltip } from './ui/tooltip';
 import { setupNotificationChecker } from '../services/notificationService';
 import { apiClient } from '../utils/api/client';
 import { getAppointmentDateOnly } from './calendar/calendarDateUtils';
+import { IssueDocumentDialog } from './appointments/IssueDocumentDialog';
 
 // Días de la semana
 const weekDays = [
@@ -44,7 +45,16 @@ const weekDays = [
 export function Appointments() {
   const { products, services, loading: loadingProducts, updateProductStock } = useProducts();
   const { vehicles, loading: loadingVehicles } = useVehicles();
-  const { appointments, loading: loadingAppointments, refreshAppointments: fetchAppointments, createAppointment, updateAppointment } = useAppointments();
+  const {
+    appointments,
+    loading: loadingAppointments,
+    refreshAppointments: fetchAppointments,
+    createAppointment,
+    updateAppointment,
+    changeAppointmentStatus,
+    confirmAppointment,
+    sendAppointmentReminder,
+  } = useAppointments();
   const { clients, loading: loadingClients } = useClients();
   
   // Alias para mantener compatibilidad con código existente
@@ -78,11 +88,14 @@ export function Appointments() {
   const [showRecurringSeriesDialog, setShowRecurringSeriesDialog] = useState(false);
   const [showEditRecurringSeriesDialog, setShowEditRecurringSeriesDialog] = useState(false);
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | undefined>();
+  const [issueDocOpen, setIssueDocOpen] = useState(false);
+  const [appointmentToInvoice, setAppointmentToInvoice] = useState<any>(null);
   
   // Estados de loading para acciones
   const [completingAppointment, setCompletingAppointment] = useState<string | null>(null);
   const [cancellingAppointment, setCancellingAppointment] = useState<string | null>(null);
   const [cloningAppointment, setCloningAppointment] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
 
   const [newAppointmentInitialPet, setNewAppointmentInitialPet] = useState<{ petId?: string; clientId?: string; petName?: string; ownerName?: string } | null>(null);
   const [newAppointmentInitialClient, setNewAppointmentInitialClient] = useState<{ clientId?: string; clientDocument?: string; clientName?: string } | null>(null);
@@ -136,52 +149,9 @@ export function Appointments() {
     }
   }, [appointments]);
 
-  const handleGenerateInvoice = async (appointment: any) => {
-    const invoiceData = {
-      origen: 'cita',
-      citaId: appointment.id,
-      clientId: appointment.clientId,
-      client: {
-        id: appointment.clientId,
-        name: appointment.client,
-        document: appointment.clientDocument,
-        phone: appointment.phone,
-        address: appointment.address
-      },
-      pet: {
-        id: appointment.petId,
-        name: appointment.pet,
-        breed: appointment.breed
-      },
-      vehicle: appointment.vehicle,
-      items: appointment.items,
-      groomer: {
-        id: appointment.groomerId,
-        name: appointment.groomer
-      },
-      totalPrice: appointment.totalPrice,
-      notes: appointment.notes
-    };
-
-    window.dispatchEvent(new CustomEvent('generate-invoice-from-appointment', {
-      detail: invoiceData
-    }));
-
-    // Actualizamos en servidor
-    await updateAppointment(appointment.id, { invoiced: true });
-    
-    // Guardar acción pendiente para cuando cargue el módulo de facturación
-    setPendingAction('invoicing', 'create_from_appointment', invoiceData);
-
-    toast.success('✅ Redirigiendo a Facturación...', {
-      description: `Cita ${appointment.id} lista para facturar`
-    });
-
-    setTimeout(() => {
-      // Usar evento para cambiar tab (App.tsx lo escucha)
-      const event = new CustomEvent('navigate-to-invoicing');
-      window.dispatchEvent(event);
-    }, 500);
+  const handleGenerateInvoice = (appointment: any) => {
+    setAppointmentToInvoice(appointment);
+    setIssueDocOpen(true);
   };
 
   const handleCloneAppointment = (appointment: any) => {
@@ -311,23 +281,25 @@ export function Appointments() {
     }
   };
 
+  const handleSendReminder = async (appointmentId: string) => {
+    setSendingReminder(appointmentId);
+    try {
+      await sendAppointmentReminder(appointmentId);
+      toast.success('Recordatorio registrado');
+    } catch {
+      toast.error('No se pudo enviar el recordatorio');
+    } finally {
+      setSendingReminder(null);
+    }
+  };
+
   const handleCancelAppointment = async (appointmentId: string) => {
     setCancellingAppointment(appointmentId);
     try {
-      // Usar endpoint de cambio de estado
-      try {
-        await apiClient.post(`/appointments/${appointmentId}/change-status`, {
-          status: 'Cancelada',
-          cancellation_reason: 'Cancelada por el usuario'
-        });
-      } catch (error) {
-        // Fallback a updateAppointment
-        await updateAppointment(appointmentId, { status: 'cancelled' });
-      }
+      await changeAppointmentStatus(appointmentId, 'Cancelada', 'Cancelada por el usuario');
       toast.success('Cita cancelada', {
         description: 'La cita ha sido cancelada correctamente'
       });
-      fetchAppointments();
     } catch (error) {
       toast.error('Error al cancelar la cita', {
         description: 'No se pudo cancelar la cita. Por favor, intenta nuevamente.'
@@ -397,7 +369,17 @@ export function Appointments() {
     } else if (dateFilter === 'tomorrow') {
       matchesDate = aptDate === tomorrow;
     } else if (dateFilter === 'week') {
-      matchesDate = true;
+      const aptDay = new Date(`${aptDate}T12:00:00`);
+      const now = new Date();
+      const weekStart = new Date(now);
+      const day = weekStart.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      weekStart.setDate(weekStart.getDate() + diffToMonday);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      matchesDate = aptDay >= weekStart && aptDay <= weekEnd;
     }
     
     return matchesSearch && matchesStatus && matchesDate && matchesVehicle && matchesGroomer && matchesPet;
@@ -511,16 +493,18 @@ export function Appointments() {
             onViewRecurringSeries={handleViewRecurringSeries}
             onConfirm={async (id) => {
               try {
-                await updateAppointment(id, { status: 'confirmed' });
+                await confirmAppointment(id);
                 toast.success('Cita confirmada', {
                   description: 'La cita ha sido confirmada correctamente'
                 });
-              } catch (error) {
+              } catch {
                 toast.error('Error al confirmar la cita', {
                   description: 'No se pudo confirmar la cita. Por favor, intenta nuevamente.'
                 });
               }
             }}
+            onSendReminder={handleSendReminder}
+            sendingReminder={sendingReminder}
             completingAppointment={completingAppointment}
             cancellingAppointment={cancellingAppointment}
             cloningAppointment={cloningAppointment}
@@ -550,6 +534,16 @@ export function Appointments() {
             }
           </p>
         </Card>
+      )}
+
+      {appointmentToInvoice && (
+        <IssueDocumentDialog
+          open={issueDocOpen}
+          onOpenChange={setIssueDocOpen}
+          appointmentId={appointmentToInvoice.id}
+          appointmentLabel={`${appointmentToInvoice.clientName || appointmentToInvoice.client} — ${appointmentToInvoice.petName || appointmentToInvoice.pet}`}
+          onSuccess={() => fetchAppointments()}
+        />
       )}
 
       {/* Dialog: Clonar Cita */}

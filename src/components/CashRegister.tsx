@@ -1,12 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
   Calculator,
-  FileText,
   CheckCircle,
-  AlertCircle,
   CreditCard,
   Wallet,
   Banknote,
@@ -15,7 +10,9 @@ import {
   Minus,
   ArrowRight,
   Lock,
-  RefreshCw
+  Truck,
+  Receipt,
+  FileText,
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -25,127 +22,117 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { Separator } from './ui/separator';
-import { useInvoices } from '../hooks/useInvoices';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { useCashRegister } from '../hooks/useCashRegister';
+import { useCompanies } from '../hooks/useCompanies';
+import { useVehicles } from '../hooks/useVehicles';
+import { getStoredCompanyId } from '../utils/appointmentMappers';
+import { CorrelativesPanel } from './cash/CorrelativesPanel';
+import { IssueDocumentDialog } from './appointments/IssueDocumentDialog';
+import { useAuth } from '../context/AuthContext';
+import type { PendingCashAppointment } from '../hooks/useCashRegister';
+import { apiClient } from '../utils/api/client';
+import { API } from '../utils/api/endpoints';
 
-// Interfaces
-interface CashSession {
-  id: string;
-  openedAt: string;
-  closedAt?: string;
-  status: 'open' | 'closed';
-  startingCash: number;
-  expectedCash: number;
-  actualCash: number;
-  difference: number;
-  notes: string;
-  sales: {
-    cash: number;
-    card: number;
-    transfer: number;
-    qr: number; // Yape/Plin
-  };
-  expenses: Expense[];
-}
-
-interface Expense {
-  id: string;
-  concept: string;
-  amount: number;
-  type: string;
-  timestamp: string;
-}
+const PAYMENT_METHODS = ['Efectivo', 'Tarjeta', 'Yape', 'Plin', 'Transferencia'] as const;
 
 export function CashRegister() {
-  const { invoices, loading: loadingInvoices } = useInvoices();
+  const { user } = useAuth();
+  const companyId = user?.companyId ?? getStoredCompanyId();
+  const { companies, loading: loadingCompanies } = useCompanies();
+  const company = companies.find((c) => c.id === companyId);
+  const [branches, setBranches] = useState<{ id: number; nombre: string }[]>(
+    company?.branches ?? []
+  );
+  const [branchId, setBranchId] = useState<number>(
+    (user as { branchId?: number })?.branchId ?? 0
+  );
+  const [vehicleFilter, setVehicleFilter] = useState<string>('all');
+
+  const { vehicles } = useVehicles(companyId);
+  const vehicleId = vehicleFilter === 'all' ? '' : parseInt(vehicleFilter, 10);
+
   const {
     currentSession,
-    loading: loadingSession,
+    daySummary,
+    loading,
+    summaryLoading,
     openSession,
     closeSession,
     addMovement,
-    getMovements
-  } = useCashRegister();
+    registerAppointmentPayment,
+    refreshSummary,
+  } = useCashRegister(companyId, branchId, vehicleId);
 
   const [showOpenDialog, setShowOpenDialog] = useState(false);
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
-
-  const [movements, setMovements] = useState<any[]>([]);
-  const [loadingMovements, setLoadingMovements] = useState(false);
+  const [payDialogId, setPayDialogId] = useState<number | null>(null);
+  const [payMethod, setPayMethod] = useState<string>('Efectivo');
+  const [issueDocOpen, setIssueDocOpen] = useState(false);
+  const [appointmentToInvoice, setAppointmentToInvoice] = useState<PendingCashAppointment | null>(null);
 
   const [startingCashInput, setStartingCashInput] = useState('200');
   const [cashCountInput, setCashCountInput] = useState('');
-  const [expenseForm, setExpenseForm] = useState({ concept: '', amount: '', type: 'EXPENSE' });
+  const [expenseForm, setExpenseForm] = useState({ concept: '', amount: '' });
 
-  // Cargar movimientos cuando hay sesión
   useEffect(() => {
-    if (currentSession) {
-      setLoadingMovements(true);
-      getMovements().then(data => {
-        setMovements(data);
-        setLoadingMovements(false);
-      });
-    } else {
-      setMovements([]);
-    }
-  }, [currentSession, getMovements]);
+    setBranches(company?.branches ?? []);
+  }, [company?.branches]);
 
-  // Calcular totales del sistema basados en facturas de HOY
-  const getSystemTotals = () => {
-    // Usamos fecha local para evitar problemas de zona horaria simples
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const today = `${year}-${month}-${day}`;
+  useEffect(() => {
+    if (!companyId || branches.length > 0) return;
+    apiClient
+      .get<{ data?: { id: number; nombre: string }[] }>(API.companies.branches(companyId))
+      .then((res) => {
+        const list = (res as { data?: { id: number; nombre: string }[] }).data ?? res;
+        if (Array.isArray(list)) setBranches(list);
+      })
+      .catch(() => {});
+  }, [companyId, branches.length]);
 
-    const todaysInvoices = invoices.filter(inv => inv.fecha === today && inv.estado === 'pagada');
+  useEffect(() => {
+    if (branchId) return;
+    const uBranch = (user as { branchId?: number })?.branchId;
+    if (uBranch) setBranchId(uBranch);
+    else if (branches.length > 0) setBranchId(branches[0].id);
+  }, [branchId, user, branches]);
 
-    const totals = {
-      cash: 0,
-      card: 0,
-      transfer: 0,
-      qr: 0,
-      total: 0
-    };
-
-    todaysInvoices.forEach(inv => {
-      totals.total += inv.total;
-      const method = inv.formaPago?.toLowerCase() || 'efectivo';
-
-      if (method === 'efectivo') totals.cash += inv.total;
-      else if (method === 'tarjeta') totals.card += inv.total;
-      else if (method === 'transferencia') totals.transfer += inv.total;
-      else if (['yape', 'plin', 'qr'].includes(method)) totals.qr += inv.total;
-    });
-
-    return totals;
+  const sales = daySummary?.sales ?? {
+    cash: 0,
+    card: 0,
+    transfer: 0,
+    qr: 0,
+    total: 0,
   };
 
-  const systemTotals = getSystemTotals();
-
-  // Guardar sesión en local storage cuando cambia
-  useEffect(() => {
-    if (currentSession) {
-      localStorage.setItem('smartpet_cash_session', JSON.stringify(currentSession));
-    } else {
-      localStorage.removeItem('smartpet_cash_session');
-    }
-  }, [currentSession]);
+  const movements = daySummary?.movements ?? [];
+  const pending = daySummary?.pending_collections ?? [];
+  const pendingInvoicing = useMemo(() => {
+    const fromApi = daySummary?.pending_invoicing ?? [];
+    if (fromApi.length > 0) return fromApi;
+    return pending.filter((a) => a.status === 'Completada' && !a.invoiced);
+  }, [daySummary?.pending_invoicing, pending]);
+  const expensesTotal = daySummary?.expenses_total ?? 0;
+  const cashInDrawer =
+    (currentSession?.opening_amount ?? 0) + sales.cash - expensesTotal;
 
   const handleOpenSession = async () => {
     const startAmount = parseFloat(startingCashInput);
+    if (!branchId) {
+      toast.error('Seleccione una sucursal');
+      return;
+    }
     if (isNaN(startAmount)) {
       toast.error('Monto inicial inválido');
       return;
     }
-
     try {
       await openSession(startAmount);
       setShowOpenDialog(false);
-    } catch (e) {
-      // Error manejado en el hook
+    } catch {
+      /* toast en hook */
     }
   };
 
@@ -156,237 +143,297 @@ export function CashRegister() {
       toast.error('Datos de gasto inválidos');
       return;
     }
-
     try {
-      const newMovement = await addMovement({
-        type: 'EXPENSE',
-        amount: amount,
-        description: expenseForm.concept
-      });
-
-      setMovements(prev => [newMovement, ...prev]);
-      setExpenseForm({ concept: '', amount: '', type: 'EXPENSE' });
+      await addMovement({ type: 'EXPENSE', amount, description: expenseForm.concept });
+      setExpenseForm({ concept: '', amount: '' });
       setShowExpenseDialog(false);
-    } catch (e) {
-      // Error manejado en el hook
+    } catch {
+      /* handled */
+    }
+  };
+
+  const openInvoiceDialog = (apt: PendingCashAppointment) => {
+    setAppointmentToInvoice(apt);
+    setIssueDocOpen(true);
+  };
+
+  const handleCollect = async () => {
+    if (!payDialogId) return;
+    try {
+      const apt = pending.find((p) => p.id === payDialogId);
+      await registerAppointmentPayment(payDialogId, payMethod, apt?.total);
+      setPayDialogId(null);
+    } catch {
+      /* handled */
     }
   };
 
   const handleCloseSession = async () => {
     if (!currentSession) return;
     const actualCash = parseFloat(cashCountInput);
-
     if (isNaN(actualCash)) {
-      toast.error('Por favor ingresa el monto contado');
+      toast.error('Ingrese el monto contado');
       return;
     }
-
-    // Calcular esperado: (Inicio + Ventas Efectivo) - Gastos Efectivo
-    const totalExpenses = (movements || []).reduce((sum, e) => sum + (e.type === 'EXPENSE' ? parseFloat(e.amount) : 0), 0);
-    const expectedCashInDrawer = (currentSession.opening_amount || 0) + systemTotals.cash - totalExpenses;
-
-    const difference = actualCash - expectedCashInDrawer;
-
     try {
-      await closeSession(actualCash, expectedCashInDrawer);
+      await closeSession(actualCash, cashInDrawer);
       setShowCloseDialog(false);
       setCashCountInput('');
-
-      toast.success('Caja cerrada exitosamente', {
-        description: difference === 0 ? 'Cuadre perfecto' : `Diferencia: S/ ${difference.toFixed(2)}`
-      });
-    } catch (e) {
-      // Error manejado
+    } catch {
+      /* handled */
     }
   };
 
-  // Cálculos para UI
-  const currentExpensesTotal = (movements || []).reduce((sum, e) => sum + (e.type === 'EXPENSE' ? parseFloat(e.amount) : 0), 0);
-  const cashInDrawer = (currentSession?.opening_amount || 0) + systemTotals.cash - currentExpensesTotal;
+  const vehicleLabel = useMemo(() => {
+    const map = new Map(vehicles.map((v) => [v.id, v.name || v.plate || `Móvil ${v.id}`]));
+    return (id?: number) => (id ? map.get(id) ?? `Móvil ${id}` : '—');
+  }, [vehicles]);
 
-  if (loadingInvoices || loadingSession) return <div className="p-10 flex justify-center text-muted-foreground">Cargando sistema de caja...</div>;
+  if (loadingCompanies || (loading && !currentSession && !daySummary)) {
+    return <div className="p-10 text-center text-muted-foreground">Cargando caja…</div>;
+  }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent flex items-center gap-3">
-            💰 Control de Caja
+          <h1 className="text-3xl font-bold text-green-700 flex items-center gap-2">
+            <Calculator className="w-8 h-8" />
+            Cierre de caja — visitas móviles
           </h1>
-          <p className="text-muted-foreground text-lg mt-1">
+          <p className="text-muted-foreground mt-1">
             {currentSession
-              ? `Sesión Activa - Iniciada: ${new Date(currentSession.openedAt).toLocaleTimeString()}`
-              : 'Caja Cerrada - Inicie sesión para operar'}
+              ? `Sesión abierta desde ${new Date(currentSession.opened_at).toLocaleTimeString('es-PE')}`
+              : 'Abra caja para registrar cobros del día'}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          {branches.length > 1 && (
+            <Select value={String(branchId)} onValueChange={(v) => setBranchId(parseInt(v, 10))}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Sucursal" />
+              </SelectTrigger>
+              <SelectContent>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {b.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Móvil" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los móviles</SelectItem>
+              {vehicles.map((v) => (
+                <SelectItem key={v.id} value={String(v.id)}>
+                  {v.name || v.plate}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {!currentSession ? (
-            <Button onClick={() => setShowOpenDialog(true)} size="lg" className="bg-green-600 hover:bg-green-700">
-              <Banknote className="mr-2 h-5 w-5" /> Abrir Caja
+            <Button onClick={() => setShowOpenDialog(true)} className="bg-green-600">
+              <Banknote className="mr-2 h-4 w-4" /> Abrir caja
             </Button>
           ) : (
             <>
               <Button variant="outline" onClick={() => setShowExpenseDialog(true)}>
-                <Minus className="mr-2 h-4 w-4" /> Registrar Gasto
+                <Minus className="mr-2 h-4 w-4" /> Gasto
               </Button>
               <Button variant="destructive" onClick={() => setShowCloseDialog(true)}>
-                <CheckCircle className="mr-2 h-4 w-4" /> Cerrar Caja
+                <CheckCircle className="mr-2 h-4 w-4" /> Cerrar caja
               </Button>
             </>
           )}
         </div>
       </div>
 
-      {currentSession ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Tarjeta Principal: Dinero en Caja (Teórico) */}
-          <Card className="p-6 md:col-span-2 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-200 dark:border-green-800">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-green-800 dark:text-green-300">Efectivo en Caja (Teórico)</h3>
-                <p className="text-sm text-green-600 dark:text-green-400">Calculado según movimientos del sistema</p>
-              </div>
-              <Wallet className="h-8 w-8 text-green-600" />
-            </div>
-            <div className="text-4xl font-bold text-green-900 dark:text-green-100 mb-6">
-              S/ {cashInDrawer.toFixed(2)}
-            </div>
+      <Tabs defaultValue="caja">
+        <TabsList>
+          <TabsTrigger value="caja">Caja del día</TabsTrigger>
+          <TabsTrigger value="cobros">
+            Cobros pendientes
+            {(pending.length > 0 || pendingInvoicing.length > 0) && (
+              <Badge className="ml-2" variant="destructive">
+                {pending.length + pendingInvoicing.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="correlativos">Correlativos</TabsTrigger>
+        </TabsList>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-white/60 dark:bg-black/20 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">Saldo Inicial</p>
-                <p className="font-semibold text-lg">+ {(currentSession.opening_amount || 0).toFixed(2)}</p>
-              </div>
-              <div className="bg-white/60 dark:bg-black/20 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">Ventas Efectivo (Hoy)</p>
-                <p className="font-semibold text-lg text-blue-600">+ {systemTotals.cash.toFixed(2)}</p>
-              </div>
-              <div className="bg-white/60 dark:bg-black/20 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">Gastos / Salidas</p>
-                <p className="font-semibold text-lg text-red-600">- {currentExpensesTotal.toFixed(2)}</p>
-              </div>
-            </div>
-          </Card>
+        <TabsContent value="caja" className="space-y-6 mt-4">
+          {currentSession ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="p-6 md:col-span-2 bg-green-50 border-green-200">
+                <div className="flex justify-between mb-4">
+                  <div>
+                    <h3 className="font-semibold text-green-800">Efectivo teórico en caja</h3>
+                    <p className="text-sm text-green-600">Cobros en efectivo + apertura − gastos</p>
+                  </div>
+                  <Wallet className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="text-4xl font-bold text-green-900 mb-4">
+                  S/ {cashInDrawer.toFixed(2)}
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="bg-white/70 p-2 rounded">
+                    Apertura: S/ {(currentSession.opening_amount || 0).toFixed(2)}
+                  </div>
+                  <div className="bg-white/70 p-2 rounded text-blue-700">
+                    + Efectivo citas: S/ {sales.cash.toFixed(2)}
+                  </div>
+                  <div className="bg-white/70 p-2 rounded text-red-700">
+                    − Gastos: S/ {expensesTotal.toFixed(2)}
+                  </div>
+                </div>
+              </Card>
 
-          {/* Resumen de Ventas del Día (Todos los medios) */}
-          <Card className="p-6">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-500" />
-              Ventas del Día
-            </h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-2 rounded hover:bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <Banknote className="h-4 w-4 text-green-500" />
-                  <span>Efectivo</span>
-                </div>
-                <span className="font-bold">S/ {systemTotals.cash.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 rounded hover:bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-purple-500" />
-                  <span>Tarjeta</span>
-                </div>
-                <span className="font-bold">S/ {systemTotals.card.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 rounded hover:bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <QrCode className="h-4 w-4 text-pink-500" />
-                  <span>Yape/Plin</span>
-                </div>
-                <span className="font-bold">S/ {systemTotals.qr.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 rounded hover:bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <ArrowRight className="h-4 w-4 text-orange-500" />
-                  <span>Transferencia</span>
-                </div>
-                <span className="font-bold">S/ {systemTotals.transfer.toFixed(2)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between items-center pt-2">
-                <span className="font-bold text-lg">Total Ventas</span>
-                <span className="font-bold text-lg text-blue-600">S/ {systemTotals.total.toFixed(2)}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-      ) : (
-        <Card className="p-12 flex flex-col items-center justify-center text-center border-dashed border-2">
-          <div className="h-20 w-20 bg-muted rounded-full flex items-center justify-center mb-6">
-            <Lock className="h-10 w-10 text-muted-foreground" />
-          </div>
-          <h2 className="text-2xl font-bold mb-2">Caja Cerrada</h2>
-          <p className="text-muted-foreground max-w-md mb-8">
-            Para comenzar a operar y registrar movimientos, debes realizar la apertura de caja indicando el monto inicial.
-          </p>
-          <Button size="lg" onClick={() => setShowOpenDialog(true)}>
-            Iniciar Turno de Caja
-          </Button>
-        </Card>
-      )}
-
-      {/* Lista de Gastos */}
-      {currentSession && (
-        <Card className="p-6">
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <TrendingDown className="h-5 w-5 text-red-500" />
-            Gastos y Salidas de Efectivo
-          </h3>
-          {loadingMovements ? (
-            <div className="text-center py-8">Cargando movimientos...</div>
-          ) : (movements || []).length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No hay movimientos registrados en esta sesión
+              <Card className="p-6">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-blue-500" />
+                  Cobros del día (citas)
+                </h3>
+                {summaryLoading ? (
+                  <p className="text-sm text-slate-500">Actualizando…</p>
+                ) : (
+                  <div className="space-y-3 text-sm">
+                    <Row icon={<Banknote className="w-4 h-4 text-green-600" />} label="Efectivo" value={sales.cash} />
+                    <Row icon={<CreditCard className="w-4 h-4 text-purple-600" />} label="Tarjeta" value={sales.card} />
+                    <Row icon={<QrCode className="w-4 h-4 text-pink-600" />} label="Yape/Plin" value={sales.qr} />
+                    <Row icon={<ArrowRight className="w-4 h-4 text-orange-600" />} label="Transferencia" value={sales.transfer} />
+                    <Separator />
+                    <div className="flex justify-between font-bold">
+                      <span>Total cobrado</span>
+                      <span className="text-blue-600">S/ {sales.total.toFixed(2)}</span>
+                    </div>
+                    <Button variant="ghost" size="sm" className="w-full" onClick={() => refreshSummary()}>
+                      Actualizar resumen
+                    </Button>
+                  </div>
+                )}
+              </Card>
             </div>
           ) : (
-            <div className="space-y-2">
-              {(movements || []).map(exp => (
-                <div key={exp.id} className="flex justify-between items-center p-3 border rounded-lg bg-card transition-colors hover:bg-muted/30">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{exp.description}</p>
-                      <Badge variant="outline" className="text-[10px] uppercase">
-                        {exp.payment_method}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(exp.movement_date || exp.created_at).toLocaleTimeString()}
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className={
-                    exp.type === 'EXPENSE'
-                      ? "text-red-600 bg-red-50 dark:bg-red-950/30"
-                      : "text-green-600 bg-green-50 dark:bg-green-950/30"
-                  }>
-                    {exp.type === 'EXPENSE' ? '-' : '+'} S/ {parseFloat(exp.amount).toFixed(2)}
-                  </Badge>
-                </div>
-              ))}
-            </div>
+            <Card className="p-12 text-center border-dashed">
+              <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-xl font-bold mb-2">Caja cerrada</h2>
+              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                Abra la caja para vincular cobros de visitas móviles y gastos del turno.
+              </p>
+              <Button onClick={() => setShowOpenDialog(true)}>Iniciar turno</Button>
+            </Card>
           )}
-        </Card>
-      )}
+
+          {daySummary?.by_vehicle && daySummary.by_vehicle.length > 0 && (
+            <Card className="p-4">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <Truck className="w-5 h-5" /> Resumen por móvil
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {daySummary.by_vehicle.map((v) => (
+                  <div key={String(v.vehicle_id)} className="border rounded-lg p-3 text-sm">
+                    <div className="font-medium">{v.vehicle_name}</div>
+                    <div className="text-slate-500">{v.appointments} citas</div>
+                    <div>Cobrado: S/ {v.paid_total.toFixed(2)}</div>
+                    {v.pending_count > 0 && (
+                      <Badge variant="outline" className="mt-1">
+                        {v.pending_count} por cobrar
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="cobros" className="mt-4 space-y-6">
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Receipt className="w-5 h-5" />
+              Citas por cobrar (hoy)
+            </h3>
+            {!currentSession && (
+              <p className="text-amber-700 text-sm mb-4 bg-amber-50 p-3 rounded">
+                Recomendado: abra caja antes de registrar cobros para cuadrar el turno.
+              </p>
+            )}
+            {pending.length === 0 ? (
+              <p className="text-slate-500">No hay citas pendientes de cobro para hoy.</p>
+            ) : (
+              <div className="space-y-2">
+                {pending.map((apt) => (
+                  <PendingAppointmentRow
+                    key={apt.id}
+                    apt={apt}
+                    vehicleLabel={vehicleLabel(apt.vehicle_id)}
+                    onCollect={() => setPayDialogId(apt.id)}
+                    onInvoice={() => openInvoiceDialog(apt)}
+                    showCollect
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Emitir comprobante (boleta / factura)
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Citas completadas sin comprobante electrónico. Se genera boleta o factura según el documento del cliente.
+            </p>
+            {pendingInvoicing.length === 0 ? (
+              <p className="text-slate-500">No hay citas pendientes de facturación para hoy.</p>
+            ) : (
+              <div className="space-y-2">
+                {pendingInvoicing.map((apt) => (
+                  <PendingAppointmentRow
+                    key={`inv-${apt.id}`}
+                    apt={apt}
+                    vehicleLabel={vehicleLabel(apt.vehicle_id)}
+                    onInvoice={() => openInvoiceDialog(apt)}
+                    showCollect={apt.payment_status !== 'Pagado'}
+                    onCollect={
+                      apt.payment_status !== 'Pagado' ? () => setPayDialogId(apt.id) : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="correlativos" className="mt-4">
+          {branchId ? (
+            <CorrelativesPanel branchId={branchId} />
+          ) : (
+            <p className="text-slate-500">Seleccione una sucursal con correlativos configurados.</p>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       <Dialog open={showOpenDialog} onOpenChange={setShowOpenDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Apertura de Caja</DialogTitle>
-            <DialogDescription>Ingresa el monto de efectivo inicial en caja</DialogDescription>
+            <DialogTitle>Apertura de caja</DialogTitle>
+            <DialogDescription>Monto inicial en efectivo del turno</DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label>Monto Inicial (S/)</Label>
-            <Input
-              type="number"
-              value={startingCashInput}
-              onChange={(e) => setStartingCashInput(e.target.value)}
-              className="text-2xl font-bold text-center mt-2"
-            />
-          </div>
+          <Input
+            type="number"
+            value={startingCashInput}
+            onChange={(e) => setStartingCashInput(e.target.value)}
+            className="text-2xl text-center"
+          />
           <DialogFooter>
-            <Button onClick={handleOpenSession}>Confirmar Apertura</Button>
+            <Button onClick={handleOpenSession}>Confirmar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -394,90 +441,161 @@ export function CashRegister() {
       <Dialog open={showExpenseDialog} onOpenChange={setShowExpenseDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Registrar Gasto</DialogTitle>
+            <DialogTitle>Registrar gasto</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>Concepto</Label>
-              <Input
-                value={expenseForm.concept}
-                onChange={(e) => setExpenseForm({ ...expenseForm, concept: e.target.value })}
-                placeholder="Ej. Compra de útiles de limpieza"
-              />
-            </div>
-            <div>
-              <Label>Monto (S/)</Label>
-              <Input
-                type="number"
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-              />
-            </div>
+          <div className="space-y-3">
+            <Input
+              placeholder="Concepto"
+              value={expenseForm.concept}
+              onChange={(e) => setExpenseForm({ ...expenseForm, concept: e.target.value })}
+            />
+            <Input
+              type="number"
+              placeholder="Monto S/"
+              value={expenseForm.amount}
+              onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+            />
           </div>
           <DialogFooter>
-            <Button onClick={handleAddExpense}>Guardar Gasto</Button>
+            <Button onClick={handleAddExpense}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={payDialogId !== null} onOpenChange={() => setPayDialogId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar cobro</DialogTitle>
+          </DialogHeader>
+          <Label>Método de pago</Label>
+          <Select value={payMethod} onValueChange={setPayMethod}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAYMENT_METHODS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button onClick={handleCollect}>Confirmar cobro</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {appointmentToInvoice && (
+        <IssueDocumentDialog
+          open={issueDocOpen}
+          onOpenChange={setIssueDocOpen}
+          appointmentId={String(appointmentToInvoice.id)}
+          appointmentLabel={[
+            appointmentToInvoice.client_name,
+            appointmentToInvoice.service_name || `Cita #${appointmentToInvoice.id}`,
+          ]
+            .filter(Boolean)
+            .join(' — ')}
+          onSuccess={() => {
+            refreshSummary();
+            setAppointmentToInvoice(null);
+          }}
+        />
+      )}
 
       <Dialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cierre de Caja</DialogTitle>
-            <DialogDescription>
-              El sistema ha calculado los totales esperados. Ingresa lo que has contado físicamente.
-            </DialogDescription>
+            <DialogTitle>Cierre de caja</DialogTitle>
+            <DialogDescription>Esperado: S/ {cashInDrawer.toFixed(2)}</DialogDescription>
           </DialogHeader>
-
-          <div className="py-4 space-y-6">
-            <div className="bg-muted p-4 rounded-lg space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Saldo Inicial:</span>
-                <span>S/ {(currentSession?.opening_amount || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-green-600">
-                <span>+ Ventas Efectivo:</span>
-                <span>S/ {systemTotals.cash.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-red-600">
-                <span>- Gastos:</span>
-                <span>S/ {currentExpensesTotal.toFixed(2)}</span>
-              </div>
-              <Separator className="bg-slate-300 dark:bg-slate-600" />
-              <div className="flex justify-between font-bold text-lg">
-                <span>Esperado en Caja:</span>
-                <span>S/ {cashInDrawer.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-base">Dinero Contado Realmente (S/)</Label>
-              <Input
-                type="number"
-                value={cashCountInput}
-                onChange={(e) => setCashCountInput(e.target.value)}
-                className="text-3xl font-bold text-center h-16 mt-2"
-                placeholder="0.00"
-                autoFocus
-              />
-              {cashCountInput && !isNaN(parseFloat(cashCountInput)) && (
-                <div className={`text-center mt-2 font-medium ${parseFloat(cashCountInput) - cashInDrawer === 0 ? 'text-green-600' :
-                    parseFloat(cashCountInput) - cashInDrawer > 0 ? 'text-blue-600' : 'text-red-600'
-                  }`}>
-                  {parseFloat(cashCountInput) - cashInDrawer === 0
-                    ? '✨ Cuadre Perfecto'
-                    : `Diferencia: ${(parseFloat(cashCountInput) - cashInDrawer).toFixed(2)}`}
-                </div>
-              )}
-            </div>
-          </div>
-
+          <Input
+            type="number"
+            value={cashCountInput}
+            onChange={(e) => setCashCountInput(e.target.value)}
+            className="text-2xl text-center"
+            placeholder="Monto contado"
+          />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCloseDialog(false)}>Cancelar</Button>
-            <Button onClick={handleCloseSession} className="bg-red-600 hover:bg-red-700">Confirmar Cierre</Button>
+            <Button variant="destructive" onClick={handleCloseSession}>
+              Cerrar turno
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function PendingAppointmentRow({
+  apt,
+  vehicleLabel,
+  onCollect,
+  onInvoice,
+  showCollect = true,
+}: {
+  apt: PendingCashAppointment;
+  vehicleLabel: string;
+  onCollect?: () => void;
+  onInvoice: () => void;
+  showCollect?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap justify-between items-center gap-2 p-3 border rounded-lg">
+      <div>
+        <p className="font-medium">{apt.service_name || `Cita #${apt.id}`}</p>
+        {apt.client_name && (
+          <p className="text-sm text-slate-600">{apt.client_name}</p>
+        )}
+        <p className="text-xs text-slate-500">
+          {apt.time} · {apt.district} · {vehicleLabel}
+          {apt.payment_status === 'Pagado' && (
+            <Badge variant="outline" className="ml-2 text-green-700 border-green-300">
+              Cobrado
+            </Badge>
+          )}
+          {apt.invoiced && (
+            <Badge variant="outline" className="ml-2">
+              Facturado
+            </Badge>
+          )}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        <span className="font-bold">S/ {apt.total.toFixed(2)}</span>
+        {showCollect && onCollect && (
+          <Button size="sm" onClick={onCollect}>
+            Cobrar
+          </Button>
+        )}
+        {!apt.invoiced && apt.status === 'Completada' && (
+          <Button size="sm" variant="outline" onClick={onInvoice}>
+            <FileText className="w-4 h-4 mr-1" />
+            Facturar
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+      <span className="font-semibold">S/ {value.toFixed(2)}</span>
     </div>
   );
 }

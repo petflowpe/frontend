@@ -1,178 +1,158 @@
-import { useState } from 'react';
-import { CreditCard, DollarSign, TrendingUp, AlertCircle, Plus, Search, Filter, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  CreditCard,
+  DollarSign,
+  TrendingUp,
+  Plus,
+  Search,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Loader2,
+  ExternalLink,
+  Plug,
+} from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+} from './ui/dialog';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { usePayments, type PaymentRecord } from '../hooks/usePayments';
+import { useInvoices } from '../hooks/useInvoices';
+import { PaymentGatewaySettings } from './payments/PaymentGatewaySettings';
+import { usePaymentGateways } from '../hooks/usePaymentGateways';
+import { toast } from 'sonner';
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  transfer: 'Transferencia',
+  yape: 'Yape',
+  plin: 'Plin',
+  other: 'Otro',
+};
+
+const GATEWAY_LABELS: Record<string, string> = {
+  manual: 'Manual',
+  mercado_pago: 'Mercado Pago',
+  niubiz: 'Niubiz',
+};
+
+function statusBadge(status: string) {
+  switch (status) {
+    case 'completed':
+      return 'bg-green-100 text-green-800';
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'failed':
+      return 'bg-red-100 text-red-800';
+    case 'refunded':
+      return 'bg-blue-100 text-blue-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
+
+function statusText(status: string) {
+  const map: Record<string, string> = {
+    completed: 'Completado',
+    pending: 'Pendiente',
+    failed: 'Fallido',
+    refunded: 'Reembolsado',
+  };
+  return map[status] ?? status;
+}
 
 export function Payments() {
-  const [showNewPayment, setShowNewPayment] = useState(false);
+  const { payments, loading, fetchPayments, createPayment, createCheckout } = usePayments();
+  const { config: gateways } = usePaymentGateways();
+  const { invoices } = useInvoices();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedPayment, setSelectedPayment] = useState<any>(null);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
+  const [showNewPayment, setShowNewPayment] = useState(false);
 
-  const payments = [
-    {
-      id: 'PAY-2024-001',
-      invoiceId: 'INV-2024-001',
-      date: '2024-01-15',
-      time: '14:30',
-      client: 'María González',
-      amount: 72.6,
-      method: 'card',
-      status: 'completed',
-      reference: 'txn_1234567890',
-      fee: 2.18,
-      net: 70.42,
-      gateway: 'Stripe',
-      description: 'Baño completo + Corte de uñas - Max'
-    },
-    {
-      id: 'PAY-2024-002',
-      invoiceId: 'INV-2024-005',
-      date: '2024-01-14',
-      time: '16:45',
-      client: 'Ana Torres',
-      amount: 45.0,
-      method: 'cash',
-      status: 'completed',
-      reference: 'CASH-001',
-      fee: 0,
-      net: 45.0,
-      gateway: 'Efectivo',
-      description: 'Baño completo - Toby'
-    },
-    {
-      id: 'PAY-2024-003',
-      invoiceId: 'INV-2024-002',
-      date: '2024-01-13',
-      time: '12:15',
-      client: 'Carlos Pérez',
-      amount: 66.55,
-      method: 'transfer',
-      status: 'pending',
-      reference: 'TRF-987654321',
-      fee: 1.0,
-      net: 65.55,
-      gateway: 'Banco Santander',
-      description: 'Baño + Corte completo - Luna'
-    },
-    {
-      id: 'PAY-2024-004',
-      invoiceId: 'INV-2024-003',
-      date: '2024-01-12',
-      time: '10:30',
-      client: 'Laura Martín',
-      amount: 108.9,
-      method: 'card',
-      status: 'failed',
-      reference: 'txn_failed_001',
-      fee: 0,
-      net: 0,
-      gateway: 'Stripe',
-      description: 'Baño medicinal + Tratamiento - Rocco'
-    },
-    {
-      id: 'PAY-2024-005',
-      invoiceId: 'INV-2024-006',
-      date: '2024-01-11',
-      time: '15:20',
-      client: 'Pedro Sánchez',
-      amount: 35.0,
-      method: 'bizum',
-      status: 'completed',
-      reference: 'BIZ-123456',
-      fee: 0.35,
-      net: 34.65,
-      gateway: 'Bizum',
-      description: 'Corte de uñas + Limpieza - Rex'
-    }
-  ];
+  const filteredPayments = useMemo(() => {
+    return payments.filter((p) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch =
+        !q ||
+        p.client.toLowerCase().includes(q) ||
+        String(p.id).includes(q) ||
+        (p.invoice_number ?? '').toLowerCase().includes(q) ||
+        (p.reference ?? '').toLowerCase().includes(q);
+      const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [payments, searchTerm, statusFilter]);
 
-  const paymentMethods = [
-    { id: 'card', name: 'Tarjeta', icon: CreditCard, enabled: true },
-    { id: 'cash', name: 'Efectivo', icon: DollarSign, enabled: true },
-    { id: 'transfer', name: 'Transferencia', icon: TrendingUp, enabled: true },
-    { id: 'bizum', name: 'Bizum', icon: CreditCard, enabled: true }
-  ];
+  const completed = payments.filter((p) => p.status === 'completed');
+  const totalRevenue = completed.reduce((acc, p) => acc + p.net, 0);
+  const pendingAmount = payments
+    .filter((p) => p.status === 'pending')
+    .reduce((acc, p) => acc + p.amount, 0);
+  const totalFees = completed.reduce((acc, p) => acc + p.fee, 0);
+  const successRate =
+    payments.length > 0 ? (completed.length / payments.length) * 100 : 0;
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      case 'refunded': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed': return 'Completado';
-      case 'pending': return 'Pendiente';
-      case 'failed': return 'Fallido';
-      case 'refunded': return 'Reembolsado';
-      default: return status;
-    }
-  };
-
-  const getMethodColor = (method: string) => {
-    switch (method) {
-      case 'card': return 'bg-blue-100 text-blue-800';
-      case 'cash': return 'bg-green-100 text-green-800';
-      case 'transfer': return 'bg-purple-100 text-purple-800';
-      case 'bizum': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getMethodText = (method: string) => {
-    const methodObj = paymentMethods.find(m => m.id === method);
-    return methodObj?.name || method;
-  };
-
-  const filteredPayments = payments.filter(payment => {
-    const matchesSearch = payment.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         payment.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         payment.invoiceId.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const totalRevenue = payments.filter(p => p.status === 'completed').reduce((acc, p) => acc + p.net, 0);
-  const pendingAmount = payments.filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
-  const totalFees = payments.filter(p => p.status === 'completed').reduce((acc, p) => acc + p.fee, 0);
-  const successRate = (payments.filter(p => p.status === 'completed').length / payments.length * 100);
+  const pendingInvoices = useMemo(
+    () =>
+      invoices.filter(
+        (inv) => inv.estado === 'pendiente' || inv.estado === 'vencida'
+      ),
+    [invoices]
+  );
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl text-primary">Gestión de Pagos</h1>
-          <p className="text-muted-foreground">Administra todos los pagos y métodos de cobro</p>
+          <p className="text-muted-foreground">
+            Cobros registrados, Mercado Pago y Niubiz
+          </p>
         </div>
-        <Dialog open={showNewPayment} onOpenChange={setShowNewPayment}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Registrar Pago
-            </Button>
-          </DialogTrigger>
-          <PaymentDialog onClose={() => setShowNewPayment(false)} />
-        </Dialog>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => fetchPayments()}>
+            Actualizar
+          </Button>
+          <Dialog open={showNewPayment} onOpenChange={setShowNewPayment}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Registrar pago
+              </Button>
+            </DialogTrigger>
+            <PaymentDialog
+              pendingInvoices={pendingInvoices}
+              onClose={() => setShowNewPayment(false)}
+              onSubmit={async (data) => {
+                await createPayment(data);
+                setShowNewPayment(false);
+              }}
+              onCheckout={createCheckout}
+              gateways={gateways}
+            />
+          </Dialog>
+        </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center space-x-2">
             <DollarSign className="h-8 w-8 text-green-600" />
             <div>
-              <p className="text-2xl">{totalRevenue.toFixed(2)}€</p>
-              <p className="text-sm text-muted-foreground">Ingresos Netos</p>
+              <p className="text-2xl">S/ {totalRevenue.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground">Ingresos netos</p>
             </div>
           </div>
         </Card>
@@ -180,26 +160,26 @@ export function Payments() {
           <div className="flex items-center space-x-2">
             <Clock className="h-8 w-8 text-yellow-600" />
             <div>
-              <p className="text-2xl">{pendingAmount.toFixed(2)}€</p>
-              <p className="text-sm text-muted-foreground">Pagos Pendientes</p>
+              <p className="text-2xl">S/ {pendingAmount.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground">Pendientes</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center space-x-2">
-            <AlertCircle className="h-8 w-8 text-red-600" />
+            <TrendingUp className="h-8 w-8 text-red-600" />
             <div>
-              <p className="text-2xl">{totalFees.toFixed(2)}€</p>
+              <p className="text-2xl">S/ {totalFees.toFixed(2)}</p>
               <p className="text-sm text-muted-foreground">Comisiones</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center space-x-2">
-            <TrendingUp className="h-8 w-8 text-blue-600" />
+            <CreditCard className="h-8 w-8 text-blue-600" />
             <div>
               <p className="text-2xl">{successRate.toFixed(1)}%</p>
-              <p className="text-sm text-muted-foreground">Tasa de Éxito</p>
+              <p className="text-sm text-muted-foreground">Tasa de éxito</p>
             </div>
           </div>
         </Card>
@@ -208,362 +188,297 @@ export function Payments() {
       <Tabs defaultValue="transactions" className="w-full">
         <TabsList>
           <TabsTrigger value="transactions">Transacciones</TabsTrigger>
-          <TabsTrigger value="methods">Métodos de Pago</TabsTrigger>
-          <TabsTrigger value="reports">Reportes</TabsTrigger>
+          <TabsTrigger value="gateways">
+            <Plug className="w-4 h-4 mr-1 inline" />
+            Pasarelas
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="transactions" className="space-y-4">
-          {/* Filters */}
+        <TabsContent value="transactions" className="space-y-4 mt-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Buscar por cliente, factura o ID de pago..."
+                placeholder="Buscar cliente, referencia o ID…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <select 
+            <select
               className="px-3 py-2 border rounded-md bg-background"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="all">Todos los estados</option>
+              <option value="all">Todos</option>
               <option value="completed">Completados</option>
               <option value="pending">Pendientes</option>
               <option value="failed">Fallidos</option>
-              <option value="refunded">Reembolsados</option>
             </select>
-            <Button variant="outline">
-              <Filter className="h-4 w-4 mr-2" />
-              Filtros
-            </Button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Payments List */}
-            <div className="lg:col-span-2 space-y-4">
-              {filteredPayments.map((payment) => (
-                <Card 
-                  key={payment.id} 
-                  className={`p-6 cursor-pointer transition-colors ${
-                    selectedPayment?.id === payment.id ? 'ring-2 ring-primary' : ''
-                  }`}
-                  onClick={() => setSelectedPayment(payment)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-4">
-                      <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                        {payment.status === 'completed' && <CheckCircle className="h-6 w-6 text-green-600" />}
-                        {payment.status === 'pending' && <Clock className="h-6 w-6 text-yellow-600" />}
-                        {payment.status === 'failed' && <XCircle className="h-6 w-6 text-red-600" />}
-                        {payment.status === 'refunded' && <TrendingUp className="h-6 w-6 text-blue-600" />}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h3 className="font-medium">{payment.id}</h3>
-                          <Badge className={getStatusColor(payment.status)}>
-                            {getStatusText(payment.status)}
-                          </Badge>
-                          <Badge className={getMethodColor(payment.method)}>
-                            {getMethodText(payment.method)}
-                          </Badge>
+          {loading ? (
+            <div className="flex justify-center py-16 text-muted-foreground">
+              <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              Cargando pagos…
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-3">
+                {filteredPayments.length === 0 ? (
+                  <Card className="p-8 text-center text-muted-foreground">
+                    No hay pagos registrados. Configure una pasarela o registre un cobro manual.
+                  </Card>
+                ) : (
+                  filteredPayments.map((payment) => (
+                    <Card
+                      key={payment.id}
+                      className={`p-5 cursor-pointer transition-colors ${
+                        selectedPayment?.id === payment.id ? 'ring-2 ring-primary' : ''
+                      }`}
+                      onClick={() => setSelectedPayment(payment)}
+                    >
+                      <div className="flex justify-between gap-4">
+                        <div className="flex gap-3">
+                          {payment.status === 'completed' && (
+                            <CheckCircle className="h-6 w-6 text-green-600 shrink-0" />
+                          )}
+                          {payment.status === 'pending' && (
+                            <Clock className="h-6 w-6 text-yellow-600 shrink-0" />
+                          )}
+                          {payment.status === 'failed' && (
+                            <XCircle className="h-6 w-6 text-red-600 shrink-0" />
+                          )}
+                          <div>
+                            <div className="flex flex-wrap gap-2 mb-1">
+                              <span className="font-medium">#{payment.id}</span>
+                              <Badge className={statusBadge(payment.status)}>
+                                {statusText(payment.status)}
+                              </Badge>
+                              <Badge variant="outline">
+                                {GATEWAY_LABELS[payment.gateway] ?? payment.gateway}
+                              </Badge>
+                            </div>
+                            <p className="text-sm">{payment.client}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {payment.date} {payment.time}
+                              {payment.invoice_number ? ` · ${payment.invoice_number}` : ''}
+                            </p>
+                          </div>
                         </div>
-                        <div className="space-y-1 text-sm text-muted-foreground">
-                          <p>{payment.client}</p>
-                          <p>{payment.description}</p>
-                          <p>Factura: {payment.invoiceId}</p>
-                          <p>{payment.date} • {payment.time}</p>
+                        <div className="text-right shrink-0">
+                          <p className="text-lg font-semibold">S/ {payment.amount.toFixed(2)}</p>
+                          {payment.fee > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Neto S/ {payment.net.toFixed(2)}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg">{payment.amount.toFixed(2)}€</p>
-                      {payment.fee > 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          Neto: {payment.net.toFixed(2)}€
+                    </Card>
+                  ))
+                )}
+              </div>
+
+              <div>
+                {selectedPayment ? (
+                  <Card className="p-6 space-y-3 text-sm sticky top-4">
+                    <h3 className="font-semibold text-lg">Detalle #{selectedPayment.id}</h3>
+                    <Row label="Cliente" value={selectedPayment.client} />
+                    <Row label="Estado" value={statusText(selectedPayment.status)} />
+                    <Row
+                      label="Pasarela"
+                      value={GATEWAY_LABELS[selectedPayment.gateway] ?? selectedPayment.gateway}
+                    />
+                    <Row
+                      label="Método"
+                      value={METHOD_LABELS[selectedPayment.method] ?? selectedPayment.method}
+                    />
+                    <Row label="Referencia" value={selectedPayment.reference ?? '—'} />
+                    <Row label="Monto" value={`S/ ${selectedPayment.amount.toFixed(2)}`} />
+                    {selectedPayment.status === 'pending' &&
+                      (selectedPayment.gateway === 'mercado_pago' ||
+                        selectedPayment.gateway === 'niubiz') && (
+                        <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded">
+                          Esperando confirmación de la pasarela.
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground">{payment.gateway}</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ) : (
+                  <Card className="p-6 text-center text-muted-foreground text-sm">
+                    Seleccione un pago para ver el detalle
+                  </Card>
+                )}
+              </div>
             </div>
-
-            {/* Payment Details */}
-            <div>
-              {selectedPayment ? (
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg">{selectedPayment.id}</h3>
-                    <Badge className={getStatusColor(selectedPayment.status)}>
-                      {getStatusText(selectedPayment.status)}
-                    </Badge>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-3 text-sm">
-                      <div>
-                        <span className="font-medium">Cliente:</span>
-                        <br />
-                        <span className="text-muted-foreground">{selectedPayment.client}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">Factura:</span>
-                        <br />
-                        <span className="text-muted-foreground">{selectedPayment.invoiceId}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">Fecha y Hora:</span>
-                        <br />
-                        <span className="text-muted-foreground">{selectedPayment.date} • {selectedPayment.time}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">Método:</span>
-                        <br />
-                        <Badge className={getMethodColor(selectedPayment.method)}>
-                          {getMethodText(selectedPayment.method)}
-                        </Badge>
-                      </div>
-                      <div>
-                        <span className="font-medium">Gateway:</span>
-                        <br />
-                        <span className="text-muted-foreground">{selectedPayment.gateway}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">Referencia:</span>
-                        <br />
-                        <span className="text-muted-foreground font-mono text-xs">{selectedPayment.reference}</span>
-                      </div>
-                    </div>
-
-                    <div className="border-t pt-4 space-y-2">
-                      <div className="flex justify-between">
-                        <span>Importe:</span>
-                        <span>{selectedPayment.amount.toFixed(2)}€</span>
-                      </div>
-                      {selectedPayment.fee > 0 && (
-                        <div className="flex justify-between text-red-600">
-                          <span>Comisión:</span>
-                          <span>-{selectedPayment.fee.toFixed(2)}€</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-medium text-lg">
-                        <span>Neto:</span>
-                        <span>{selectedPayment.net.toFixed(2)}€</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {selectedPayment.status === 'completed' && (
-                        <Button variant="outline" size="sm" className="w-full">
-                          Generar Recibo
-                        </Button>
-                      )}
-                      {selectedPayment.status === 'failed' && (
-                        <Button size="sm" className="w-full">
-                          Reintentar Pago
-                        </Button>
-                      )}
-                      {selectedPayment.status === 'completed' && (
-                        <Button variant="outline" size="sm" className="w-full text-red-600">
-                          Reembolsar
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ) : (
-                <Card className="p-8 text-center">
-                  <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg mb-2">Selecciona un pago</h3>
-                  <p className="text-muted-foreground">
-                    Haz clic en un pago para ver sus detalles
-                  </p>
-                </Card>
-              )}
-            </div>
-          </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="methods" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {paymentMethods.map((method) => {
-              const IconComponent = method.icon;
-              const methodPayments = payments.filter(p => p.method === method.id && p.status === 'completed');
-              const methodRevenue = methodPayments.reduce((acc, p) => acc + p.net, 0);
-              const methodCount = methodPayments.length;
-              
-              return (
-                <Card key={method.id} className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-2">
-                      <IconComponent className="h-6 w-6 text-primary" />
-                      <h3 className="font-medium">{method.name}</h3>
-                    </div>
-                    <Badge className={method.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                      {method.enabled ? 'Activo' : 'Inactivo'}
-                    </Badge>
-                  </div>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-2xl">{methodRevenue.toFixed(2)}€</p>
-                      <p className="text-sm text-muted-foreground">Ingresos totales</p>
-                    </div>
-                    <div>
-                      <p className="text-lg">{methodCount}</p>
-                      <p className="text-sm text-muted-foreground">Transacciones</p>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" className="w-full mt-4">
-                    Configurar
-                  </Button>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="reports" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6">
-              <h3 className="text-lg mb-4">Ingresos por Método</h3>
-              <div className="space-y-3">
-                {paymentMethods.map((method) => {
-                  const methodRevenue = payments
-                    .filter(p => p.method === method.id && p.status === 'completed')
-                    .reduce((acc, p) => acc + p.net, 0);
-                  const percentage = totalRevenue > 0 ? (methodRevenue / totalRevenue * 100) : 0;
-                  
-                  return (
-                    <div key={method.id} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <method.icon className="h-4 w-4" />
-                        <span>{method.name}</span>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">{methodRevenue.toFixed(2)}€</p>
-                        <p className="text-sm text-muted-foreground">{percentage.toFixed(1)}%</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <h3 className="text-lg mb-4">Resumen Mensual</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span>Total Procesado:</span>
-                  <span className="font-medium">{payments.reduce((acc, p) => acc + p.amount, 0).toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Comisiones:</span>
-                  <span className="font-medium text-red-600">-{totalFees.toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Ingresos Netos:</span>
-                  <span className="font-medium text-green-600">{totalRevenue.toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tasa de Éxito:</span>
-                  <span className="font-medium">{successRate.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Transacciones:</span>
-                  <span className="font-medium">{payments.length}</span>
-                </div>
-              </div>
-            </Card>
-          </div>
+        <TabsContent value="gateways" className="mt-4">
+          <PaymentGatewaySettings />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function PaymentDialog({ onClose }: { onClose: () => void }) {
-  const [selectedInvoice, setSelectedInvoice] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [amount, setAmount] = useState(0);
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}</span>
+      <p className="font-medium">{value}</p>
+    </div>
+  );
+}
 
-  const pendingInvoices = [
-    { id: 'INV-2024-002', client: 'Carlos Pérez', amount: 66.55 },
-    { id: 'INV-2024-003', client: 'Laura Martín', amount: 108.9 },
-    { id: 'INV-2024-004', client: 'Miguel Rodríguez', amount: 36.3 }
-  ];
+function PaymentDialog({
+  pendingInvoices,
+  onClose,
+  onSubmit,
+  onCheckout,
+  gateways,
+}: {
+  pendingInvoices: { id: string; cliente: { nombre: string }; total: number }[];
+  onClose: () => void;
+  onSubmit: (data: {
+    invoice_id: number;
+    amount: number;
+    method: string;
+    reference?: string;
+  }) => Promise<void>;
+  onCheckout: (input: {
+    gateway: 'mercado_pago' | 'niubiz';
+    invoice_id?: number;
+    amount?: number;
+  }) => Promise<unknown>;
+  gateways: {
+    mercado_pago: { enabled: boolean };
+    niubiz: { enabled: boolean };
+  };
+}) {
+  const [selectedInvoice, setSelectedInvoice] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('card');
+  const [amount, setAmount] = useState(0);
+  const [reference, setReference] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const invoiceNumId = selectedInvoice ? parseInt(selectedInvoice, 10) : null;
+
+  const handleManual = async () => {
+    if (!invoiceNumId || amount <= 0) {
+      toast.error('Seleccione factura e importe');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSubmit({
+        invoice_id: invoiceNumId,
+        amount,
+        method: paymentMethod,
+        reference: reference || undefined,
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGateway = async (gateway: 'mercado_pago' | 'niubiz') => {
+    if (!invoiceNumId) {
+      toast.error('Seleccione una factura');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onCheckout({ gateway, invoice_id: invoiceNumId, amount: amount || undefined });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <DialogContent className="max-w-md">
       <DialogHeader>
-        <DialogTitle>Registrar Pago</DialogTitle>
-        <DialogDescription>
-          Registra el pago de una factura pendiente
-        </DialogDescription>
+        <DialogTitle>Registrar pago</DialogTitle>
+        <DialogDescription>Cobro manual o enlace de pasarela (Mercado Pago / Niubiz)</DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="invoice">Factura</Label>
-          <select 
-            className="w-full p-2 border rounded-md"
+        <div>
+          <Label>Factura pendiente</Label>
+          <select
+            className="w-full p-2 border rounded-md bg-background mt-1"
             value={selectedInvoice}
             onChange={(e) => {
               setSelectedInvoice(e.target.value);
-              const invoice = pendingInvoices.find(inv => inv.id === e.target.value);
-              if (invoice) setAmount(invoice.amount);
+              const inv = pendingInvoices.find((i) => String(i.id) === e.target.value);
+              if (inv) setAmount(inv.total);
             }}
           >
-            <option value="">Seleccionar factura</option>
-            {pendingInvoices.map(invoice => (
-              <option key={invoice.id} value={invoice.id}>
-                {invoice.id} - {invoice.client} ({invoice.amount}€)
+            <option value="">Seleccionar…</option>
+            {pendingInvoices.map((inv) => (
+              <option key={inv.id} value={String(inv.id)}>
+                {inv.cliente?.nombre ?? inv.id} — S/ {inv.total.toFixed(2)}
               </option>
             ))}
           </select>
+          {pendingInvoices.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-1">No hay facturas pendientes en el sistema.</p>
+          )}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="method">Método de Pago</Label>
-          <select 
-            className="w-full p-2 border rounded-md"
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-          >
-            <option value="">Seleccionar método</option>
-            <option value="card">Tarjeta</option>
-            <option value="cash">Efectivo</option>
-            <option value="transfer">Transferencia</option>
-            <option value="bizum">Bizum</option>
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="amount">Importe</Label>
-          <Input 
-            id="amount"
+        <div>
+          <Label>Importe (S/)</Label>
+          <Input
             type="number"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
             step="0.01"
+            value={amount || ''}
+            onChange={(e) => setAmount(Number(e.target.value))}
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="reference">Referencia (opcional)</Label>
-          <Input id="reference" placeholder="Número de transacción, recibo, etc." />
+        <div>
+          <Label>Método (cobro manual)</Label>
+          <select
+            className="w-full p-2 border rounded-md bg-background mt-1"
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+          >
+            <option value="cash">Efectivo</option>
+            <option value="card">Tarjeta</option>
+            <option value="transfer">Transferencia</option>
+            <option value="yape">Yape</option>
+            <option value="plin">Plin</option>
+          </select>
         </div>
 
-        <div className="flex justify-end space-x-2">
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={onClose}>
-            Registrar Pago
-          </Button>
+        <div>
+          <Label>Referencia (opcional)</Label>
+          <Input value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
+
+        <div className="flex flex-col gap-2">
+          <Button onClick={handleManual} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Registrar cobro manual
+          </Button>
+          {gateways.mercado_pago.enabled && (
+            <Button variant="outline" onClick={() => handleGateway('mercado_pago')} disabled={saving}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Cobrar con Mercado Pago
+            </Button>
+          )}
+          {gateways.niubiz.enabled && (
+            <Button variant="outline" onClick={() => handleGateway('niubiz')} disabled={saving}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Cobrar con Niubiz
+            </Button>
+          )}
+        </div>
+
+        <Button variant="ghost" className="w-full" onClick={onClose}>
+          Cancelar
+        </Button>
       </div>
     </DialogContent>
   );

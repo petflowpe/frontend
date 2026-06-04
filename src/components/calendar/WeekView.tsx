@@ -11,9 +11,19 @@ interface WeekViewProps {
   onDateClick: (date: Date) => void;
   onAppointmentClick: (appointment: any) => void;
   onAppointmentDrop?: (appointmentId: string, newDate: Date, newTime?: string) => void;
+  firstHour?: number;
+  lastHour?: number;
 }
 
-export function WeekView({ currentDate, appointments, onDateClick, onAppointmentClick, onAppointmentDrop }: WeekViewProps) {
+export function WeekView({
+  currentDate,
+  appointments,
+  onDateClick,
+  onAppointmentClick,
+  onAppointmentDrop,
+  firstHour = 8,
+  lastHour = 20,
+}: WeekViewProps) {
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   
@@ -22,8 +32,8 @@ export function WeekView({ currentDate, appointments, onDateClick, onAppointment
     end: weekEnd
   });
 
-  // Hours from 8:00 to 20:00
-  const hours = Array.from({ length: 13 }, (_, i) => i + 8);
+  const hours = Array.from({ length: lastHour - firstHour + 1 }, (_, i) => i + firstHour);
+  const slotHeight = 80;
 
   const [draggedAppointment, setDraggedAppointment] = useState<any>(null);
   const [dragOverSlot, setDragOverSlot] = useState<{ day: Date; hour: number } | null>(null);
@@ -138,12 +148,12 @@ export function WeekView({ currentDate, appointments, onDateClick, onAppointment
                   .filter(apt => isSameDay(parseAppointmentDate(apt.date), day))
                   .map(apt => {
                     const { hour: aptHour, minute: aptMinute } = getAppointmentTimeParts(apt.time);
-                    if (aptHour < 8 || aptHour > 20) return null; // Out of view
+                    if (aptHour < firstHour || aptHour > lastHour) return null;
 
-                    const startMinutes = (aptHour - 8) * 60 + aptMinute;
-                    const duration = apt.totalDuration || 60; // Default 60 mins
-                    const height = (duration / 60) * 80; // 80px per hour
-                    const top = (startMinutes / 60) * 80;
+                    const startMinutes = (aptHour - firstHour) * 60 + aptMinute;
+                    const duration = apt.duration || apt.totalDuration || 60;
+                    const height = (duration / 60) * slotHeight;
+                    const top = (startMinutes / 60) * slotHeight;
 
                     return (
                       <div

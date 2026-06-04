@@ -422,6 +422,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const addAppointment = async (appointmentData: Omit<Appointment, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<string> => {
     if (!user) return '';
     try {
+      const vehicleId = (appointmentData as { vehicleId?: string | number }).vehicleId;
       const res = await apiClient.post<{ data?: any }>('/appointments', {
         client_id: parseInt(user.id),
         pet_id: parseInt(appointmentData.petId),
@@ -435,6 +436,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         district: appointmentData.district,
         price: appointmentData.price,
         total: appointmentData.price,
+        notes: '[Portal cliente autenticado]',
+        ...(vehicleId != null && String(vehicleId) !== ''
+          ? { vehicle_id: parseInt(String(vehicleId), 10) }
+          : {}),
       });
       const backendApt = res?.data ?? res;
       const newApt = mapBackendAppointmentToFrontend(backendApt, user.id);

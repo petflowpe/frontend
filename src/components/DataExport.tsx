@@ -14,6 +14,7 @@ import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner';
+import { fetchExportDataset, defaultDateRange, type ExportDataset } from '../services/exportService';
 
 // Importación condicional de XLSX (solo se usa si está instalado)
 let XLSX: any = null;
@@ -77,6 +78,10 @@ export const DataExport = () => {
 
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [dateRange, setDateRange] = useState(() => {
+    const r = defaultDateRange();
+    return { from: r.date_from, to: r.date_to };
+  });
 
   // Definir tablas disponibles
   const availableTables: Array<{
@@ -86,15 +91,15 @@ export const DataExport = () => {
     icon: any;
     estimatedRows: number;
   }> = [
-    { id: 'clients', label: 'Clientes', description: 'Información de clientes', icon: '👤', estimatedRows: 150 },
-    { id: 'pets', label: 'Mascotas', description: 'Datos de mascotas', icon: '🐕', estimatedRows: 280 },
-    { id: 'appointments', label: 'Citas', description: 'Historial de citas', icon: '📅', estimatedRows: 1500 },
-    { id: 'invoices', label: 'Facturas', description: 'Facturas y pagos', icon: '💰', estimatedRows: 1200 },
-    { id: 'products', label: 'Productos', description: 'Catálogo de productos', icon: '📦', estimatedRows: 50 },
-    { id: 'services', label: 'Servicios', description: 'Catálogo de servicios', icon: '✂️', estimatedRows: 20 },
-    { id: 'staff', label: 'Personal', description: 'Empleados y groomers', icon: '👔', estimatedRows: 15 },
-    { id: 'vehicles', label: 'Vehículos', description: 'Flota de vehículos', icon: '🚗', estimatedRows: 5 },
-    { id: 'routes', label: 'Rutas', description: 'Historial de rutas', icon: '🗺️', estimatedRows: 800 },
+    { id: 'clients', label: 'Clientes', description: 'Información de clientes', icon: '👤', estimatedRows: 0 },
+    { id: 'pets', label: 'Mascotas', description: 'Datos de mascotas', icon: '🐕', estimatedRows: 0 },
+    { id: 'appointments', label: 'Citas', description: 'Historial de citas', icon: '📅', estimatedRows: 0 },
+    { id: 'invoices', label: 'Facturas', description: 'Facturas emitidas', icon: '💰', estimatedRows: 0 },
+    { id: 'products', label: 'Productos', description: 'Catálogo de productos', icon: '📦', estimatedRows: 0 },
+    { id: 'services', label: 'Servicios', description: 'Catálogo de servicios', icon: '✂️', estimatedRows: 0 },
+    { id: 'staff', label: 'Personal', description: 'Usuarios de la empresa', icon: '👔', estimatedRows: 0 },
+    { id: 'vehicles', label: 'Vehículos', description: 'Flota de vehículos', icon: '🚗', estimatedRows: 0 },
+    { id: 'routes', label: 'Rutas', description: 'Planificación de rutas', icon: '🗺️', estimatedRows: 0 },
   ];
 
   /**
@@ -144,11 +149,7 @@ export const DataExport = () => {
         const tableId = config.tables[i];
         setProgress(((i + 1) / config.tables.length) * 100);
 
-        // Simular delay (en producción sería fetch al backend Laravel)
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // TODO: En producción, obtener datos reales
-        exportData.tables[tableId] = await fetchTableData(tableId);
+        exportData.tables[tableId] = await fetchTableData(tableId, dateRange);
       }
 
       // Generar archivo según formato
@@ -222,10 +223,31 @@ export const DataExport = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Los datos exportados incluyen toda la información del sistema. 
-              Guárdalos en un lugar seguro.
+              Los datos se obtienen del servidor (máx. 5 000 filas por tabla). Guarde el archivo en un lugar seguro.
             </AlertDescription>
           </Alert>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Desde</Label>
+              <Input
+                type="date"
+                value={dateRange.from}
+                onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Hasta</Label>
+              <Input
+                type="date"
+                value={dateRange.to}
+                onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            El rango aplica a citas, facturas y rutas. Clientes, mascotas y catálogos exportan el estado actual.
+          </p>
 
           {/* Selección de tablas */}
           <div className="space-y-3">
@@ -267,7 +289,7 @@ export const DataExport = () => {
                         {table.description}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
-                        ~{table.estimatedRows} registros
+                        API en vivo
                       </p>
                     </div>
                     {config.tables.includes(table.id) && (
@@ -450,18 +472,15 @@ const FormatOption = ({
  * Funciones de exportación
  */
 
-// Simular fetch de datos (reemplazar con backend Laravel)
-const fetchTableData = async (tableId: DataTable): Promise<any[]> => {
-  // TODO: En producción, obtener del backend Laravel
-  // const { apiClient } = await import('../utils/api/client');
-  // const data = await apiClient.get(`/${tableId}`);
-  
-  // Mock data para desarrollo
-  return Array.from({ length: 10 }, (_, i) => ({
-    id: `${tableId}-${i + 1}`,
-    name: `${tableId} Item ${i + 1}`,
-    createdAt: new Date().toISOString()
-  }));
+const fetchTableData = async (
+  tableId: DataTable,
+  range: { from: string; to: string }
+): Promise<Record<string, unknown>[]> => {
+  const needsRange = ['appointments', 'invoices', 'routes'].includes(tableId);
+  return fetchExportDataset(tableId as ExportDataset, {
+    date_from: needsRange ? range.from : undefined,
+    date_to: needsRange ? range.to : undefined,
+  });
 };
 
 // Exportar como JSON

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   FileSpreadsheet, 
@@ -40,6 +40,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { Loader2 } from 'lucide-react';
+import {
+  fetchExportReport,
+  defaultDateRange,
+  REPORTS_WITH_API,
+} from '../services/exportService';
 
 interface ReportConfig {
   id: string;
@@ -55,120 +61,86 @@ interface ReportConfig {
 }
 
 export function ExportsReports() {
-  const [dateRange, setDateRange] = useState({ start: '2024-01-01', end: '2024-12-31' });
+  const initialRange = useMemo(() => defaultDateRange(), []);
+  const [dateRange, setDateRange] = useState({
+    start: initialRange.date_from,
+    end: initialRange.date_to,
+  });
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
-  // Generar datos de ejemplo según el tipo de reporte
-  const generateReportData = (reportId: string) => {
-    switch (reportId) {
-      case 'appointments-full':
-        return [
-          { Fecha: '2024-12-01', Hora: '09:00', Cliente: 'María González', Mascota: 'Max', Raza: 'Golden Retriever', Servicios: 'Baño + Corte', Groomer: 'Ana Ruiz', Vehículo: 'Van 1', Estado: 'Completada', Precio: 'S/ 120.00', Notas: 'Cliente satisfecho' },
-          { Fecha: '2024-12-01', Hora: '10:30', Cliente: 'Carlos Pérez', Mascota: 'Luna', Raza: 'Poodle', Servicios: 'Baño Completo', Groomer: 'Juan López', Vehículo: 'Van 1', Estado: 'Completada', Precio: 'S/ 80.00', Notas: '' },
-          { Fecha: '2024-12-01', Hora: '14:00', Cliente: 'Ana Torres', Mascota: 'Rocky', Raza: 'Bulldog', Servicios: 'Corte de Uñas + Baño', Groomer: 'Carmen Silva', Vehículo: 'Van 2', Estado: 'Completada', Precio: 'S/ 95.00', Notas: 'Mascota nerviosa' },
-          { Fecha: '2024-12-02', Hora: '09:30', Cliente: 'Luis Martínez', Mascota: 'Bella', Raza: 'Labrador', Servicios: 'Baño Medicinal', Groomer: 'Ana Ruiz', Vehículo: 'Van 1', Estado: 'Pendiente', Precio: 'S/ 150.00', Notas: 'Tratamiento especial para piel' },
-          { Fecha: '2024-12-02', Hora: '11:00', Cliente: 'Patricia Silva', Mascota: 'Thor', Raza: 'Pastor Alemán', Servicios: 'Baño + Corte + Uñas', Groomer: 'Miguel Torres', Vehículo: 'Van 3', Estado: 'Confirmada', Precio: 'S/ 145.00', Notas: 'Primera vez' }
-        ];
-      
-      case 'appointments-pending':
-        return [
-          { Fecha: '2024-12-05', Hora: '09:00', Cliente: 'Roberto Gómez', Teléfono: '+51 987 654 321', Dirección: 'Av. Los Pinos 234, San Isidro', Servicios: 'Baño + Corte', 'Vehículo Asignado': 'Van 1' },
-          { Fecha: '2024-12-05', Hora: '11:00', Cliente: 'Sofía Ramírez', Teléfono: '+51 912 345 678', Dirección: 'Calle Las Flores 567, Miraflores', Servicios: 'Baño Completo', 'Vehículo Asignado': 'Van 2' },
-        ];
-
-      case 'clients-master':
-        return [
-          { ID: 'CLI-001', 'Nombre Completo': 'María González Pérez', 'DNI/NIF': '12345678', Email: 'maria.gonzalez@email.com', 'Teléfono 1': '+51 987 654 321', Dirección: 'Av. Los Pinos 234', Distrito: 'San Isidro', Zona: 'Centro', Mascotas: 'Max (Golden Retriever)', 'Fecha Registro': '2024-01-15', 'Última Cita': '2024-12-01', 'Total Gastado': 'S/ 1,450', Nivel: 'VIP' },
-          { ID: 'CLI-002', 'Nombre Completo': 'Carlos Pérez Ruiz', 'DNI/NIF': '23456789', Email: 'carlos.perez@email.com', 'Teléfono 1': '+51 912 345 678', Dirección: 'Calle Las Flores 567', Distrito: 'Miraflores', Zona: 'Sur', Mascotas: 'Luna (Poodle), Toby (Yorkshire)', 'Fecha Registro': '2024-02-20', 'Última Cita': '2024-12-01', 'Total Gastado': 'S/ 980', Nivel: 'Regular' },
-        ];
-
-      case 'financial-income-statement':
-        return [
-          { Cuenta: '4.1', Descripción: 'Ingresos por Servicios', Debe: '', Haber: 'S/ 28,850', Saldo: 'S/ 28,850', Tipo: 'Ingreso' },
-          { Cuenta: '5.1', Descripción: 'Costos de Servicios', Debe: 'S/ 8,650', Haber: '', Saldo: 'S/ -8,650', Tipo: 'Costo' },
-          { Cuenta: '6.1', Descripción: 'Gastos de Personal', Debe: 'S/ 12,000', Haber: '', Saldo: 'S/ -12,000', Tipo: 'Gasto' },
-          { Cuenta: '', Descripción: 'UTILIDAD NETA', Debe: '', Haber: '', Saldo: 'S/ 9,500', Tipo: 'Resultado' }
-        ];
-
-      case 'inventory-stock':
-        return [
-          { SKU: 'SH-001', Producto: 'Shampoo Premium Perro', Categoría: 'Higiene', 'Stock Actual': 45, 'Stock Mínimo': 20, 'Valor Unitario': 'S/ 25.00', 'Valor Total': 'S/ 1,125.00', Estado: 'OK' },
-          { SKU: 'SH-002', Producto: 'Shampoo Medicinal', Categoría: 'Higiene', 'Stock Actual': 8, 'Stock Mínimo': 10, 'Valor Unitario': 'S/ 35.00', 'Valor Total': 'S/ 280.00', Estado: 'BAJO' },
-          { SKU: 'COL-001', Producto: 'Collar Antipulgas', Categoría: 'Salud', 'Stock Actual': 5, 'Stock Mínimo': 12, 'Valor Unitario': 'S/ 45.00', 'Valor Total': 'S/ 225.00', Estado: 'CRÍTICO' },
-        ];
-
-      case 'staff-roster':
-        return [
-          { ID: 'EMP-001', Nombre: 'Ana Ruiz Sánchez', Puesto: 'Groomer Senior', DNI: '12345678', Email: 'ana.ruiz@smartpet.com', Teléfono: '+51 987 111 222', 'Fecha Ingreso': '2023-01-15', 'Vehículo Asignado': 'Van 1', Salario: 'S/ 2,500', Estado: 'Activo' },
-          { ID: 'EMP-002', Nombre: 'Juan López Pérez', Puesto: 'Groomer', DNI: '23456789', Email: 'juan.lopez@smartpet.com', Teléfono: '+51 987 222 333', 'Fecha Ingreso': '2023-03-20', 'Vehículo Asignado': 'Van 2', Salario: 'S/ 2,200', Estado: 'Activo' },
-        ];
-
-      case 'audit-duplicates-clients':
-        return [
-          { 'Cliente 1': 'María González Pérez', 'Cliente 2': 'María González', 'Campo Duplicado': 'Email', Valor: 'maria.gonzalez@email.com', 'Total Citas 1': 18, 'Total Citas 2': 0, 'Acción Sugerida': 'Fusionar - Conservar CLI-001' },
-        ];
-
-      default:
-        return [
-          { Columna1: 'Ejemplo 1', Columna2: 'Dato A', Columna3: 100 },
-          { Columna1: 'Ejemplo 2', Columna2: 'Dato B', Columna3: 200 },
-          { Columna1: 'Ejemplo 3', Columna2: 'Dato C', Columna3: 300 },
-        ];
+  const loadReportData = async (reportId: string) => {
+    const data = await fetchExportReport(reportId, {
+      date_from: dateRange.start,
+      date_to: dateRange.end,
+    });
+    if (data.length === 0) {
+      if (!REPORTS_WITH_API.has(reportId)) {
+        toast.warning('Informe en preparación', {
+          description: 'Este tipo de informe aún no tiene consulta en el servidor.',
+        });
+      } else {
+        toast.info('Sin registros', {
+          description: 'No hay datos en el rango de fechas seleccionado.',
+        });
+      }
     }
+    return data;
   };
 
-  // Función para exportar a Excel
-  const exportToExcel = (reportId: string, reportName: string) => {
+  const exportToExcel = async (reportId: string, reportName: string) => {
+    setExportingId(reportId);
     try {
-      const data = generateReportData(reportId);
+      const data = await loadReportData(reportId);
+      if (data.length === 0) return;
+
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Reporte');
-      
-      const fileName = `${reportName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      const fileName = `${reportName.replace(/[^a-z0-9]/gi, '_')}_${dateRange.end}.xlsx`;
       XLSX.writeFile(workbook, fileName);
-      
-      toast.success('✅ Reporte generado exitosamente', {
-        description: `El archivo "${fileName}" se ha descargado`,
-        duration: 4000
+
+      toast.success('Reporte generado', {
+        description: `${data.length} filas — ${fileName}`,
       });
     } catch (error) {
       console.error('Error al exportar:', error);
-      toast.error('❌ Error al generar el reporte', {
-        description: 'Por favor intenta nuevamente',
-        duration: 3000
-      });
+      toast.error('Error al generar el reporte');
+    } finally {
+      setExportingId(null);
     }
   };
 
-  // Función para exportar a CSV
-  const exportToCSV = (reportId: string, reportName: string) => {
+  const exportToCSV = async (reportId: string, reportName: string) => {
+    setExportingId(reportId);
     try {
-      const data = generateReportData(reportId);
+      const data = await loadReportData(reportId);
+      if (data.length === 0) return;
+
       const worksheet = XLSX.utils.json_to_sheet(data);
       const csv = XLSX.utils.sheet_to_csv(worksheet);
-      
+
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-      
-      const fileName = `${reportName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
-      
+      const fileName = `${reportName.replace(/[^a-z0-9]/gi, '_')}_${dateRange.end}.csv`;
+
       link.setAttribute('href', url);
       link.setAttribute('download', fileName);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      toast.success('✅ Reporte CSV generado', {
-        description: `El archivo "${fileName}" se ha descargado`,
-        duration: 4000
-      });
+      URL.revokeObjectURL(url);
+
+      toast.success('Reporte CSV generado', { description: fileName });
     } catch (error) {
       console.error('Error al exportar CSV:', error);
-      toast.error('❌ Error al generar el CSV');
+      toast.error('Error al generar el CSV');
+    } finally {
+      setExportingId(null);
     }
   };
 
@@ -626,6 +598,15 @@ export function ExportsReports() {
         </p>
       </div>
 
+      <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+        <Database className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800 dark:text-blue-300">Exportación con datos reales</AlertTitle>
+        <AlertDescription className="text-blue-700 dark:text-blue-400">
+          Los informes marcados con «Datos reales» consultan el servidor según el rango de fechas.
+          El resto del catálogo se irá conectando en próximas versiones.
+        </AlertDescription>
+      </Alert>
+
       {/* Alerta de Auditoría */}
       <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/30">
         <AlertTriangle className="h-4 w-4 text-yellow-600" />
@@ -733,18 +714,30 @@ export function ExportsReports() {
                     </div>
                   </div>
 
+                  {REPORTS_WITH_API.has(report.id) && (
+                    <Badge className="mb-2 bg-green-100 text-green-800 border-green-200">
+                      Datos reales
+                    </Badge>
+                  )}
+
                   <div className="flex gap-2">
                     <Button 
                       className="flex-1" 
                       size="sm"
+                      disabled={exportingId === report.id}
                       onClick={() => exportToExcel(report.id, report.name)}
                     >
-                      <Download className="h-4 w-4 mr-2" />
+                      {exportingId === report.id ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4 mr-2" />
+                      )}
                       Excel
                     </Button>
                     <Button 
                       variant="outline" 
                       size="sm"
+                      disabled={exportingId === report.id}
                       onClick={() => exportToCSV(report.id, report.name)}
                     >
                       CSV

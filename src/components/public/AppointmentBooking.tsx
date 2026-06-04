@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar,
@@ -25,6 +25,15 @@ import { Card } from '../ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
 import { toast } from 'sonner';
+import {
+  fetchPublicBookingServices,
+  fetchPublicAvailability,
+  submitPublicBooking,
+  mapPetTypeToSpecies,
+  formatDateForApi,
+  type PublicBookingService,
+  type PublicTimeSlot,
+} from '../../utils/api/publicBooking';
 
 interface AppointmentBookingProps {
   isOpen: boolean;
@@ -38,66 +47,69 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [selectedService, setSelectedService] = useState<string>('');
   const [appointmentData, setAppointmentData] = useState({
+    ownerName: '',
+    ownerDocument: '',
+    ownerPhone: '',
+    ownerEmail: '',
+    address: '',
+    district: '',
     petName: '',
     petType: '',
     petBreed: '',
     petAge: '',
     petWeight: '',
     observations: '',
-    recurring: 'none', // none, weekly, biweekly, monthly
-    paymentMethod: ''
+    recurring: 'none',
+    paymentMethod: '',
   });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [orderNumber, setOrderNumber] = useState('');
+  const [trackingCode, setTrackingCode] = useState('');
+  const [services, setServices] = useState<PublicBookingService[]>([]);
+  const [timeSlots, setTimeSlots] = useState<PublicTimeSlot[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [coverageNote, setCoverageNote] = useState<string | null>(null);
 
-  const services = [
-    {
-      id: 'grooming-basic',
-      category: 'Grooming Móvil',
-      name: 'Baño Básico',
-      price: 50,
-      duration: 60,
-      description: 'Baño, secado y corte de uñas'
-    },
-    {
-      id: 'grooming-complete',
-      category: 'Grooming Móvil',
-      name: 'Grooming Completo',
-      price: 90,
-      duration: 90,
-      description: 'Baño, corte, secado, limpieza dental'
-    },
-    {
-      id: 'vet-consultation',
-      category: 'Veterinaria Móvil',
-      name: 'Consulta Veterinaria',
-      price: 80,
-      duration: 45,
-      description: 'Revisión general y diagnóstico'
-    },
-    {
-      id: 'vet-vaccination',
-      category: 'Veterinaria Móvil',
-      name: 'Vacunación',
-      price: 60,
-      duration: 30,
-      description: 'Vacunas preventivas y certificado'
-    },
-    {
-      id: 'vet-deworming',
-      category: 'Veterinaria Móvil',
-      name: 'Desparasitación',
-      price: 40,
-      duration: 30,
-      description: 'Tratamiento antiparasitario completo'
+  const selectedServiceData = services.find((s) => s.id === selectedService);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoadingServices(true);
+    fetchPublicBookingServices()
+      .then(setServices)
+      .catch(() => toast.error('No se pudo cargar el catálogo de servicios'))
+      .finally(() => setLoadingServices(false));
+  }, [isOpen]);
+
+  const loadAvailability = useCallback(async () => {
+    if (!selectedDate || !appointmentData.district.trim()) {
+      setTimeSlots([]);
+      return;
     }
-  ];
+    setLoadingSlots(true);
+    try {
+      const { slots, coverage_note } = await fetchPublicAvailability(
+        formatDateForApi(selectedDate),
+        appointmentData.district.trim(),
+        selectedServiceData?.duration ?? 60
+      );
+      setTimeSlots(slots);
+      setCoverageNote(coverage_note ?? null);
+    } catch {
+      toast.error('No se pudieron cargar los horarios disponibles');
+      setTimeSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, [selectedDate, appointmentData.district, selectedServiceData?.duration]);
 
-  const timeSlots = [
-    '08:00', '09:00', '10:00', '11:00', '12:00',
-    '14:00', '15:00', '16:00', '17:00', '18:00'
-  ];
+  useEffect(() => {
+    if (isOpen && selectedDate && appointmentData.district.trim()) {
+      loadAvailability();
+    }
+  }, [isOpen, selectedDate, appointmentData.district, selectedService, loadAvailability]);
 
   // Generar calendario del mes actual
   const getDaysInMonth = (date: Date) => {
@@ -153,38 +165,96 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
     setCurrentMonth(prevMonth);
   };
 
-  const handleSubmit = () => {
-    // Validar datos
-    if (!selectedService || !selectedDate || !selectedTime) {
+  const paymentMethodLabel = (id: string) => {
+    if (id === 'card') return 'Tarjeta';
+    if (id === 'transfer') return 'Transferencia';
+    return 'Efectivo';
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedServiceData || !selectedDate || !selectedTime) {
       toast.error('Por favor completa todos los campos obligatorios');
       return;
     }
-
+    if (
+      !appointmentData.ownerName ||
+      !appointmentData.ownerDocument ||
+      !appointmentData.ownerPhone ||
+      !appointmentData.address ||
+      !appointmentData.district
+    ) {
+      toast.error('Completa tus datos de contacto y dirección');
+      return;
+    }
     if (!appointmentData.petName || !appointmentData.petType) {
       toast.error('Por favor completa la información de tu mascota');
       return;
     }
-
     if (!appointmentData.paymentMethod) {
       toast.error('Por favor selecciona un método de pago');
       return;
     }
 
-    // Generar número de orden
-    const orderNum = 'ORD-' + Date.now();
-    setOrderNumber(orderNum);
+    setSubmitting(true);
+    try {
+      const serviceIdNum = /^\d+$/.test(selectedServiceData.id)
+        ? parseInt(selectedServiceData.id, 10)
+        : undefined;
 
-    // Simular envío de email
-    setTimeout(() => {
+      const result = await submitPublicBooking({
+        client: {
+          tipo_documento: '1',
+          numero_documento: appointmentData.ownerDocument.trim(),
+          razon_social: appointmentData.ownerName.trim(),
+          telefono: appointmentData.ownerPhone.trim(),
+          email: appointmentData.ownerEmail.trim() || undefined,
+          direccion: appointmentData.address.trim(),
+          distrito: appointmentData.district.trim(),
+          provincia: 'Lima',
+          departamento: 'Lima',
+        },
+        pet: {
+          name: appointmentData.petName.trim(),
+          species: mapPetTypeToSpecies(appointmentData.petType),
+          breed: appointmentData.petBreed.trim() || undefined,
+          age: appointmentData.petAge ? parseInt(appointmentData.petAge, 10) : undefined,
+          weight: appointmentData.petWeight ? parseFloat(appointmentData.petWeight) : undefined,
+        },
+        appointment: {
+          service_type: selectedServiceData.code || selectedServiceData.id,
+          service_name: selectedServiceData.name,
+          service_category: selectedServiceData.service_category,
+          service_id: serviceIdNum,
+          date: formatDateForApi(selectedDate),
+          time: selectedTime,
+          duration: selectedServiceData.duration,
+          price: selectedServiceData.price,
+          payment_method: paymentMethodLabel(appointmentData.paymentMethod),
+          notes: appointmentData.observations.trim() || undefined,
+        },
+      });
+
+      setTrackingCode(result.tracking_code);
       toast.success('¡Cita agendada exitosamente!', {
-        description: 'Recibirás un email de confirmación'
+        description: `Código de seguimiento: ${result.tracking_code}`,
       });
       setShowConfirmation(true);
-    }, 1000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo registrar la reserva';
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openTracking = () => {
+    if (!trackingCode) return;
+    const url = `${window.location.pathname}?tab=public-tracking&code=${encodeURIComponent(trackingCode)}`;
+    window.open(url, '_blank');
   };
 
   const downloadICS = () => {
-    const service = services.find(s => s.id === selectedService);
+    const service = selectedServiceData;
     if (!service || !selectedDate || !selectedTime) return;
 
     // Crear archivo ICS para agregar a calendario
@@ -206,6 +276,12 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
     setSelectedTime('');
     setSelectedService('');
     setAppointmentData({
+      ownerName: '',
+      ownerDocument: '',
+      ownerPhone: '',
+      ownerEmail: '',
+      address: '',
+      district: '',
       petName: '',
       petType: '',
       petBreed: '',
@@ -213,8 +289,11 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
       petWeight: '',
       observations: '',
       recurring: 'none',
-      paymentMethod: ''
+      paymentMethod: '',
     });
+    setTimeSlots([]);
+    setCoverageNote(null);
+    setTrackingCode('');
     setShowConfirmation(false);
     onClose();
   };
@@ -262,6 +341,10 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                   className="space-y-4"
                 >
                   <h3 className="font-bold text-lg mb-4">Selecciona un Servicio</h3>
+
+                  {loadingServices && (
+                    <p className="text-sm text-slate-500">Cargando servicios...</p>
+                  )}
                   
                   <div className="grid gap-3">
                     {services.map((service) => (
@@ -378,26 +461,48 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                     </div>
                   </div>
 
+                  <div>
+                    <Label htmlFor="district">Distrito de atención *</Label>
+                    <Input
+                      id="district"
+                      placeholder="Ej: Miraflores, San Isidro..."
+                      value={appointmentData.district}
+                      onChange={(e) =>
+                        setAppointmentData({ ...appointmentData, district: e.target.value })
+                      }
+                    />
+                  </div>
+
                   {/* Horarios */}
-                  {selectedDate && (
+                  {selectedDate && appointmentData.district.trim() && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                     >
                       <h4 className="font-bold mb-3">Horarios Disponibles</h4>
-                      <div className="grid grid-cols-5 gap-2">
-                        {timeSlots.map((time) => (
-                          <Button
-                            key={time}
-                            variant={selectedTime === time ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setSelectedTime(time)}
-                            className={selectedTime === time ? 'bg-blue-600 hover:bg-blue-700' : ''}
-                          >
-                            {time}
-                          </Button>
-                        ))}
-                      </div>
+                      {coverageNote && (
+                        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                          {coverageNote}
+                        </p>
+                      )}
+                      {loadingSlots ? (
+                        <p className="text-sm text-slate-500">Consultando disponibilidad...</p>
+                      ) : (
+                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                          {timeSlots.map((slot) => (
+                            <Button
+                              key={slot.time}
+                              variant={selectedTime === slot.time ? 'default' : 'outline'}
+                              size="sm"
+                              disabled={!slot.available}
+                              onClick={() => slot.available && setSelectedTime(slot.time)}
+                              className={selectedTime === slot.time ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                            >
+                              {slot.time}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                     </motion.div>
                   )}
 
@@ -432,7 +537,7 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                     </Button>
                     <Button
                       onClick={() => setStep(3)}
-                      disabled={!selectedDate || !selectedTime}
+                      disabled={!selectedDate || !selectedTime || !appointmentData.district.trim()}
                       className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
                     >
                       Continuar
@@ -442,7 +547,7 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                 </motion.div>
               )}
 
-              {/* STEP 3: Información de Mascota */}
+              {/* STEP 3: Tutor, dirección y mascota */}
               {step === 3 && (
                 <motion.div
                   key="step3"
@@ -451,9 +556,60 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-4"
                 >
-                  <h3 className="font-bold text-lg mb-4">Información de tu Mascota</h3>
+                  <h3 className="font-bold text-lg mb-4">Tus datos y tu mascota</h3>
 
                   <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="ownerName">Nombre completo *</Label>
+                      <Input
+                        id="ownerName"
+                        value={appointmentData.ownerName}
+                        onChange={(e) =>
+                          setAppointmentData({ ...appointmentData, ownerName: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="ownerDocument">DNI *</Label>
+                      <Input
+                        id="ownerDocument"
+                        value={appointmentData.ownerDocument}
+                        onChange={(e) =>
+                          setAppointmentData({ ...appointmentData, ownerDocument: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="ownerPhone">Teléfono *</Label>
+                      <Input
+                        id="ownerPhone"
+                        value={appointmentData.ownerPhone}
+                        onChange={(e) =>
+                          setAppointmentData({ ...appointmentData, ownerPhone: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="ownerEmail">Correo</Label>
+                      <Input
+                        id="ownerEmail"
+                        type="email"
+                        value={appointmentData.ownerEmail}
+                        onChange={(e) =>
+                          setAppointmentData({ ...appointmentData, ownerEmail: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="address">Dirección de la visita *</Label>
+                      <Input
+                        id="address"
+                        value={appointmentData.address}
+                        onChange={(e) =>
+                          setAppointmentData({ ...appointmentData, address: e.target.value })
+                        }
+                      />
+                    </div>
                     <div>
                       <Label htmlFor="petName">Nombre de la Mascota *</Label>
                       <Input
@@ -544,7 +700,14 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                     </Button>
                     <Button
                       onClick={() => setStep(4)}
-                      disabled={!appointmentData.petName || !appointmentData.petType}
+                      disabled={
+                        !appointmentData.ownerName ||
+                        !appointmentData.ownerDocument ||
+                        !appointmentData.ownerPhone ||
+                        !appointmentData.address ||
+                        !appointmentData.petName ||
+                        !appointmentData.petType
+                      }
                       className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
                     >
                       Continuar
@@ -572,7 +735,7 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                       <div className="flex justify-between">
                         <span className="text-slate-600">Servicio:</span>
                         <span className="font-medium">
-                          {services.find((s) => s.id === selectedService)?.name}
+                          {selectedServiceData?.name}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -609,7 +772,7 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                       <div className="border-t border-slate-300 pt-2 mt-2 flex justify-between">
                         <span className="font-bold">Total:</span>
                         <span className="text-xl font-bold text-blue-600">
-                          S/ {services.find((s) => s.id === selectedService)?.price}
+                          S/ {selectedServiceData?.price}
                         </span>
                       </div>
                     </div>
@@ -659,11 +822,11 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                     </Button>
                     <Button
                       onClick={handleSubmit}
-                      disabled={!appointmentData.paymentMethod}
+                      disabled={!appointmentData.paymentMethod || submitting}
                       className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                     >
                       <Check className="w-4 h-4 mr-2" />
-                      Confirmar Cita
+                      {submitting ? 'Registrando...' : 'Confirmar Cita'}
                     </Button>
                   </div>
                 </motion.div>
@@ -690,18 +853,23 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
               <div className="space-y-3 text-left">
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-600" />
-                  <span className="font-bold">Orden de Servicio: {orderNumber}</span>
+                  <span className="font-bold">Código de seguimiento: {trackingCode}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-blue-600" />
-                  <span className="text-sm">
-                    Confirmación enviada a: {currentUser?.email}
-                  </span>
-                </div>
+                {appointmentData.ownerEmail && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    <span className="text-sm">
+                      Guarda este código; también puedes usar: {appointmentData.ownerEmail}
+                    </span>
+                  </div>
+                )}
               </div>
             </Card>
 
             <div className="flex flex-col gap-3">
+              <Button onClick={openTracking} variant="outline" className="w-full">
+                Ver seguimiento en vivo
+              </Button>
               <Button
                 onClick={downloadICS}
                 variant="outline"

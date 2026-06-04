@@ -11,6 +11,7 @@ import { useCalendarNotifications } from '../../hooks/useCalendarNotifications';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useCalendarConfig } from '../../hooks/useCalendarConfig';
 import { format } from 'date-fns';
+import { getCalendarFetchRange } from './calendarDateUtils';
 import { toast } from 'sonner';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
@@ -35,7 +36,15 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [filterTipoCita, setFilterTipoCita] = useState<string>('');
 
-  const { appointments, loading, addAppointment, updateAppointment, deleteAppointment } = useAppointments();
+  const {
+    appointments,
+    loading,
+    createAppointment,
+    updateAppointment,
+    deleteAppointment,
+    changeAppointmentStatus,
+    refreshAppointments,
+  } = useAppointments();
   useCalendarNotifications();
 
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
@@ -79,13 +88,31 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
     setFilterTipoCita('');
   };
 
+  const weekStartsOn = (calendarConfig.first_day_of_week ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+  useEffect(() => {
+    const { date_from, date_to } = getCalendarFetchRange(currentDate, view, weekStartsOn);
+    refreshAppointments({ date_from, date_to, limit: 200 });
+  }, [currentDate, view, weekStartsOn, refreshAppointments]);
+
   const filteredAppointments = useMemo(() => {
-    if (!filterTipoCita) return appointments;
-    return appointments.filter((apt: any) => {
+    let list = appointments.filter(
+      (apt) => apt.status !== 'cancelled' && apt.status !== 'no_show'
+    );
+
+    if (selectedVehicleIds.size > 0) {
+      list = list.filter((apt) => {
+        const vid = apt.vehicle?.id != null ? String(apt.vehicle.id) : '';
+        return vid && selectedVehicleIds.has(vid);
+      });
+    }
+
+    if (!filterTipoCita) return list;
+    return list.filter((apt: any) => {
       const tipo = apt.service_type || apt.service_category || apt.serviceType || '';
       return String(tipo).toLowerCase() === filterTipoCita.toLowerCase();
     });
-  }, [appointments, filterTipoCita]);
+  }, [appointments, filterTipoCita, selectedVehicleIds]);
 
   const tipoCitaOptions = useMemo(() => {
     const set = new Set<string>();
@@ -112,9 +139,15 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
 
   const handleAppointmentClick = (appointment: any) => setSelectedAppointment(appointment);
 
-  const handleSaveNewAppointment = (appointment: any): Promise<void> => {
-    if (editingAppointment) return updateAppointment(appointment.id, appointment) as Promise<void>;
-    return addAppointment(appointment);
+  const handleSaveNewAppointment = async (appointment: any): Promise<void> => {
+    if (editingAppointment) {
+      await updateAppointment(appointment.id, appointment);
+      return;
+    }
+    const created = await createAppointment(appointment);
+    window.dispatchEvent(
+      new CustomEvent('appointment-created', { detail: { appointment: created } })
+    );
   };
 
   const handleEditAppointment = (appointment: any) => {
@@ -136,8 +169,12 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
   };
 
   const handleCancelAppointment = async (appointmentId: string) => {
-    await updateAppointment(appointmentId, { status: 'cancelled' });
-    window.dispatchEvent(new CustomEvent('appointment-cancelled', { detail: { appointmentId, message: 'Cita cancelada correctamente' } }));
+    await changeAppointmentStatus(appointmentId, 'Cancelada', 'Cancelada desde agenda');
+    window.dispatchEvent(
+      new CustomEvent('appointment-cancelled', {
+        detail: { appointmentId, message: 'Cita cancelada correctamente' },
+      })
+    );
   };
 
   const handleRescheduleAppointment = (appointment: any) => handleEditAppointment(appointment);
@@ -174,7 +211,7 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
     lastHour: calendarConfig.day_view_last_hour ?? 18,
     firstHourWeek: calendarConfig.first_hour ?? 8,
     lastHourWeek: calendarConfig.last_hour ?? 20,
-    weekStartsOn: (calendarConfig.first_day_of_week ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6,
+    weekStartsOn,
   };
 
   return (
@@ -239,7 +276,12 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
           showDayView={calendarConfig.show_day_view_option}
         />
 
-        <div className="flex-1 min-h-0 mt-2">
+        <div className="flex-1 min-h-0 mt-2 relative">
+          {loading && (
+            <div className="absolute top-2 right-2 z-20 text-xs bg-background/90 border rounded px-2 py-1 text-muted-foreground shadow-sm">
+              Cargando citas…
+            </div>
+          )}
           {view === 'month' && (
             <MonthView
               currentDate={currentDate}
@@ -268,6 +310,8 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
                 onDateClick={handleDateClick}
                 onAppointmentClick={handleAppointmentClick}
                 onAppointmentDrop={handleAppointmentDrop}
+                firstHour={calendarConfigForViews.firstHourWeek}
+                lastHour={calendarConfigForViews.lastHourWeek}
               />
             )
           )}

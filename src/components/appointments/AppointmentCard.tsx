@@ -13,6 +13,8 @@ interface AppointmentCardProps {
   onReschedule?: (appointment: Appointment) => void;
   onGenerateInvoice?: (appointment: Appointment) => void;
   onConfirm?: (id: string) => void;
+  onSendReminder?: (id: string) => void;
+  sendingReminder?: string | null;
   onEdit?: (id: string) => void;
   onViewRecurringSeries?: (appointment: Appointment) => void;
   completingAppointment?: string | null;
@@ -30,6 +32,8 @@ export function AppointmentCard({
   onReschedule,
   onGenerateInvoice,
   onConfirm,
+  onSendReminder,
+  sendingReminder,
   onEdit,
   onViewRecurringSeries,
   completingAppointment,
@@ -65,7 +69,7 @@ export function AppointmentCard({
               {appointment.invoiced && (
                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
                   <FileText className="h-3 w-3 mr-1" />
-                  Facturada
+                  {appointment.documentNumber || 'Facturada'}
                 </Badge>
               )}
               {!appointment.reminderSent && appointment.status === 'pending' && (
@@ -199,6 +203,31 @@ export function AppointmentCard({
                   className="w-full"
                 >
                   Confirmar
+                </Button>
+              </Tooltip>
+            )}
+            {!appointment.reminderSent &&
+              (appointment.status === 'pending' || appointment.status === 'confirmed') &&
+              onSendReminder && (
+              <Tooltip content="Registrar recordatorio enviado al cliente">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => onSendReminder(appointment.id)}
+                  disabled={sendingReminder === appointment.id}
+                >
+                  {sendingReminder === appointment.id ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="h-4 w-4 mr-2" />
+                      Recordatorio
+                    </>
+                  )}
                 </Button>
               </Tooltip>
             )}

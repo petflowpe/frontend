@@ -154,19 +154,19 @@ export function NewAppointmentDialog({
 
   useEffect(() => {
     if (!isOpen) {
-      setTimeout(() => {
-        setStep(1);
-        setSelectedClient(null);
-        setSelectedPet(null);
-        setSelectedServices([]);
-        setPetsForClient([]);
-        setSelectedVehicle(prefilledResourceId || '');
-        setAppointmentDate(prefilledDate ? format(prefilledDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
-        setAppointmentTime(prefilledTime || '09:00');
-        setNotes('');
-        setSearchClient('');
-        setSearchPet('');
-      }, 200);
+      setStep(1);
+      setSelectedClient(null);
+      setSelectedPet(null);
+      setSelectedServices([]);
+      setPetsForClient([]);
+      setSelectedVehicle(prefilledResourceId || '');
+      setAppointmentDate(
+        prefilledDate ? format(prefilledDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
+      );
+      setAppointmentTime(prefilledTime || '09:00');
+      setNotes('');
+      setSearchClient('');
+      setSearchPet('');
     }
   }, [isOpen, prefilledDate, prefilledTime, prefilledResourceId]);
 
@@ -194,15 +194,25 @@ export function NewAppointmentDialog({
     if (apt.notes != null) setNotes(apt.notes);
     const vehicleId = apt.vehicle?.id ?? apt.vehicle;
     if (vehicleId) setSelectedVehicle(String(vehicleId));
-    const serviceNames = (apt.serviceType || apt.services || '')
-      .split(',')
-      .map((s: string) => s.trim())
-      .filter(Boolean);
-    if (serviceNames.length > 0 && availableServices.length > 0) {
+    if (apt.items?.length > 0 && availableServices.length > 0) {
       const services = availableServices.filter((s: Service) =>
-        serviceNames.some((name: string) => name === s.name)
+        apt.items.some(
+          (item: { id?: string; name?: string }) =>
+            String(item.id) === String(s.id) || item.name === s.name
+        )
       );
       if (services.length > 0) setSelectedServices(services);
+    } else {
+      const serviceNames = (apt.serviceType || apt.services || '')
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      if (serviceNames.length > 0 && availableServices.length > 0) {
+        const services = availableServices.filter((s: Service) =>
+          serviceNames.some((name: string) => name === s.name)
+        );
+        if (services.length > 0) setSelectedServices(services);
+      }
     }
   }, [isOpen, editingAppointment?.id, clientsForUI, availableServices]);
 
@@ -303,8 +313,8 @@ export function NewAppointmentDialog({
     const totalDurationMin = calculateDuration();
     const totalPrice = calculateTotal();
 
-    const appointmentData = {
-      id: editingAppointment?.id || `APT-${Date.now()}`,
+    const appointmentData: Record<string, unknown> = {
+      ...(editingAppointment?.id ? { id: editingAppointment.id } : {}),
       clientId: String(selectedClient.id),
       clientName: selectedClient.name,
       client: selectedClient.name,
@@ -689,7 +699,7 @@ export function NewAppointmentDialog({
               </Button>
             ) : (
               <Button onClick={handleSave} disabled={!canGoNext()}>
-                Crear Cita
+                {editingAppointment ? 'Guardar cambios' : 'Crear cita'}
               </Button>
             )}
           </div>

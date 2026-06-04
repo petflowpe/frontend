@@ -48,10 +48,7 @@ const NotificationsImproved = lazy(() => import('./components/NotificationsImpro
 const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
 const CompanyManagement = lazy(() => import('./components/CompanyManagement').then(m => ({ default: m.CompanyManagement })));
 const UserSettingsPage = lazy(() => import('./components/UserSettingsPage').then(m => ({ default: m.UserSettingsPage })));
-const LoyaltyProgram = lazy(() => import('./components/LoyaltyProgram').then(m => ({ default: m.LoyaltyProgram })));
-const ReviewsSystem = lazy(() => import('./components/ReviewsSystem').then(m => ({ default: m.ReviewsSystem })));
 const AppointmentConfirmation = lazy(() => import('./components/AppointmentConfirmation').then(m => ({ default: m.AppointmentConfirmation })));
-const PredictiveAnalytics = lazy(() => import('./components/PredictiveAnalytics').then(m => ({ default: m.PredictiveAnalytics })));
 
 // 🇵🇪 SUNAT
 const SUNATConfig = lazy(() => import('./components/SUNATConfig').then(m => ({ default: m.SUNATConfig })));
@@ -69,9 +66,20 @@ const Prueba = lazy(() => import('./components/Prueba').then(m => ({ default: m.
 
 // Default Exports
 const VetClinicPublic = lazy(() => import('./pages/VetClinicPublic'));
-const AnalisisGeografico = lazy(() => import('./components/analytics/AnalisisGeografico'));
-const SegmentacionAutomatica = lazy(() => import('./components/segmentacion/SegmentacionAutomatica'));
-const AnalisisPatrones = lazy(() => import('./components/analytics/AnalisisPatrones'));
+const AnalisisGeografico = lazy(() => import('./components/growth/AnalisisGeograficoConnected'));
+const SegmentacionAutomatica = lazy(() => import('./components/growth/SegmentacionPage'));
+const GrowthAnalyticsPanel = lazy(() =>
+  import('./components/growth/GrowthAnalyticsPanel').then((m) => ({ default: m.GrowthAnalyticsPanel }))
+);
+const PatronesPanel = lazy(() =>
+  import('./components/growth/PatronesPanel').then((m) => ({ default: m.PatronesPanel }))
+);
+const LoyaltyDashboard = lazy(() =>
+  import('./components/growth/LoyaltyDashboard').then((m) => ({ default: m.LoyaltyDashboard }))
+);
+const ReviewsPanel = lazy(() =>
+  import('./components/growth/ReviewsPanel').then((m) => ({ default: m.ReviewsPanel }))
+);
 
 // 🆕 OPERATIONS CENTER (BETA)
 const OperationsCenter = lazy(() => import('./components/admin/OperationsCenter').then(m => ({ default: m.OperationsCenter })));
@@ -353,12 +361,17 @@ function AppContent() {
 
   const userPermissions = currentUser?.permissions || [];
 
+  const publicTrackingCode =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('code') || undefined
+      : undefined;
+
   // MODO TRACKING PÚBLICO (Accesible sin login)
   if (activeTab === 'public-tracking') {
     return (
       <div className="min-h-screen bg-slate-50">
         <Suspense fallback={<LoadingSpinner />}>
-          <BookingTracking />
+          <BookingTracking bookingCode={publicTrackingCode} />
         </Suspense>
         <Button 
           variant="outline" 
@@ -489,10 +502,10 @@ function AppContent() {
       case 'user-settings': return <UserSettingsPage />;
       case 'users': return <UserManagement currentUser={currentUser} currentUserId={currentUser.id} companyId={currentUser.companyId} />;
       case 'companies': return <CompanyManagement />;
-      case 'loyalty': return <LoyaltyProgram />;
-      case 'reviews': return <ReviewsSystem />;
+      case 'loyalty': return <LoyaltyDashboard />;
+      case 'reviews': return <ReviewsPanel />;
       case 'confirmation': return <AppointmentConfirmation />;
-      case 'analytics': return <PredictiveAnalytics />;
+      case 'analytics': return <GrowthAnalyticsPanel />;
       
       // SUNAT (sistema completo: facturas, boletas, NC, ND, resúmenes, comunicaciones de baja, guías)
       case 'sunat-config': return <SUNATConfig />;
@@ -506,7 +519,7 @@ function AppContent() {
       // Análisis
       case 'analisis-geografico': return <AnalisisGeografico />;
       case 'segmentacion': return <SegmentacionAutomatica />;
-      case 'patrones': return <AnalisisPatrones />;
+      case 'patrones': return <PatronesPanel />;
       
       // 🆕 CENTRO DE CONTROL (BETA)
       case 'operations-center': return <OperationsCenter />;

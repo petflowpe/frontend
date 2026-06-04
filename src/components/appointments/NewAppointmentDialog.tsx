@@ -419,6 +419,11 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
         }
       }
 
+      const primaryService = data.items.find((i) => i.type === 'service') ?? data.items[0];
+      const totalDuration = data.items
+        .filter((i) => i.type === 'service')
+        .reduce((sum, i) => sum + (i.duration || 0), 0);
+
       // 2. Prepare Data
       const baseAppointment = {
         date: data.date,
@@ -431,10 +436,12 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
         pet: data.pet.name,
         breed: data.pet.breed,
         items: data.items,
+        serviceType: primaryService?.name || 'Servicio',
         totalPrice: data.items.reduce((sum, i) => sum + i.price, 0),
-        totalDuration: data.items.filter(i => i.type === 'service').reduce((sum, i) => sum + (i.duration || 0), 0),
-        status: 'pending',
-        groomer: data.vehicle.driverName || 'No asignado',
+        totalDuration,
+        duration: totalDuration || 60,
+        status: 'pending' as const,
+        groomer: data.vehicle.driverName || data.vehicle.driver || 'No asignado',
         vehicle: data.vehicle,
         address: data.client.address,
         district: data.client.district,

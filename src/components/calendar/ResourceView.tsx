@@ -144,13 +144,11 @@ export function ResourceView({ currentDate, appointments, resources, onDateClick
                     return sid === String(aptVehicleId) || sid === `vehiculo-${aptVehicleId}` || `vehiculo-${sid}` === String(aptVehicleId);
                   })
                   .map(apt => {
-                    const parts = (apt.time || '').split(':').map(Number);
-                    const aptHour = parts[0] ?? 0;
-                    const aptMinute = parts[1] ?? 0;
+                    const { hour: aptHour, minute: aptMinute } = getAppointmentTimeParts(apt.time);
                     if (aptHour < firstHour || aptHour > lastHour) return null;
 
                     const startMinutes = (aptHour - firstHour) * 60 + aptMinute;
-                    const duration = apt.totalDuration || 60;
+                    const duration = apt.duration || apt.totalDuration || 60;
                     const height = (duration / 60) * 80;
                     const slotHeight = 80;
                     const top = (startMinutes / 60) * slotHeight;

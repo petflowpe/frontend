@@ -99,7 +99,7 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
       case 'medical': return 'Mascotas';
       case 'vehicles': return 'Gestión de Vehículos';
       case 'routes': return 'Rutas y Navegación';
-      case 'invoicing': return 'Sistema de Facturación';
+      case 'invoicing': return 'Comprobantes emitidos';
       case 'payments': return 'Gestión de Pagos';
       case 'staff': return 'Gestión de Personal';
       case 'cash-register': return 'Cierre de Caja';
@@ -130,7 +130,7 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
       case 'medical': return 'Historial clínico y atenciones desde el perfil de cada mascota';
       case 'vehicles': return 'Administra tu flota móvil, mantenimiento y gastos operativos';
       case 'routes': return 'Optimiza las rutas de tus vehículos móviles';
-      case 'invoicing': return 'Crea y gestiona facturas para tus servicios';
+      case 'invoicing': return 'Consulta boletas y facturas; emite citas desde Lista de citas o Caja';
       case 'payments': return 'Procesa pagos y administra cobros';
       case 'staff': return 'Gestiona tu equipo de groomers profesionales';
       case 'cash-register': return 'Control de ingresos y gastos por vehículo';

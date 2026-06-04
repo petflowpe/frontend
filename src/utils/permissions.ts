@@ -97,13 +97,13 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   dashboard: null,
   'user-settings': null,
   notifications: null,
-  calendar: null,
-  appointments: null,
-  confirmation: null,
-  clients: null,
-  pets: null,
-  loyalty: null,
-  reviews: null,
+  calendar: { permissions: ['pets.view', 'pets.create', 'pets.update', 'pets.manage', 'pets.*'] },
+  appointments: { permissions: ['pets.view', 'pets.create', 'pets.update', 'pets.manage', 'pets.*'] },
+  confirmation: { permissions: ['pets.view', 'pets.manage', 'pets.*'], roles: ['super_admin', 'company_admin'] },
+  clients: { permissions: ['pets.view', 'pets.create', 'pets.update', 'pets.manage', 'pets.*'] },
+  pets: { permissions: ['pets.view', 'pets.create', 'pets.update', 'pets.manage', 'pets.*'] },
+  loyalty: { roles: ['super_admin', 'company_admin'], permissions: ['pets.view', 'pets.*'] },
+  reviews: { roles: ['super_admin', 'company_admin'] },
   'vet-clinic-portal': null,
 
   // Operaciones
@@ -112,8 +112,14 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   suppliers: { permissions: ['products.view', 'products.*'] },
   inventory: { permissions: ['inventory.view', 'inventory.*', 'products.view', 'products.*'] },
   purchases: { permissions: ['purchases.view', 'purchases.*'] },
-  vehicles: { roles: ['super_admin', 'company_admin', 'company_user'] },
-  routes: { roles: ['super_admin', 'company_admin', 'company_user'] },
+  vehicles: {
+    roles: ['super_admin', 'company_admin'],
+    permissions: ['vehicles.view', 'vehicles.manage', 'vehicles.*', 'vehicles.coverage.view', 'vehicles.coverage.manage'],
+  },
+  routes: {
+    roles: ['super_admin', 'company_admin'],
+    permissions: ['vehicles.view', 'vehicles.manage', 'vehicles.*'],
+  },
   'operations-center': { roles: ['super_admin', 'company_admin'] },
   kardex: { roles: ['super_admin', 'company_admin', 'company_user'] },
 
@@ -127,7 +133,7 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   // Reportes
   exports: { roles: ['super_admin', 'company_admin'], permissions: ['reports.export', 'reports.*'] },
   reports: { roles: ['super_admin', 'company_admin'], permissions: ['reports.view', 'reports.*'] },
-  analytics: { roles: ['super_admin', 'company_admin'] },
+  analytics: { roles: ['super_admin', 'company_admin'], permissions: ['reports.view', 'reports.*'] },
   'analisis-geografico': { roles: ['super_admin', 'company_admin'] },
   segmentacion: { roles: ['super_admin', 'company_admin'] },
   patrones: { roles: ['super_admin', 'company_admin'] },

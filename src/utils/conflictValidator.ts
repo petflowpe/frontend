@@ -1,4 +1,8 @@
 import { parse, addMinutes, isWithinInterval } from 'date-fns';
+import {
+  getAppointmentDateOnly,
+  formatAppointmentTimeForDisplay,
+} from '../components/calendar/calendarDateUtils';
 
 export interface TimeSlot {
   date: string; // YYYY-MM-DD
@@ -66,10 +70,10 @@ export function validateAppointmentConflicts(
     }
 
     const existingSlot: TimeSlot = {
-      date: apt.date,
-      time: apt.time,
+      date: getAppointmentDateOnly(apt.date || ''),
+      time: formatAppointmentTimeForDisplay(apt.time || '09:00'),
       duration: apt.totalDuration || apt.duration || 60,
-      resourceId: apt.vehicle?.id || apt.vehicle,
+      resourceId: apt.vehicle?.id != null ? String(apt.vehicle.id) : apt.vehicle ? String(apt.vehicle) : undefined,
       appointmentId: apt.id,
     };
 

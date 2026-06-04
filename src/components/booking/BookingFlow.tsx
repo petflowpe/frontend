@@ -6,6 +6,9 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { useAuth } from '../../context/AuthContext';
+import { formatDateForApi, fetchPublicAvailability } from '../../utils/api/publicBooking';
+import { fetchAvailableVehicles } from '../../hooks/useVehicleCoverage';
+import { getStoredCompanyId } from '../../utils/appointmentMappers';
 import { PaymentPage } from './PaymentPage';
 import { BookingTicket } from './BookingTicket';
 import { 
@@ -97,6 +100,10 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [apiSlots, setApiSlots] = useState<TimeSlot[] | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [coverageNote, setCoverageNote] = useState<string | null>(null);
+  const [suggestedVehicle, setSuggestedVehicle] = useState<{ id: string; name: string } | null>(null);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -203,9 +210,68 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
     setStep(4);
   };
 
+  useEffect(() => {
+    if (!selectedDate || !user?.district) {
+      setApiSlots(null);
+      setCoverageNote(null);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    const duration = selectedService?.duration || SERVICES[serviceType || 'movilvet']?.duration || 60;
+    fetchPublicAvailability(formatDateForApi(selectedDate), user.district, duration)
+      .then(({ slots, coverage_note }) => {
+        if (cancelled) return;
+        setApiSlots(
+          slots.map((s) => ({
+            time: s.time,
+            available: s.available,
+          }))
+        );
+        setCoverageNote(coverage_note ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setApiSlots(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, user?.district, selectedService?.duration, serviceType]);
+
+  useEffect(() => {
+    if (!selectedDate || !selectedTime || !user?.district) {
+      setSuggestedVehicle(null);
+      return;
+    }
+    let cancelled = false;
+    fetchAvailableVehicles(
+      user.district,
+      formatDateForApi(selectedDate),
+      selectedTime,
+      getStoredCompanyId()
+    )
+      .then((list) => {
+        if (cancelled) return;
+        const first = list[0];
+        setSuggestedVehicle(
+          first ? { id: String(first.id), name: first.name || `Móvil ${first.id}` } : null
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestedVehicle(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, selectedTime, user?.district]);
+
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
     setSelectedTime('');
+    setSuggestedVehicle(null);
   };
 
   const handleTimeSelect = (time: string) => {
@@ -213,7 +279,7 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
   };
 
   const handleConfirm = async () => {
-    if (!selectedService || !selectedPet || !selectedDate || !selectedTime) {
+    if (!selectedService || !selectedPet || !selectedDate || !selectedTime || !user) {
       setError('Por favor completa todos los pasos');
       return;
     }
@@ -222,32 +288,36 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
     setError('');
 
     try {
-      // Simular llamada API
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const serviceCategory =
+        serviceType === 'movilvet' ? ('MovilVet' as const) : ('Peluquería' as const);
 
-      const appointment = {
-        id: `APT-${Date.now()}`,
+      const newId = await addAppointment({
+        petId: String(selectedPet.id),
+        serviceType: String(selectedService.id),
         serviceName: selectedService.name,
-        serviceCategory: serviceType === 'movilvet' ? 'Veterinaria' : 'Peluquería',
-        petName: selectedPet.name,
-        date: selectedDate.toISOString(),
+        serviceCategory,
+        date: formatDateForApi(selectedDate),
         time: selectedTime,
-        status: 'Pendiente' as const,
+        duration: selectedService.duration || 60,
+        address: user.address || '',
+        district: user.district || '',
         price: selectedService.price,
-        district: user?.district || '',
-        veterinarian: '',
-        paymentStatus: 'Pendiente' as const
-      };
+        status: 'Pendiente',
+        paymentStatus: 'Pendiente',
+        ...(suggestedVehicle ? { vehicleId: suggestedVehicle.id } : {}),
+      });
 
-      addAppointment(appointment);
+      if (!newId) {
+        throw new Error('No se pudo registrar la cita');
+      }
+
       setSuccess(true);
-
       setTimeout(() => {
         onSuccess?.();
         onClose();
-      }, 2000);
-    } catch (err) {
-      setError('Error al agendar la cita. Intenta nuevamente.');
+      }, 1500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al agendar la cita. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -545,8 +615,16 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                       animate={{ opacity: 1, y: 0 }}
                     >
                       <h3 className="font-semibold mb-4">Selecciona un horario</h3>
+                      {coverageNote && (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                          {coverageNote}
+                        </p>
+                      )}
+                      {slotsLoading && (
+                        <p className="text-sm text-muted-foreground mb-2">Cargando horarios…</p>
+                      )}
                       <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                        {generateTimeSlots(selectedDate).map((slot) => (
+                        {(apiSlots ?? generateTimeSlots(selectedDate)).map((slot) => (
                           <button
                             key={slot.time}
                             onClick={() => slot.available && handleTimeSelect(slot.time)}
@@ -641,6 +719,19 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                             <p className="text-sm text-muted-foreground">{user?.district}</p>
                           </div>
                         </div>
+
+                        {suggestedVehicle && (
+                          <div className="flex items-start gap-3 md:col-span-2">
+                            <MapPin className="w-5 h-5 text-blue-600 mt-0.5" />
+                            <div>
+                              <p className="text-sm text-muted-foreground">Unidad sugerida</p>
+                              <p className="font-medium">{suggestedVehicle.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Asignación según cobertura en tu distrito
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Precio */}
                         <div className="pt-4 border-t border-border">

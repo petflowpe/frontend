@@ -1,3 +1,39 @@
+import {
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  format,
+} from 'date-fns';
+
+/** Rango YYYY-MM-DD para pedir citas según la vista del calendario */
+export function getCalendarFetchRange(
+  currentDate: Date,
+  view: 'month' | 'week' | 'day' | 'resource',
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1
+): { date_from: string; date_to: string } {
+  let start: Date;
+  let end: Date;
+
+  if (view === 'month') {
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(currentDate);
+    start = startOfWeek(monthStart, { weekStartsOn });
+    end = endOfWeek(monthEnd, { weekStartsOn });
+  } else if (view === 'week') {
+    start = startOfWeek(currentDate, { weekStartsOn });
+    end = endOfWeek(currentDate, { weekStartsOn });
+  } else {
+    start = currentDate;
+    end = currentDate;
+  }
+
+  return {
+    date_from: format(start, 'yyyy-MM-dd'),
+    date_to: format(end, 'yyyy-MM-dd'),
+  };
+}
+
 /**
  * Parsea la fecha de una cita como fecha local (evita desfase por UTC).
  * Acepta "yyyy-MM-dd" o ISO (ej. "2026-02-02T05:00:00.000Z").

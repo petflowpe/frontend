@@ -150,10 +150,17 @@ export function AppointmentDetailsDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-blue-600" />
-              Detalles de la Cita
+          <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
+            <span className="flex flex-col gap-0.5">
+              <span className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                Detalles de la Cita
+              </span>
+              {appointment.trackingCode && (
+                <span className="text-xs font-mono text-muted-foreground font-normal">
+                  {appointment.trackingCode}
+                </span>
+              )}
             </span>
             <Badge className={cn('text-xs', getStatusColor(appointment.status))}>
               {getStatusLabel(appointment.status)}

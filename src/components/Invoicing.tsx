@@ -36,6 +36,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
 import { getPendingAction, clearPendingAction } from '../utils/navigationBridge';
+import { IssueDocumentDialog } from './appointments/IssueDocumentDialog';
+import { Alert, AlertDescription } from './ui/alert';
 import { useProducts } from '../hooks/useProducts';
 import { useInvoices } from '../hooks/useInvoices';
 import { useClients } from '../hooks/useClients';
@@ -43,7 +45,8 @@ import { useVehicles } from '../hooks/useVehicles';
 import { ProductImage } from './ProductImage';
 
 export function Invoicing({ currentUser }: { currentUser?: any }) {
-  const { invoices, addInvoice, deleteInvoice } = useInvoices();
+  const { invoices, addInvoice, deleteInvoice, refreshInvoices, downloadInvoice, loading: loadingInvoices } =
+    useInvoices();
   const { clients } = useClients();
   const { products: inventoryProducts, services: availableServices, loading: loadingProducts, updateProductStock } = useProducts();
   const { vehicles } = useVehicles();
@@ -61,71 +64,45 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
   const [invoiceOrigin, setInvoiceOrigin] = useState<'cita' | 'venta_directa' | 'manual'>('manual');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
-  const [preloadedAppointmentData, setPreloadedAppointmentData] = useState<any>(null);
+  const [issueDocOpen, setIssueDocOpen] = useState(false);
+  const [issueAppointmentId, setIssueAppointmentId] = useState<string | null>(null);
+  const [issueAppointmentLabel, setIssueAppointmentLabel] = useState('');
 
-  // Escuchar evento de generación de factura desde cita (Legacy + Bridge)
+  const openIssueFromAppointment = (appointmentData: Record<string, unknown>) => {
+    const id =
+      appointmentData.appointmentId ??
+      appointmentData.citaId ??
+      appointmentData.id;
+    if (!id) {
+      toast.error('No se encontró el ID de la cita');
+      return;
+    }
+    const label = [
+      appointmentData.clientName ?? appointmentData.client,
+      appointmentData.petName ?? appointmentData.pet,
+      appointmentData.serviceName ?? appointmentData.service,
+    ]
+      .filter(Boolean)
+      .join(' — ');
+    setIssueAppointmentId(String(id));
+    setIssueAppointmentLabel(label || `Cita #${id}`);
+    setIssueDocOpen(true);
+  };
+
   useEffect(() => {
-    // 1. Revisar si hay una acción pendiente (Bridge)
     const pendingAction = getPendingAction('invoicing');
-    if (pendingAction && pendingAction.action === 'create_from_appointment') {
-      loadAppointmentData(pendingAction.payload);
+    if (pendingAction?.action === 'create_from_appointment' && pendingAction.payload) {
+      openIssueFromAppointment(pendingAction.payload);
       clearPendingAction();
     }
 
-    // 2. Escuchar evento directo (Legacy, por si acaso)
-    const handleGenerateInvoiceFromAppointment = (event: any) => {
-      loadAppointmentData(event.detail);
+    const onLegacyEvent = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail) openIssueFromAppointment(detail);
     };
-
-    window.addEventListener('generate-invoice-from-appointment', handleGenerateInvoiceFromAppointment);
-    
-    return () => {
-      window.removeEventListener('generate-invoice-from-appointment', handleGenerateInvoiceFromAppointment);
-    };
+    window.addEventListener('generate-invoice-from-appointment', onLegacyEvent);
+    return () => window.removeEventListener('generate-invoice-from-appointment', onLegacyEvent);
   }, []);
-
-  const loadAppointmentData = (appointmentData: any) => {
-    if (!appointmentData) return;
-
-    // Pre-cargar datos de la cita
-    setPreloadedAppointmentData(appointmentData);
-    setSelectedClient(appointmentData.clientId?.toString() || '');
-    setSelectedPetId(appointmentData.pet?.id?.toString() || '');
-    // ... maps to state logic
-    if (appointmentData.vehicle?.id) {
-       setSelectedPointOfSale(appointmentData.vehicle.id);
-    }
-    setInvoiceOrigin('cita');
-    setInvoiceNotes(appointmentData.notes || '');
-    
-    // Agregar servicios al carrito
-    if (appointmentData.items) {
-      const cartItems = appointmentData.items.map((item: any) => ({
-        ...item,
-        // Ensure type compatibility
-        type: item.type === 'service' || item.type === 'servicio' ? 'service' : 'product',
-        quantity: item.cantidad || item.quantity || 1,
-        total: item.subtotal || item.total || item.price || item.precioUnitario
-      }));
-      setInvoiceCart(cartItems);
-    } else if (appointmentData.services) {
-       // Legacy format fallback
-       const servicesForCart = appointmentData.services.map((service: any) => ({
-        ...service,
-        type: 'service',
-        quantity: 1,
-        total: service.price
-      }));
-      setInvoiceCart(servicesForCart);
-    }
-    
-    // Abrir diálogo
-    setShowNewInvoice(true);
-    
-    toast.info('📋 Datos de la cita cargados', {
-      description: `Cita ${appointmentData.citaId || 'Cargada'} lista para facturar`
-    });
-  };
 
   // Puntos de venta (vehículos + tiendas)
   const fixedPoints = [
@@ -231,9 +208,10 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
     const pet = selectedPetId ? client?.pets.find(p => p.id.toString() === selectedPetId) : null;
 
     const newInvoice = {
-      id: `FAC-2024-${String(invoices.length + 127).padStart(5, '0')}`,
-      serie: 'F001',
-      numero: String(invoices.length + 127).padStart(5, '0'),
+      id: '',
+      documentType: 'factura' as const,
+      serie: '',
+      numero: '',
       fecha: new Date().toISOString().split('T')[0],
       hora: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       cliente: {
@@ -255,8 +233,8 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
         placa: (pointOfSale as any)?.placa || null,
         conductor: (pointOfSale as any)?.conductor || null
       },
-      origen: invoiceOrigin,
-      citaId: null,
+      origen: 'venta_directa',
+      citaId: null as string | null,
       items: invoiceCart.map(item => ({
         id: item.id, // IMPORTANTE: Enviar ID para control de stock en servidor
         tipo: item.type === 'service' ? 'servicio' : 'producto',
@@ -278,16 +256,11 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
 
     // Guardar factura (El servidor validará y descontará stock automáticamente)
     try {
-      await addInvoice(newInvoice);
-      
-      // Recargar productos para reflejar nuevo stock en UI
-      await inventoryProducts.forEach(() => {}); // Hack para forzar refresh si useProducts tuviera metodo refresh
-      // Como useProducts no exporta refresh, confiaremos en que la próxima carga o navegación actualice.
-      // Ojo: Deberíamos exponer refreshProducts en useProducts.
-      // Por ahora, el usuario verá el stock antiguo hasta que recargue, pero si intenta comprar fallará el servidor.
-      
-      toast.success('✅ Factura generada correctamente', {
-        description: `${newInvoice.id} - Total: ${newInvoice.total.toFixed(2)} S/`
+      const created = await addInvoice(newInvoice);
+      await refreshInvoices();
+
+      toast.success('Factura registrada', {
+        description: `${created?.numeroCompleto || created?.id || 'Comprobante'} — ${newInvoice.total.toFixed(2)} S/`,
       });
 
       // Limpiar formulario solo si tuvo éxito
@@ -342,15 +315,21 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
     // Aquí iría la lógica de impresión
   };
 
-  const handleDeleteInvoice = async (id: string) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta factura permanentemente?')) {
-      await deleteInvoice(id);
+  const handleDeleteInvoice = async (invoice: { id: string; documentType?: 'factura' | 'boleta' }) => {
+    if (invoice.documentType === 'boleta') {
+      toast.info('Gestione boletas en el módulo Facturación SUNAT');
+      return;
+    }
+    if (window.confirm('¿Eliminar esta factura permanentemente?')) {
+      await deleteInvoice(invoice.id, invoice.documentType);
     }
   };
 
   const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = invoice.cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         invoice.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      invoice.cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invoice.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (invoice.numeroCompleto ?? '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || invoice.estado === statusFilter;
     const matchesVehicle = vehicleFilter === 'all' || invoice.puntoVenta.id === vehicleFilter;
     return matchesSearch && matchesStatus && matchesVehicle;
@@ -384,33 +363,40 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
+      <Alert>
+        <FileText className="h-4 w-4" />
+        <AlertDescription>
+          <strong>Emitir desde cita:</strong> use <em>Lista de citas</em> o <em>Cierre de caja → Facturar</em>.
+          Ahí se genera boleta o factura SUNAT según el documento del cliente. Este módulo consulta comprobantes y ventas directas.
+        </AlertDescription>
+      </Alert>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            💼 Sistema de Facturación
+            Comprobantes emitidos
           </h1>
           <p className="text-muted-foreground text-lg">
-            Gestión completa de facturas con trazabilidad por vehículo
+            Consulta boletas y facturas. Para citas, emita desde Lista de citas o Cierre de caja.
           </p>
         </div>
         <div className="flex space-x-3">
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Exportar
+          <Button variant="outline" onClick={() => refreshInvoices()}>
+            Actualizar
           </Button>
           <Dialog open={showNewInvoice} onOpenChange={setShowNewInvoice}>
             <DialogTrigger asChild>
-              <Button>
+              <Button variant="secondary">
                 <Plus className="h-4 w-4 mr-2" />
-                Nueva Factura
+                Venta directa
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Crear Nueva Factura</DialogTitle>
+                <DialogTitle>Venta directa (sin cita)</DialogTitle>
                 <DialogDescription>
-                  Selecciona cliente, punto de venta y agrega productos o servicios
+                  Factura manual para mostrador o venta sin cita. Las visitas móviles se facturan con el flujo unificado de citas.
                 </DialogDescription>
               </DialogHeader>
               
@@ -807,6 +793,12 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
 
           {/* Invoices List */}
           <div className="space-y-4">
+            {loadingInvoices && (
+              <p className="text-sm text-muted-foreground text-center py-8">Cargando comprobantes…</p>
+            )}
+            {!loadingInvoices && filteredInvoices.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">No hay comprobantes con los filtros actuales.</p>
+            )}
             {filteredInvoices.map((invoice) => {
               const PosIcon = getPointOfSaleIcon(invoice.puntoVenta.tipo);
               return (
@@ -817,11 +809,21 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
                         <FileText className="h-6 w-6 text-primary" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h3 className="font-bold text-lg">{invoice.id}</h3>
+                        <div className="flex items-center space-x-2 mb-2 flex-wrap gap-1">
+                          <h3 className="font-bold text-lg">
+                            {invoice.numeroCompleto || invoice.id}
+                          </h3>
+                          <Badge variant={invoice.documentType === 'boleta' ? 'secondary' : 'default'}>
+                            {invoice.documentType === 'boleta' ? 'Boleta' : 'Factura'}
+                          </Badge>
                           <Badge className={getStatusColor(invoice.estado)}>
                             {getStatusText(invoice.estado)}
                           </Badge>
+                          {invoice.estadoSunat && (
+                            <Badge variant="outline" className="text-xs">
+                              SUNAT: {invoice.estadoSunat}
+                            </Badge>
+                          )}
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-muted-foreground mb-3">
@@ -871,6 +873,14 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadInvoice(invoice.id, 'PDF', invoice.documentType)}
+                          title="Descargar PDF"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
                         <Button 
                           size="sm" 
                           variant="outline"
@@ -890,7 +900,7 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => handleDeleteInvoice(invoice.id)}
+                            onClick={() => handleDeleteInvoice(invoice)}
                             title="Eliminar factura"
                             className="text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
                           >
@@ -1115,7 +1125,15 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
                   <Printer className="h-4 w-4 mr-2" />
                   Imprimir
                 </Button>
-                <Button onClick={() => toast.success('Descargando PDF...')}>
+                <Button
+                  onClick={() =>
+                    downloadInvoice(
+                      selectedInvoice.id,
+                      'PDF',
+                      selectedInvoice.documentType ?? 'factura'
+                    )
+                  }
+                >
                   <Download className="h-4 w-4 mr-2" />
                   Descargar PDF
                 </Button>
@@ -1124,6 +1142,19 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {issueAppointmentId && (
+        <IssueDocumentDialog
+          open={issueDocOpen}
+          onOpenChange={setIssueDocOpen}
+          appointmentId={issueAppointmentId}
+          appointmentLabel={issueAppointmentLabel}
+          onSuccess={() => {
+            refreshInvoices();
+            setIssueAppointmentId(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -94,6 +94,9 @@ export const API = {
     vehicles: (id: string | number) => `/companies/${id}/vehicles`,
     config: (id: string | number) => `/companies/${id}/config`,
     configSection: (id: string | number, section: string) => `/companies/${id}/config/${section}`,
+    sunatConfig: (id: string | number) => `/companies/${id}/sunat-config`,
+    sunatEnvironment: (id: string | number) => `/companies/${id}/sunat-config/environment`,
+    sunatCertificate: (id: string | number) => `/companies/${id}/sunat-config/certificate`,
     greCredentials: (id: string | number) => `/companies/${id}/gre-credentials`,
   },
   branches: {
@@ -136,15 +139,32 @@ export const API = {
   },
   cashSessions: {
     list: '/cash-sessions',
+    current: '/cash-sessions/current',
+    daySummary: '/cash-sessions/day-summary',
     open: '/cash-sessions/open',
     close: (id: string | number) => `/cash-sessions/${id}/close`,
   },
-  payments: { list: '/payments', create: '/payments' },
+  correlatives: {
+    syncSunat: (branchId: string | number) => `/branches/${branchId}/correlatives/sync-sunat-config`,
+  },
+  payments: {
+    list: '/payments',
+    create: '/payments',
+    checkout: '/payments/checkout',
+  },
+  paymentGateways: {
+    get: (companyId: string | number) => `/companies/${companyId}/payment-gateways`,
+    update: (companyId: string | number) => `/companies/${companyId}/payment-gateways`,
+    test: (companyId: string | number, gateway: 'mercado_pago' | 'niubiz') =>
+      `/companies/${companyId}/payment-gateways/${gateway}/test`,
+  },
   reports: {
     sales: '/reports/sales',
     stats: '/reports/stats',
     products: '/reports/products',
     clients: '/reports/clients',
+    exportDataset: (dataset: string) => `/reports/export/dataset/${dataset}`,
+    exportReport: (reportId: string) => `/reports/export/report/${reportId}`,
   },
   cashMovements: { list: '/cash-movements', byId: (id: string | number) => `/cash-movements/${id}` },
   invoices: {
@@ -173,6 +193,42 @@ export const API = {
     list: '/pet-configurations',
     all: '/pet-configurations/all',
   },
+  publicBooking: {
+    config: '/public/booking/config',
+    services: '/public/booking/services',
+    availability: '/public/booking/availability',
+    store: '/public/booking',
+    track: (code: string) => `/public/booking/track/${encodeURIComponent(code)}`,
+  },
+  publicChat: {
+    config: '/public/chat/config',
+    start: '/public/chat/start',
+    messages: (token: string) => `/public/chat/${encodeURIComponent(token)}/messages`,
+  },
+  chat: {
+    settings: '/chat/settings',
+    conversations: '/chat/conversations',
+    conversation: (id: string | number) => `/chat/conversations/${id}`,
+    reply: (id: string | number) => `/chat/conversations/${id}/messages`,
+    read: (id: string | number) => `/chat/conversations/${id}/read`,
+    close: (id: string | number) => `/chat/conversations/${id}/close`,
+  },
+  growth: {
+    overview: '/reports/growth/overview',
+    trends: '/reports/growth/appointment-trends',
+    geographic: '/reports/growth/geographic',
+    segmentation: '/reports/growth/segmentation',
+    mobilePatterns: '/reports/growth/mobile-patterns',
+  },
+  routePlans: {
+    list: '/route-plans',
+    dailySchedule: '/route-plans/daily-schedule',
+    fromAppointments: '/route-plans/from-appointments',
+    byId: (id: string | number) => `/route-plans/${id}`,
+  },
+  driver: {
+    day: '/driver/day',
+  },
   appointments: {
     list: '/appointments',
     byId: (id: string | number) => `/appointments/${id}`,
@@ -180,6 +236,9 @@ export const API = {
     changeStatus: (id: string | number) => `/appointments/${id}/change-status`,
     sendReminder: (id: string | number) => `/appointments/${id}/send-reminder`,
     confirm: (id: string | number) => `/appointments/${id}/confirm`,
+    registerPayment: (id: string | number) => `/appointments/${id}/register-payment`,
+    billingPreview: (id: string | number) => `/appointments/${id}/billing-preview`,
+    issueDocument: (id: string | number) => `/appointments/${id}/issue-document`,
   },
   vehicles: {
     list: '/vehicles',
