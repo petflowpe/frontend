@@ -10,7 +10,6 @@ import { PreventiveHealthSection } from './pets/PreventiveHealthSection';
 import {
   buildPreventiveEvents,
   type PreventiveCategory,
-  type PreventiveEvent,
 } from './pets/preventiveHealthUtils';
 import { 
   Heart, 
@@ -146,152 +145,16 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
     };
   }, [petData, petId]);
 
-  // Historial Clínico Unificado (fallback mock)
-  const clinicalHistoryFallback = [
-    {
-      id: 'REC-101',
-      type: 'consultation',
-      title: 'Consulta Médica',
-      date: '2024-01-08',
-      doctor: 'Dr. Alejandro Vet',
-      reason: 'Decaimiento y falta de apetito',
-      diagnosis: 'Gastroenteritis leve por ingesta indebida',
-      vitals: {
-        weight: '32.5kg',
-        temp: '39.1°C',
-        pulse: '110'
-      },
-      treatment: [
-        'Inyección Antiinflamatoria',
-        'Protector Gástrico Oral',
-        'Dieta blanda x 3 días'
-      ],
-      observations: 'Se recomienda observación 24h. Si vomita nuevamente, acudir a clínica.',
-      evidence: ['https://images.unsplash.com/photo-1576201836163-4975841e058e?w=100&h=100&fit=crop'],
-      status: 'completed'
-    },
-    {
-      id: 'REC-089',
-      type: 'vaccine',
-      title: 'Vacunación',
-      date: '2023-11-15',
-      doctor: 'Dra. Sofia Tech',
-      reason: 'Vacunación anual programada',
-      diagnosis: 'Paciente sano, apto para vacunación',
-      vitals: {
-        weight: '32.0kg',
-        temp: '38.5°C',
-        pulse: '98'
-      },
-      treatment: [
-        'Vacuna Quintuple (DHPPL)',
-        'Vacuna Rabia'
-      ],
-      observations: 'No bañar por 3 días. Puede presentar fiebre leve.',
-      evidence: [],
-      status: 'completed'
-    }
-  ];
-
-  const preventiveHistoryFallback: PreventiveEvent[] = [
-    {
-      id: 1,
-      name: 'Vacuna Quintuple (1ra Dosis)',
-      date: '2020-05-15',
-      status: 'applied',
-      type: 'vaccine',
-      nextDue: '2020-06-15',
-      vet: 'Dr. Alejandro Vet',
-    },
-    {
-      id: 2,
-      name: 'Vacuna Quintuple (2da Dosis)',
-      date: '2020-06-15',
-      status: 'applied',
-      type: 'vaccine',
-      nextDue: '2020-07-15',
-      vet: 'Dr. Alejandro Vet',
-    },
-    {
-      id: 3,
-      name: 'Vacuna Quintuple (3ra Dosis)',
-      date: '2020-07-15',
-      status: 'applied',
-      type: 'vaccine',
-      nextDue: '2021-07-15',
-      vet: 'Dr. Alejandro Vet',
-    },
-    {
-      id: 4,
-      name: 'Vacuna Rabia',
-      date: '2020-08-15',
-      status: 'applied',
-      type: 'vaccine',
-      nextDue: '2021-08-15',
-      vet: 'Dr. Alejandro Vet',
-    },
-    {
-      id: 5,
-      name: 'Vacuna Quintuple (Anual)',
-      date: '2023-11-15',
-      status: 'applied',
-      type: 'vaccine',
-      nextDue: '2024-11-15',
-      vet: 'Dra. Sofia Tech',
-    },
-    {
-      id: 6,
-      name: 'Desparasitación Interna',
-      date: '2024-01-10',
-      status: 'applied',
-      type: 'deworming',
-      nextDue: '2024-04-10',
-      vet: 'Dra. Sofia Tech',
-    },
-    {
-      id: 7,
-      name: 'Vacuna Quintuple (Anual)',
-      date: '2024-11-15',
-      status: 'upcoming',
-      type: 'vaccine',
-      nextDue: null,
-      vet: 'Pendiente',
-    },
-  ];
-
-  // Productos recomendados/utilizados
-  const productHistory = [
-    {
-      id: 1,
-      name: 'Royal Canin Adult Large Breed',
-      category: 'Alimento',
-      lastPurchase: '2024-01-10',
-      nextPurchase: '2024-02-10',
-      quantity: '15kg',
-      price: 62.99,
-      status: 'due'
-    },
-    {
-      id: 2,
-      name: 'Shampoo Hidratante',
-      category: 'Cuidado',
-      lastPurchase: '2024-01-05',
-      nextPurchase: '2024-04-05',
-      quantity: '500ml',
-      price: 18.50,
-      status: 'ok'
-    },
-    {
-      id: 3,
-      name: 'Vitaminas MultiVet',
-      category: 'Suplementos',
-      lastPurchase: '2023-12-15',
-      nextPurchase: '2024-03-15',
-      quantity: '100 tabs',
-      price: 29.99,
-      status: 'upcoming'
-    }
-  ];
+  const productHistory: Array<{
+    id: number;
+    name: string;
+    category: string;
+    lastPurchase: string;
+    nextPurchase: string;
+    quantity: string;
+    price: number;
+    status: string;
+  }> = [];
 
   const parseKgFromQuantity = (value: string): number => {
     const normalized = String(value || '').toLowerCase().replace(',', '.');
@@ -302,31 +165,17 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
     return parsed;
   };
 
-  // Historial de servicios
-  const serviceHistory = [
-    {
-      id: 1,
-      service: 'Baño Completo + Corte',
-      date: '2024-01-15',
-      groomer: 'Ana Ruiz',
-      cost: 65.00,
-      notes: 'Excelente comportamiento',
-      efficiency: 95,
-      timeSaved: 10,
-      fuelSaved: 1.2
-    },
-    {
-      id: 2,
-      service: 'Baño Express',
-      date: '2023-12-20',
-      groomer: 'Juan López',
-      cost: 35.00,
-      notes: 'Necesita corte de uñas próxima vez',
-      efficiency: 88,
-      timeSaved: 5,
-      fuelSaved: 0.8
-    }
-  ];
+  const serviceHistory: Array<{
+    id: number;
+    service: string;
+    date: string;
+    groomer: string;
+    cost: number;
+    notes: string;
+    efficiency: number;
+    timeSaved: number;
+    fuelSaved: number;
+  }> = [];
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -397,7 +246,6 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
       buildPreventiveEvents({
         timeline: timelineData,
         petData,
-        fallback: preventiveHistoryFallback,
       }),
     [timelineData, petData]
   );
@@ -877,6 +725,7 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
                 {medicalSubTab === 'vaccines' && (
                   <PreventiveHealthSection
                     petName={pet.name}
+                    species={pet.species}
                     birthDate={pet.birthDate}
                     events={preventiveEvents}
                     onRegister={(category) => setPreventiveDialog(category)}
@@ -946,24 +795,30 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
                         ))}
                       </div>
                     </div>
-                    <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm space-y-2">
-                      <span className="text-slate-300 block">Producto base</span>
-                      <Select
-                        value={String(selectedNutritionProductId || activeNutritionProduct?.id || '')}
-                        onValueChange={(v) => setSelectedNutritionProductId(parseInt(v))}
-                      >
-                        <SelectTrigger className="bg-slate-950 border-slate-700">
-                          <SelectValue placeholder="Selecciona producto" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {productHistory.map((product) => (
-                            <SelectItem key={product.id} value={String(product.id)}>
-                              {product.name} ({product.quantity})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {productHistory.length > 0 ? (
+                      <div className="rounded-md bg-slate-900/70 border border-slate-800 p-3 text-sm space-y-2">
+                        <span className="text-slate-300 block">Producto base</span>
+                        <Select
+                          value={String(selectedNutritionProductId || activeNutritionProduct?.id || '')}
+                          onValueChange={(v) => setSelectedNutritionProductId(parseInt(v))}
+                        >
+                          <SelectTrigger className="bg-slate-950 border-slate-700">
+                            <SelectValue placeholder="Selecciona producto" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {productHistory.map((product) => (
+                              <SelectItem key={product.id} value={String(product.id)}>
+                                {product.name} ({product.quantity})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 rounded-md border border-dashed border-slate-700 p-3">
+                        Sin productos de nutrición registrados. El cálculo usa solo peso, edad y raza.
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -1003,6 +858,12 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
               </div>
 
               <div className="space-y-4">
+                {productHistory.length === 0 && (
+                  <Card className="p-8 text-center border-dashed">
+                    <Package className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">No hay compras de nutrición registradas para esta mascota.</p>
+                  </Card>
+                )}
                 {productHistory.map((product) => (
                   <Card key={product.id} className="p-4">
                     <div className="flex items-start justify-between">
@@ -1067,31 +928,28 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
                 </Select>
               </div>
 
-              {/* Tarjetas de Métricas (Estilo Driver App) */}
+              {serviceHistory.length === 0 ? (
+                <Card className="p-8 text-center border-dashed">
+                  <History className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground text-sm">Sin baños o servicios de peluquería registrados.</p>
+                </Card>
+              ) : (
+                <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                <Card className="p-4 relative bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
                   <div className="text-sm text-blue-600 dark:text-blue-400 font-medium mb-1">Total Servicios</div>
-                  <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">12</div>
+                  <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">{serviceHistory.length}</div>
                   <TrendingUp className="h-4 w-4 text-blue-500 absolute top-4 right-4" />
                 </Card>
-                <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+                <Card className="p-4 relative bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
                   <div className="text-sm text-green-600 dark:text-green-400 font-medium mb-1">Inversión Total</div>
-                  <div className="text-2xl font-bold text-green-800 dark:text-green-200">S/ 850</div>
+                  <div className="text-2xl font-bold text-green-800 dark:text-green-200">
+                    S/ {serviceHistory.reduce((s, x) => s + x.cost, 0).toFixed(0)}
+                  </div>
                   <DollarSign className="h-4 w-4 text-green-500 absolute top-4 right-4" />
-                </Card>
-                <Card className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
-                  <div className="text-sm text-purple-600 dark:text-purple-400 font-medium mb-1">Eficiencia Prom.</div>
-                  <div className="text-2xl font-bold text-purple-800 dark:text-purple-200">98%</div>
-                  <Activity className="h-4 w-4 text-purple-500 absolute top-4 right-4" />
-                </Card>
-                <Card className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
-                  <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium mb-1">CO₂ Reducido</div>
-                  <div className="text-2xl font-bold text-emerald-800 dark:text-emerald-200">12 kg</div>
-                  <Leaf className="h-4 w-4 text-emerald-500 absolute top-4 right-4" />
                 </Card>
               </div>
 
-              {/* Lista de Servicios Estilo Historial */}
               <div className="space-y-4">
                 {serviceHistory.map((service) => (
                   <Card key={service.id} className="p-4 group hover:shadow-lg transition-all border-l-4 border-l-primary">
@@ -1142,6 +1000,8 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
                   </Card>
                 ))}
               </div>
+                </>
+              )}
             </TabsContent>
           </Tabs>
         </div>

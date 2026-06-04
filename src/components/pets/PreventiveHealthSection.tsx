@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -11,18 +11,24 @@ import {
   Syringe,
   Share2,
   Download,
+  Bell,
 } from 'lucide-react';
 import { formatDate } from '../../utils/helpers';
-import type { PreventiveCategory, PreventiveEvent, PreventiveStage } from './preventiveHealthUtils';
+import { toast } from 'sonner';
+import type { PreventiveCategory, PreventiveEvent, PreventiveReminder, PreventiveStage } from './preventiveHealthUtils';
 import {
   STATUS_BADGE_CLASS,
   STATUS_DOT_CLASS,
   STATUS_LABELS,
   buildPreventiveLifeStages,
+  collectPreventiveReminders,
+  formatLifeLineForExport,
+  isCatSpecies,
 } from './preventiveHealthUtils';
 
 interface PreventiveHealthSectionProps {
   petName: string;
+  species?: string;
   birthDate?: string;
   events: PreventiveEvent[];
   onRegister: (category: PreventiveCategory) => void;
@@ -47,17 +53,75 @@ function StatusBadge({ status }: { status: PreventiveEvent['status'] }) {
 
 export function PreventiveHealthSection({
   petName,
+  species,
   birthDate,
   events,
   onRegister,
 }: PreventiveHealthSectionProps) {
+  const printRef = useRef<HTMLDivElement>(null);
+
   const lifeStages = useMemo<PreventiveStage[]>(
-    () => buildPreventiveLifeStages({ birthDate, events }),
-    [birthDate, events]
+    () => buildPreventiveLifeStages({ birthDate, species, events }),
+    [birthDate, species, events]
   );
 
+  const reminders = useMemo(
+    () => collectPreventiveReminders(lifeStages, { withinDays: 30 }),
+    [lifeStages]
+  );
+
+  const protocolLabel = isCatSpecies(species)
+    ? 'Protocolo felino (FVRCP / rabia / desparasitación / antipulgas)'
+    : 'Protocolo canino (AAHA / WSAVA)';
+
+  const handleExport = () => {
+    const text = formatLifeLineForExport(petName, birthDate, lifeStages);
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `linea-vida-${petName.replace(/\s+/g, '-').toLowerCase()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Línea de vida exportada');
+  };
+
+  const handleShare = async () => {
+    const text = formatLifeLineForExport(petName, birthDate, lifeStages);
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Salud preventiva — ${petName}`,
+          text,
+        });
+        return;
+      } catch {
+        /* usuario canceló */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Línea de vida copiada al portapapeles');
+    } catch {
+      toast.error('No se pudo compartir. Usa Exportar.');
+    }
+  };
+
+  const handlePrint = () => {
+    const text = formatLifeLineForExport(petName, birthDate, lifeStages);
+    const w = window.open('', '_blank', 'width=800,height=900');
+    if (!w) {
+      toast.error('Permite ventanas emergentes para imprimir');
+      return;
+    }
+    w.document.write(`<pre style="font-family:system-ui;padding:24px;white-space:pre-wrap">${text.replace(/</g, '&lt;')}</pre>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={printRef}>
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -65,20 +129,41 @@ export function PreventiveHealthSection({
             Línea de vida de {petName}
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Protocolo orientativo según edad{birthDate ? ` (nacimiento ${formatDate(birthDate)})` : ''}
+            {protocolLabel}
+            {birthDate ? ` · Nacimiento ${formatDate(birthDate)}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" className="gap-2" disabled title="Próximamente">
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={handleExport}>
             <Download className="h-4 w-4" />
             Exportar
           </Button>
-          <Button type="button" variant="outline" size="sm" className="gap-2" disabled title="Próximamente">
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={handleShare}>
             <Share2 className="h-4 w-4" />
             Compartir
           </Button>
+          <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={handlePrint}>
+            Imprimir
+          </Button>
         </div>
       </div>
+
+      {reminders.length > 0 && (
+        <Card className="p-4 border-amber-500/40 bg-amber-950/20">
+          <p className="text-sm font-semibold text-amber-200 mb-2 flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Recordatorios activos ({reminders.length})
+          </p>
+          <ul className="space-y-1 text-sm text-amber-100/90">
+            {reminders.slice(0, 5).map((r: PreventiveReminder) => (
+              <li key={r.id}>
+                {r.status === 'overdue' ? '⚠ Atrasado' : '◷ Próximo'}: {r.title} — {formatDate(r.expectedDate)}
+                {r.daysUntil < 0 ? ` (${Math.abs(r.daysUntil)} día(s) de retraso)` : r.daysUntil === 0 ? ' (hoy)' : ` (en ${r.daysUntil} día(s))`}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" className="gap-2 bg-violet-600 hover:bg-violet-700" onClick={() => onRegister('vaccine')}>
@@ -141,7 +226,7 @@ export function PreventiveHealthSection({
           <div className="relative border-l-2 border-slate-200 dark:border-slate-700 ml-3 space-y-10">
             {lifeStages.length === 0 && (
               <p className="text-sm text-muted-foreground pl-8">
-                Sin registros preventivos. Usa los botones de arriba.
+                Sin hitos en el protocolo. Usa los botones de arriba para registrar tratamientos.
               </p>
             )}
 

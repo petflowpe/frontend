@@ -149,6 +149,20 @@ export function PreventiveHealthDialog({
         });
       }
 
+      if (category === 'flea') {
+        const nextFlea =
+          form.nextDue ||
+          (() => {
+            const d = new Date(`${form.date}T12:00:00`);
+            d.setMonth(d.getMonth() + 1);
+            return d.toISOString().slice(0, 10);
+          })();
+        await apiClient.put(`/pets/${petId}`, {
+          last_flea_treatment_date: form.date,
+          next_flea_treatment_date: nextFlea,
+        });
+      }
+
       toast.success(`${meta.title.replace('Registrar ', '')} guardado`);
       onSaved?.();
       onOpenChange(false);

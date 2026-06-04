@@ -135,6 +135,8 @@ interface PetRecord {
   next_vaccination_date?: string | null;
   last_deworming_date?: string | null;
   next_deworming_date?: string | null;
+  last_flea_treatment_date?: string | null;
+  next_flea_treatment_date?: string | null;
   insurance_company?: string | null;
   insurance_policy_number?: string | null;
   emergency_contact_name?: string | null;
@@ -170,6 +172,8 @@ interface PetFormData {
   nextVaccinationDate: string;
   lastDewormingDate: string;
   nextDewormingDate: string;
+  lastFleaTreatmentDate: string;
+  nextFleaTreatmentDate: string;
   insuranceCompany: string;
   insurancePolicyNumber: string;
   emergencyContactName: string;
@@ -393,6 +397,8 @@ function buildInitialPetFormData(pet: PetRecord | null | undefined): PetFormData
     nextVaccinationDate: toDateInputValue(pet?.next_vaccination_date) || '',
     lastDewormingDate: toDateInputValue(pet?.last_deworming_date) || '',
     nextDewormingDate: toDateInputValue(pet?.next_deworming_date) || '',
+    lastFleaTreatmentDate: toDateInputValue(pet?.last_flea_treatment_date) || '',
+    nextFleaTreatmentDate: toDateInputValue(pet?.next_flea_treatment_date) || '',
     insuranceCompany: pet?.insurance_company || '',
     insurancePolicyNumber: pet?.insurance_policy_number || '',
     emergencyContactName: pet?.emergency_contact_name || '',
@@ -655,6 +661,8 @@ export function PetsManagement({
         next_vaccination_date: petData.nextVaccinationDate || null,
         last_deworming_date: petData.lastDewormingDate || null,
         next_deworming_date: petData.nextDewormingDate || null,
+        last_flea_treatment_date: petData.lastFleaTreatmentDate || null,
+        next_flea_treatment_date: petData.nextFleaTreatmentDate || null,
         insurance_company: petData.insuranceCompany || null,
         insurance_policy_number: petData.insurancePolicyNumber || null,
         emergency_contact_name: petData.emergencyContactName || null,
@@ -2680,6 +2688,26 @@ function PetForm({
                   className={fieldClass}
                   value={formData.nextDewormingDate ?? ''}
                   onChange={(e) => setFormData({ ...formData, nextDewormingDate: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className={labelClass}>Último antipulgas</Label>
+                <Input
+                  type="date"
+                  className={fieldClass}
+                  value={formData.lastFleaTreatmentDate ?? ''}
+                  onChange={(e) => setFormData({ ...formData, lastFleaTreatmentDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className={labelClass}>Próximo antipulgas</Label>
+                <Input
+                  type="date"
+                  className={fieldClass}
+                  value={formData.nextFleaTreatmentDate ?? ''}
+                  onChange={(e) => setFormData({ ...formData, nextFleaTreatmentDate: e.target.value })}
                 />
               </div>
             </div>

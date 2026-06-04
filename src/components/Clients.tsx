@@ -475,12 +475,20 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
       const vacc = toDateValue(pet.nextVaccinationDate || pet.next_vaccination_date);
       if (vacc) {
         const days = Math.ceil((vacc.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (days >= 0 && days <= 30) reminders.push({ key: `vacc-${pet.id}`, text: `${pet.name}: vacuna en ${days} día(s)`, level: 'warn' });
+        if (days < 0) reminders.push({ key: `vacc-${pet.id}`, text: `${pet.name}: vacuna atrasada (${Math.abs(days)} día(s))`, level: 'warn' });
+        else if (days <= 30) reminders.push({ key: `vacc-${pet.id}`, text: `${pet.name}: vacuna en ${days} día(s)`, level: 'warn' });
       }
       const deworm = toDateValue(pet.nextDewormingDate || pet.next_deworming_date);
       if (deworm) {
         const days = Math.ceil((deworm.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (days >= 0 && days <= 30) reminders.push({ key: `deworm-${pet.id}`, text: `${pet.name}: desparasitación en ${days} día(s)`, level: 'warn' });
+        if (days < 0) reminders.push({ key: `deworm-${pet.id}`, text: `${pet.name}: desparasitación atrasada (${Math.abs(days)} día(s))`, level: 'warn' });
+        else if (days <= 30) reminders.push({ key: `deworm-${pet.id}`, text: `${pet.name}: desparasitación en ${days} día(s)`, level: 'warn' });
+      }
+      const flea = toDateValue(pet.nextFleaTreatmentDate || pet.next_flea_treatment_date);
+      if (flea) {
+        const days = Math.ceil((flea.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (days < 0) reminders.push({ key: `flea-${pet.id}`, text: `${pet.name}: antipulgas atrasado (${Math.abs(days)} día(s))`, level: 'warn' });
+        else if (days <= 30) reminders.push({ key: `flea-${pet.id}`, text: `${pet.name}: antipulgas en ${days} día(s)`, level: 'warn' });
       }
     });
     return reminders;

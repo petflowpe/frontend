@@ -134,13 +134,12 @@ function aggregateStageStatus(items: PreventiveStageItem[]): PreventiveStatus {
  * - Desparasitación: 2,4,6,8 semanas; cada 2 semanas hasta 16 semanas; mensual hasta 6 meses; luego cada 3 meses.
  * - Antipulgas/garrapatas: mensual todo el año (desde ~8 semanas según producto).
  */
-export function buildPreventiveLifeStages(input: {
-  birthDate?: string | null;
-  events: PreventiveEvent[];
-}): PreventiveStage[] {
-  const birth = toDateOnly(input.birthDate);
-  if (!birth) return [];
+export function isCatSpecies(species?: string | null): boolean {
+  const s = String(species || '').toLowerCase();
+  return s.includes('gato') || s.includes('cat') || s === 'felino' || s.includes('felino');
+}
 
+function buildDogLifeStages(birth: Date, events: PreventiveEvent[]): PreventiveStage[] {
   const stage = (
     id: string,
     ageLabel: string,
@@ -148,7 +147,7 @@ export function buildPreventiveLifeStages(input: {
     items: Array<Omit<PreventiveStageItem, 'status'>>
   ): PreventiveStage => {
     const resolved: PreventiveStageItem[] = items.map((it) => {
-      const matched = matchAppliedEvent(it.expectedDate, it.type, input.events);
+      const matched = matchAppliedEvent(it.expectedDate, it.type, events);
       const status = matched ? 'applied' : computeExpectedStatus(it.expectedDate);
       return { ...it, status, matchedEventId: matched?.id };
     });
@@ -189,7 +188,7 @@ export function buildPreventiveLifeStages(input: {
       { id: 'dw-16w', type: 'deworming', title: 'Desparasitación (16 semanas)', expectedDate: addWeeks(birth, 16) },
       { id: 'flea-3', type: 'flea', title: 'Antipulgas mensual', expectedDate: addWeeks(birth, 16) },
     ]),
-    stage('s-4-6m', '4-6 мес', 'Transición a mantenimiento', [
+    stage('s-4-6m', '4-6 meses', 'Transición a mantenimiento', [
       { id: 'dw-monthly-5m', type: 'deworming', title: 'Desparasitación mensual (hasta 6 meses)', expectedDate: addMonths(birth, 5) },
       { id: 'flea-6m', type: 'flea', title: 'Antipulgas mensual', expectedDate: addMonths(birth, 6) },
     ]),
@@ -216,6 +215,131 @@ export function buildPreventiveLifeStages(input: {
   ];
 
   return stages;
+}
+
+function buildCatLifeStages(birth: Date, events: PreventiveEvent[]): PreventiveStage[] {
+  const stage = (
+    id: string,
+    ageLabel: string,
+    title: string,
+    items: Array<Omit<PreventiveStageItem, 'status'>>
+  ): PreventiveStage => {
+    const resolved: PreventiveStageItem[] = items.map((it) => {
+      const matched = matchAppliedEvent(it.expectedDate, it.type, events);
+      const status = matched ? 'applied' : computeExpectedStatus(it.expectedDate);
+      return { ...it, status, matchedEventId: matched?.id };
+    });
+    return { id, ageLabel, title, items: resolved, status: aggregateStageStatus(resolved) };
+  };
+
+  return [
+    stage('c-6-8w', '6-8 sem', 'Inicio esquema felino', [
+      { id: 'c-fvrcp-1', type: 'vaccine', title: 'FVRCP (1ra dosis)', expectedDate: addWeeks(birth, 7) },
+      { id: 'c-dw-6w', type: 'deworming', title: 'Desparasitación (6 semanas)', expectedDate: addWeeks(birth, 6) },
+      { id: 'c-flea-8w', type: 'flea', title: 'Iniciar antipulgas mensual', expectedDate: addWeeks(birth, 8) },
+    ]),
+    stage('c-10-12w', '10-12 sem', 'Refuerzo FVRCP', [
+      { id: 'c-fvrcp-2', type: 'vaccine', title: 'FVRCP (2da dosis)', expectedDate: addWeeks(birth, 11) },
+      { id: 'c-dw-10w', type: 'deworming', title: 'Desparasitación (10 semanas)', expectedDate: addWeeks(birth, 10) },
+    ]),
+    stage('c-12-16w', '12-16 sem', 'Cierre cachorro', [
+      { id: 'c-fvrcp-3', type: 'vaccine', title: 'FVRCP (3ra dosis)', expectedDate: addWeeks(birth, 15) },
+      { id: 'c-rabies', type: 'vaccine', title: 'Rabia (1ra dosis)', expectedDate: addWeeks(birth, 14) },
+      { id: 'c-dw-14w', type: 'deworming', title: 'Desparasitación (14 semanas)', expectedDate: addWeeks(birth, 14) },
+      { id: 'c-flea-16w', type: 'flea', title: 'Antipulgas mensual', expectedDate: addWeeks(birth, 16) },
+    ]),
+    stage('c-6m', '6 meses', 'Control intermedio', [
+      { id: 'c-dw-6m', type: 'deworming', title: 'Desparasitación', expectedDate: addMonths(birth, 6) },
+      { id: 'c-flea-6m', type: 'flea', title: 'Antipulgas mensual', expectedDate: addMonths(birth, 6) },
+    ]),
+    stage('c-12m', '1 año', 'Refuerzos anuales', [
+      { id: 'c-fvrcp-1y', type: 'vaccine', title: 'Refuerzo FVRCP (1 año)', expectedDate: addMonths(birth, 12) },
+      { id: 'c-rabies-1y', type: 'vaccine', title: 'Refuerzo Rabia (1 año)', expectedDate: addMonths(birth, 12) },
+      { id: 'c-dw-1y', type: 'deworming', title: 'Desparasitación (trimestral)', expectedDate: addMonths(birth, 12) },
+      { id: 'c-flea-1y', type: 'flea', title: 'Antipulgas mensual', expectedDate: addMonths(birth, 12) },
+    ]),
+    stage('c-3y', '3 años', 'Mantenimiento adulto', [
+      { id: 'c-fvrcp-3y', type: 'vaccine', title: 'Refuerzo FVRCP (cada 1-3 años)', expectedDate: addMonths(birth, 36) },
+      { id: 'c-flea-3y', type: 'flea', title: 'Antipulgas mensual', expectedDate: addMonths(birth, 36) },
+    ]),
+    stage('c-senior', '7+ años', 'Etapa senior', [
+      { id: 'c-dw-senior', type: 'deworming', title: 'Desparasitación (trimestral)', expectedDate: addMonths(birth, 84) },
+      { id: 'c-flea-senior', type: 'flea', title: 'Antipulgas mensual', expectedDate: addMonths(birth, 84) },
+    ]),
+  ];
+}
+
+export function buildPreventiveLifeStages(input: {
+  birthDate?: string | null;
+  species?: string | null;
+  events: PreventiveEvent[];
+}): PreventiveStage[] {
+  const birth = toDateOnly(input.birthDate);
+  if (!birth) return [];
+  if (isCatSpecies(input.species)) {
+    return buildCatLifeStages(birth, input.events);
+  }
+  return buildDogLifeStages(birth, input.events);
+}
+
+export interface PreventiveReminder {
+  id: string;
+  title: string;
+  expectedDate: string;
+  status: 'upcoming' | 'overdue';
+  daysUntil: number;
+  type: PreventiveCategory;
+}
+
+export function collectPreventiveReminders(
+  stages: PreventiveStage[],
+  options?: { withinDays?: number }
+): PreventiveReminder[] {
+  const withinDays = options?.withinDays ?? 30;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const out: PreventiveReminder[] = [];
+
+  stages.forEach((stage) => {
+    stage.items.forEach((item) => {
+      if (item.status !== 'upcoming' && item.status !== 'overdue') return;
+      const exp = toDateOnly(item.expectedDate);
+      if (!exp) return;
+      const daysUntil = Math.ceil((exp.getTime() - today.getTime()) / MS_DAY);
+      if (item.status === 'upcoming' && daysUntil > withinDays) return;
+      if (item.status === 'overdue' && daysUntil < -30) return;
+      out.push({
+        id: `${stage.id}-${item.id}`,
+        title: item.title,
+        expectedDate: item.expectedDate!,
+        status: item.status === 'overdue' ? 'overdue' : 'upcoming',
+        daysUntil,
+        type: item.type,
+      });
+    });
+  });
+
+  return out.sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
+export function formatLifeLineForExport(petName: string, birthDate: string | undefined, stages: PreventiveStage[]): string {
+  const lines = [
+    `Línea de vida preventiva — ${petName}`,
+    birthDate ? `Nacimiento: ${birthDate}` : '',
+    `Generado: ${new Date().toISOString().slice(0, 10)}`,
+    '',
+  ].filter(Boolean);
+
+  stages.forEach((s) => {
+    lines.push(`[${s.ageLabel}] ${s.title} (${STATUS_LABELS[s.status]})`);
+    s.items.forEach((it) => {
+      lines.push(
+        `  - ${it.title}: ${it.expectedDate || '—'} [${STATUS_LABELS[it.status]}]`
+      );
+    });
+    lines.push('');
+  });
+  return lines.join('\n');
 }
 
 export function buildProtocolMilestones(birthDate?: string | null): LifeLineMilestone[] {
@@ -291,9 +415,8 @@ export function matchMilestoneStatus(
 export function buildPreventiveEvents(input: {
   timeline: any[];
   petData: any;
-  fallback: PreventiveEvent[];
 }): PreventiveEvent[] {
-  const { timeline, petData, fallback } = input;
+  const { timeline, petData } = input;
   const events: PreventiveEvent[] = [];
 
   timeline.forEach((event: any, idx: number) => {
@@ -360,8 +483,12 @@ export function buildPreventiveEvents(input: {
     petData?.last_deworming_date,
     petData?.next_deworming_date
   );
-
-  if (!events.length) return fallback;
+  pushScheduled(
+    'flea',
+    'Antipulgas (ficha mascota)',
+    petData?.last_flea_treatment_date,
+    petData?.next_flea_treatment_date
+  );
 
   return events
     .filter((e) => e.date)

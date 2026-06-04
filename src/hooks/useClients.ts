@@ -20,6 +20,8 @@ export interface Pet {
   sterilized?: boolean;
   lastVaccinationDate?: string;
   lastDewormingDate?: string;
+  lastFleaTreatmentDate?: string;
+  nextFleaTreatmentDate?: string;
   notes?: string;
   // Campos derivados para UI
   age?: number;
@@ -159,6 +161,8 @@ export const useClients = () => {
     nextDewormingDate: p.next_deworming_date || '',
     lastVaccinationDate: p.last_vaccination_date || '',
     lastDewormingDate: p.last_deworming_date || '',
+    lastFleaTreatmentDate: p.last_flea_treatment_date || '',
+    nextFleaTreatmentDate: p.next_flea_treatment_date || '',
     sterilized: !!p.sterilized,
   });
 
@@ -226,6 +230,8 @@ export const useClients = () => {
         next_vaccination_date: (petData as any).nextVaccinationDate || null,
         last_deworming_date: (petData as any).lastDewormingDate || null,
         next_deworming_date: (petData as any).nextDewormingDate || null,
+        last_flea_treatment_date: (petData as any).lastFleaTreatmentDate || null,
+        next_flea_treatment_date: (petData as any).nextFleaTreatmentDate || null,
         insurance_company: (petData as any).insuranceCompany || null,
         insurance_policy_number: (petData as any).insurancePolicyNumber || null,
         emergency_contact_name: (petData as any).emergencyContactName || null,
@@ -256,6 +262,8 @@ export const useClients = () => {
         nextDewormingDate: created?.next_deworming_date ?? (petData as any).nextDewormingDate ?? '',
         lastVaccinationDate: created?.last_vaccination_date ?? (petData as any).lastVaccinationDate ?? '',
         lastDewormingDate: created?.last_deworming_date ?? (petData as any).lastDewormingDate ?? '',
+        lastFleaTreatmentDate: created?.last_flea_treatment_date ?? (petData as any).lastFleaTreatmentDate ?? '',
+        nextFleaTreatmentDate: created?.next_flea_treatment_date ?? (petData as any).nextFleaTreatmentDate ?? '',
         sterilized: created?.sterilized ?? !!(petData as any).sterilized,
         notes: created?.notes ?? (petData as any).notes ?? '',
       };
@@ -298,6 +306,8 @@ export const useClients = () => {
       if (has('nextVaccinationDate')) backendPetData.next_vaccination_date = updates.nextVaccinationDate || null;
       if (has('lastDewormingDate')) backendPetData.last_deworming_date = (updates as any).lastDewormingDate || null;
       if (has('nextDewormingDate')) backendPetData.next_deworming_date = updates.nextDewormingDate || null;
+      if (has('lastFleaTreatmentDate')) backendPetData.last_flea_treatment_date = (updates as any).lastFleaTreatmentDate || null;
+      if (has('nextFleaTreatmentDate')) backendPetData.next_flea_treatment_date = (updates as any).nextFleaTreatmentDate || null;
       if (updates.insuranceCompany) backendPetData.insurance_company = updates.insuranceCompany;
       if (updates.insurancePolicyNumber) backendPetData.insurance_policy_number = updates.insurancePolicyNumber;
       if (updates.emergencyContactName) backendPetData.emergency_contact_name = updates.emergencyContactName;
