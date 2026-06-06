@@ -68,21 +68,17 @@ class ErrorMonitoringService {
       const Sentry = await import('@sentry/react');
 
       Sentry.init({
-        dsn: this.config.dsn || getEnv('NEXT_PUBLIC_SENTRY_DSN'),
+        dsn: this.config.dsn || getEnv('VITE_SENTRY_DSN') || getEnv('NEXT_PUBLIC_SENTRY_DSN'),
         environment: this.config.environment,
         
         // Configuración de sampling
         sampleRate: this.config.sampleRate,
         tracesSampleRate: this.config.tracesSampleRate,
 
-        // Integrations
+        // Integrations (Sentry v8+: funciones, no `new BrowserTracing()`)
         integrations: [
-          new Sentry.BrowserTracing({
-            // Rastrear navegación
-            routingInstrumentation: Sentry.reactRouterV6Instrumentation,
-          }),
-          new Sentry.Replay({
-            // Session replay para reproducir errores
+          Sentry.browserTracingIntegration(),
+          Sentry.replayIntegration({
             maskAllText: true,
             blockAllMedia: true,
           }),

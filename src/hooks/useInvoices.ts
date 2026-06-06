@@ -126,7 +126,7 @@ export const useInvoices = () => {
   const fetchInvoices = useCallback(async (filters?: { date?: string; clientId?: string; status?: string }) => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = { per_page: 200 };
+      const params: Record<string, string | number> = { per_page: 100 };
       if (filters?.date) params.date = filters.date;
       if (filters?.clientId) params.client_id = filters.clientId;
       if (filters?.status) params.status = filters.status;

@@ -4,8 +4,9 @@
  */
 
 function normalizeApiBaseUrl(raw: string | undefined): string {
-  // Usar 127.0.0.1 por defecto (evita problemas de resolución IPv6 con "localhost" en Windows)
-  const fallback = 'http://127.0.0.1:8000/api';
+  const fallback = import.meta.env.PROD
+    ? 'https://srv1197160.hstgr.cloud/api'
+    : 'http://127.0.0.1:8000/api';
   const value = (raw || fallback).trim();
   if (!value) return fallback;
   // Si no tiene protocolo, el navegador lo trata como ruta relativa (p. ej. en Vercel)

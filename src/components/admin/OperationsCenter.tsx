@@ -40,7 +40,7 @@ export function OperationsCenter() {
 
   useEffect(() => {
     const today = new Date().toLocaleDateString('en-CA');
-    refreshAppointments({ date: today, per_page: 200 });
+    refreshAppointments({ date: today, per_page: 100 });
   }, [refreshAppointments]);
 
   const filteredUnits = liveUnits.filter(
@@ -57,7 +57,7 @@ export function OperationsCenter() {
 
   const handleRefresh = () => {
     const today = new Date().toLocaleDateString('en-CA');
-    refreshAppointments({ date: today, per_page: 200 });
+    refreshAppointments({ date: today, per_page: 100 });
     toast.success('Datos actualizados');
   };
 

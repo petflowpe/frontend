@@ -359,7 +359,7 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
 
   const fetchInspections = useCallback(async () => {
     try {
-      const res = await apiClient.get(API.vehicles.inspections.list, { per_page: 200 });
+      const res = await apiClient.get(API.vehicles.inspections.list, { per_page: 100 });
       const raw = Array.isArray(res) ? res : res?.data;
       setInspections((Array.isArray(raw) ? raw : []).map(inspectionFromBackend));
     } catch (e: any) {
