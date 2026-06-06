@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Clock, Save, Edit, Loader2 } from 'lucide-react';
+import { Building2, Plus, Clock, Save, Edit, Loader2, MapPin } from 'lucide-react';
+import { BranchesConfigModal } from './users/BranchesConfigModal';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -42,6 +43,7 @@ export function CompanyManagement() {
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [showHours, setShowHours] = useState<Company | null>(null);
   const [hoursLoading, setHoursLoading] = useState(false);
+  const [branchesTarget, setBranchesTarget] = useState<Company | null>(null);
   const [workingHours, setWorkingHours] = useState<WorkingHours>({ ...DEFAULT_WORKING_HOURS });
   const [formData, setFormData] = useState<Partial<Company>>({
     razon_social: '',
@@ -202,8 +204,16 @@ export function CompanyManagement() {
                   )}
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
+                  <Button variant="outline" size="sm" onClick={() => openEdit(c)} title="Editar empresa">
                     <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBranchesTarget(c)}
+                    title="Configurar sedes / sucursales"
+                  >
+                    <MapPin className="h-4 w-4 text-cyan-500" />
                   </Button>
                   <Button
                     variant="outline"
@@ -423,6 +433,13 @@ export function CompanyManagement() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Configurar sedes (sucursales) de la empresa seleccionada */}
+      <BranchesConfigModal
+        open={!!branchesTarget}
+        onOpenChange={(open) => { if (!open) setBranchesTarget(null); }}
+        companyId={branchesTarget?.id ?? null}
+      />
     </div>
   );
 }

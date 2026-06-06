@@ -4,7 +4,7 @@ import {
   Briefcase,
   Building2,
   ChevronRight,
-  Clock,
+  CreditCard,
   Eye,
   EyeOff,
   KeyRound,
@@ -24,7 +24,8 @@ import { Separator } from '../ui/separator';
 import { Badge } from '../ui/badge';
 import { Switch } from '../ui/switch';
 import { NativeSelect } from './NativeSelect';
-import type { User, UserFormState, CompanyBranchOption } from './types';
+import type { User, UserFormState, CompanyBranchOption, DocumentType } from './types';
+import { DOCUMENT_TYPES } from './types';
 import type { Role } from '../../hooks/useRoles';
 import { permissionsToDisplayList } from './permissionLabels';
 
@@ -65,7 +66,6 @@ export function UserFormView({
   companyBranches = [],
 }: UserFormViewProps) {
   const isEdit = mode === 'edit';
-  const createModal = !isEdit && layout === 'modal';
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -84,7 +84,8 @@ export function UserFormView({
       ? import.meta.env.VITE_SUPABASE_URL
       : null;
 
-  if (!isEdit) {
+  // Layout modal: se usa tanto en alta (Nuevo Usuario) como en edición.
+  if (layout === 'modal') {
     const headerBlock = (
       <div className="flex min-w-0 gap-3">
         <div className="bg-primary/15 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
@@ -153,6 +154,52 @@ export function UserFormView({
                     autoComplete="email"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
+                <div className="sm:col-span-4">
+                  <Label htmlFor="uc-doc-type" className="flex items-center gap-1.5 text-sm font-medium">
+                    <CreditCard className="text-muted-foreground size-4" />
+                    Tipo de documento
+                  </Label>
+                  <div className="mt-1.5">
+                    <NativeSelect
+                      id="uc-doc-type"
+                      value={formData.documentType || ''}
+                      onValueChange={(v) => setFormData({ ...formData, documentType: (v || '') as DocumentType | '' })}
+                      className={`${inputPremium} h-11`}
+                    >
+                      <option value="">— Sin documento —</option>
+                      {DOCUMENT_TYPES.map((d) => (
+                        <option key={d.value} value={d.value}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                </div>
+                <div className="sm:col-span-8">
+                  <Label htmlFor="uc-doc-num" className="text-sm font-medium">
+                    Número de documento
+                  </Label>
+                  <Input
+                    id="uc-doc-num"
+                    className={`mt-1.5 ${inputPremium}`}
+                    value={formData.documentNumber}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        documentNumber: e.target.value.replace(/\s+/g, '').slice(0, 20),
+                      })
+                    }
+                    placeholder="Ej. 71234567"
+                    inputMode="text"
+                    autoComplete="off"
+                  />
+                </div>
+                <p className="text-muted-foreground sm:col-span-12 -mt-1 text-[11px] leading-relaxed">
+                  Permite que el usuario inicie sesión también con su <strong>documento + contraseña</strong>.
+                </p>
               </div>
 
               <div>
@@ -337,44 +384,24 @@ export function UserFormView({
           Cancelar
         </Button>
         <Button type="button" size="lg" className="min-h-11 w-full rounded-xl sm:min-w-[200px] sm:w-auto" onClick={onSave} disabled={loading}>
-          <Plus className="mr-2 size-4" />
-          {loading ? 'Creando…' : 'Crear Usuario'}
+          {isEdit ? (
+            <Save className="mr-2 size-4" />
+          ) : (
+            <Plus className="mr-2 size-4" />
+          )}
+          {isEdit ? (loading ? 'Guardando…' : 'Guardar cambios') : loading ? 'Creando…' : 'Crear Usuario'}
         </Button>
       </div>
     );
 
-    if (createModal) {
-      return (
-        <div className="animate-in fade-in zoom-in-95 duration-200 flex max-h-[min(88vh,860px)] min-h-0 w-full min-w-0 flex-col px-5 pt-2 pb-1 sm:px-6">
-          <div className="border-border/60 shrink-0 border-b pb-4">{headerBlock}</div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-4">
-            {gridBlock}
-            {noteBlock}
-          </div>
-          <div className="border-border/60 bg-background/98 supports-[backdrop-filter]:bg-background/90 shrink-0 border-t pt-4 backdrop-blur-md">
-            {footerBlock}
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 flex min-h-0 w-full max-w-full flex-col pb-4">
-        <div className="mb-6 space-y-4">
-          <Button
-            type="button"
-            variant="ghost"
-            className="-ml-2 gap-2 text-muted-foreground hover:text-foreground"
-            onClick={onBack}
-          >
-            <ArrowLeft className="size-4 shrink-0" />
-            Volver a Usuarios
-          </Button>
-          {headerBlock}
+      <div className="animate-in fade-in zoom-in-95 duration-200 flex max-h-[min(88vh,860px)] min-h-0 w-full min-w-0 flex-col px-5 pt-2 pb-1 sm:px-6">
+        <div className="border-border/60 shrink-0 border-b pb-4">{headerBlock}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-4">
+          {gridBlock}
+          {noteBlock}
         </div>
-        {gridBlock}
-        {noteBlock}
-        <div className="bg-background/95 supports-[backdrop-filter]:bg-background/85 sticky bottom-0 z-20 mt-8 border-t py-4 backdrop-blur-md">
+        <div className="border-border/60 bg-background/98 supports-[backdrop-filter]:bg-background/90 shrink-0 border-t pt-4 backdrop-blur-md">
           {footerBlock}
         </div>
       </div>
@@ -421,8 +448,8 @@ export function UserFormView({
               </div>
             </div>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            <div className="sm:col-span-2 xl:col-span-1">
+          <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-6">
+            <div className="sm:col-span-4">
               <Label htmlFor="um-name" className="text-base">
                 Nombre completo *
               </Label>
@@ -435,7 +462,7 @@ export function UserFormView({
                 autoComplete="name"
               />
             </div>
-            <div className="sm:col-span-2 xl:col-span-1">
+            <div className="sm:col-span-2">
               <Label htmlFor="um-initials" className="text-base">
                 Iniciales
               </Label>
@@ -448,21 +475,24 @@ export function UserFormView({
                 autoComplete="off"
               />
             </div>
-            <div className="sm:col-span-2 xl:col-span-1">
+            <div className="sm:col-span-4">
               <Label htmlFor="um-email" className="text-base">
                 Correo electrónico *
               </Label>
-              <Input
-                id="um-email"
-                type="email"
-                className="mt-1.5 h-11 text-base md:text-sm"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="correo@empresa.com"
-                autoComplete="email"
-              />
+              <div className="relative mt-1.5">
+                <Mail className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+                <Input
+                  id="um-email"
+                  type="email"
+                  className="h-11 pl-10 text-base md:text-sm"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="correo@empresa.com"
+                  autoComplete="email"
+                />
+              </div>
             </div>
-            <div className="sm:col-span-2 xl:col-span-1">
+            <div className="sm:col-span-2">
               <Label htmlFor="um-phone" className="text-base">
                 Teléfono
               </Label>
@@ -475,6 +505,48 @@ export function UserFormView({
                 inputMode="tel"
                 autoComplete="tel"
               />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="um-doc-type" className="flex items-center gap-1.5 text-base">
+                <CreditCard className="text-muted-foreground size-4" />
+                Tipo de documento
+              </Label>
+              <div className="mt-1.5">
+                <NativeSelect
+                  id="um-doc-type"
+                  value={formData.documentType || ''}
+                  onValueChange={(v) => setFormData({ ...formData, documentType: (v || '') as DocumentType | '' })}
+                >
+                  <option value="">— Sin documento —</option>
+                  {DOCUMENT_TYPES.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            </div>
+            <div className="sm:col-span-4">
+              <Label htmlFor="um-doc-num" className="text-base">
+                Número de documento
+              </Label>
+              <Input
+                id="um-doc-num"
+                className="mt-1.5 h-11 text-base md:text-sm"
+                value={formData.documentNumber}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    documentNumber: e.target.value.replace(/\s+/g, '').slice(0, 20),
+                  })
+                }
+                placeholder="Ej. 71234567"
+                inputMode="text"
+                autoComplete="off"
+              />
+              <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">
+                El usuario podrá iniciar sesión con su <strong>documento + contraseña</strong> además de su correo.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -590,27 +662,7 @@ export function UserFormView({
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 border-dashed shadow-sm">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                <Clock className="size-5" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">Horarios</CardTitle>
-                <CardDescription>Disponibilidad y turnos (próximamente).</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              La asignación de horarios por usuario y sincronización con calendario se habilitará en una próxima versión.
-              Mientras tanto, el acceso al sistema sigue las reglas del rol y del estado del usuario.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/80 shadow-sm">
+        <Card className="border-border/80 shadow-sm md:col-span-2">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2">
               <div className="flex size-9 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">

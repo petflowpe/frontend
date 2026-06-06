@@ -36,6 +36,8 @@ export const API = {
     create: '/users',
     update: (id: string | number) => `/users/${id}`,
     delete: (id: string | number) => `/users/${id}`,
+    resetPassword: (id: string | number) => `/users/${id}/reset-password`,
+    revokeTokens: (id: string | number) => `/users/${id}/revoke-tokens`,
   },
   profile: {
     get: '/profile',

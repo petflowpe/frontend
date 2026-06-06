@@ -157,7 +157,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (documentType: string, documentNumber: string, password: string, email?: string): Promise<User | null> => {
     try {
-      // Login con backend Laravel usando email (ruta pública sin /v1)
+      // Login con backend Laravel: acepta email o documento (ruta pública sin /v1).
+      // Si el llamador pasa email lo enviamos como `email`; en caso contrario,
+      // usamos `document_type + document_number` que el backend reconoce.
+      const trimmedEmail = (email ?? '').trim();
+      const trimmedDoc = (documentNumber ?? '').trim();
+      const payload: Record<string, string> = { password };
+      if (trimmedEmail) {
+        payload.email = trimmedEmail;
+      } else if (trimmedDoc) {
+        payload.document_number = trimmedDoc;
+        if (documentType) payload.document_type = documentType;
+      } else {
+        throw new Error('Debe proporcionar correo electrónico o número de documento');
+      }
+
       const response = await apiClient.postPublic<{
         access_token: string;
         token_type: string;
@@ -172,10 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           branch_id?: number;
           permissions?: string[];
         };
-      }>('/auth/login', {
-        email: email || `${documentNumber}@temp.com`, // Usar email si está disponible
-        password: password,
-      });
+      }>('/auth/login', payload);
 
       // Guardar token
       if (response.access_token) {

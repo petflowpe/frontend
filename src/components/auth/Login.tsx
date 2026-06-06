@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
-import { Mail, Lock, Eye, EyeOff, LogIn, Cloud, ArrowRight, UserPlus, Crown, Stethoscope, AlertCircle, Loader2, Sun, Moon, Zap, Activity, Monitor } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, LogIn, Cloud, ArrowRight, UserPlus, Crown, Stethoscope, AlertCircle, Loader2, Sun, Moon, Zap, Activity, Monitor, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { Alert, AlertDescription } from '../ui/alert';
@@ -14,6 +14,18 @@ import { apiClient } from '../../utils/api/client';
 
 /** Clave para guardar el correo cuando "Recordar correo" está marcado (nunca guardamos contraseña) */
 const STORAGE_KEY_REMEMBER_EMAIL = 'smartpet_remember_email';
+/** Última identidad recordada (email o documento) con su modo. */
+const STORAGE_KEY_REMEMBER_MODE = 'smartpet_remember_login_mode';
+const STORAGE_KEY_REMEMBER_DOC = 'smartpet_remember_doc';
+const STORAGE_KEY_REMEMBER_DOC_TYPE = 'smartpet_remember_doc_type';
+
+type LoginMode = 'email' | 'document';
+const DOC_TYPES = [
+  { value: 'DNI', label: 'DNI' },
+  { value: 'CE', label: 'CE' },
+  { value: 'RUC', label: 'RUC' },
+  { value: 'PASS', label: 'Pasaporte' },
+] as const;
 
 /** Mostrar credenciales de prueba solo en desarrollo o si la env lo permite */
 const SHOW_DEV_CREDENTIALS = import.meta.env.DEV === true;
@@ -202,7 +214,10 @@ export const Login = ({
 
   // Estados Formulario
   const [isLogin, setIsLogin] = useState(true);
+  const [loginMode, setLoginMode] = useState<LoginMode>('email');
   const [email, setEmail] = useState('');
+  const [documentType, setDocumentType] = useState<string>('DNI');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -210,17 +225,30 @@ export const Login = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; name?: string; lastName?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; name?: string; lastName?: string; documentNumber?: string }>({});
   const [userCount, setUserCount] = useState<number | null>(null);
   const errorAlertRef = useRef<HTMLDivElement | null>(null);
 
-  // Cargar correo guardado al montar (solo si el usuario marcó "Recordar correo" antes)
+  // Cargar correo/documento guardado al montar (solo si "Recordar" estaba marcado).
   useEffect(() => {
     try {
-      const savedEmail = localStorage.getItem(STORAGE_KEY_REMEMBER_EMAIL);
-      if (savedEmail && savedEmail.trim()) {
-        setEmail(savedEmail.trim());
-        setRememberMe(true);
+      const savedMode = (localStorage.getItem(STORAGE_KEY_REMEMBER_MODE) as LoginMode | null) ?? 'email';
+      if (savedMode === 'document') {
+        const savedDoc = localStorage.getItem(STORAGE_KEY_REMEMBER_DOC) ?? '';
+        const savedDocType = localStorage.getItem(STORAGE_KEY_REMEMBER_DOC_TYPE) ?? 'DNI';
+        if (savedDoc.trim()) {
+          setLoginMode('document');
+          setDocumentNumber(savedDoc.trim());
+          setDocumentType(savedDocType);
+          setRememberMe(true);
+        }
+      } else {
+        const savedEmail = localStorage.getItem(STORAGE_KEY_REMEMBER_EMAIL);
+        if (savedEmail && savedEmail.trim()) {
+          setLoginMode('email');
+          setEmail(savedEmail.trim());
+          setRememberMe(true);
+        }
       }
     } catch {
       // Ignorar si localStorage no está disponible
@@ -259,33 +287,62 @@ export const Login = ({
     setFieldErrors({});
 
     const emailTrim = email.trim();
-    if (!emailTrim) {
-      setFieldErrors({ email: 'El correo es obligatorio' });
-      setError('Completa todos los campos');
-      return;
+    const docTrim = documentNumber.trim();
+
+    if (loginMode === 'email') {
+      if (!emailTrim) {
+        setFieldErrors({ email: 'El correo es obligatorio' });
+        setError('Completa todos los campos');
+        return;
+      }
+      if (!validateEmailFormat(emailTrim)) {
+        setFieldErrors({ email: 'El correo no tiene un formato válido' });
+        setError('Correo no válido');
+        return;
+      }
+    } else {
+      if (!docTrim) {
+        setFieldErrors({ documentNumber: 'El número de documento es obligatorio' });
+        setError('Completa todos los campos');
+        return;
+      }
+      if (!/^[A-Za-z0-9.-]{4,20}$/.test(docTrim)) {
+        setFieldErrors({ documentNumber: 'Número de documento no válido' });
+        setError('Documento no válido');
+        return;
+      }
     }
-    if (!validateEmailFormat(emailTrim)) {
-      setFieldErrors({ email: 'El correo no tiene un formato válido' });
-      setError('Correo no válido');
-      return;
-    }
+
     if (!password) {
-      setFieldErrors({ password: 'La contraseña es obligatoria' });
+      setFieldErrors((prev) => ({ ...prev, password: 'La contraseña es obligatoria' }));
       setError('Completa todos los campos');
       return;
     }
 
     setLoading(true);
     try {
-      const loggedUser = await auth.login('DNI', '', password, emailTrim);
+      const loggedUser = loginMode === 'email'
+        ? await auth.login('DNI', '', password, emailTrim)
+        : await auth.login(documentType, docTrim, password);
 
       if (loggedUser) {
-        // Recordar correo: guardar solo email en localStorage (nunca la contraseña)
         try {
           if (rememberMe) {
-            localStorage.setItem(STORAGE_KEY_REMEMBER_EMAIL, email.trim());
+            localStorage.setItem(STORAGE_KEY_REMEMBER_MODE, loginMode);
+            if (loginMode === 'email') {
+              localStorage.setItem(STORAGE_KEY_REMEMBER_EMAIL, emailTrim);
+              localStorage.removeItem(STORAGE_KEY_REMEMBER_DOC);
+              localStorage.removeItem(STORAGE_KEY_REMEMBER_DOC_TYPE);
+            } else {
+              localStorage.setItem(STORAGE_KEY_REMEMBER_DOC, docTrim);
+              localStorage.setItem(STORAGE_KEY_REMEMBER_DOC_TYPE, documentType);
+              localStorage.removeItem(STORAGE_KEY_REMEMBER_EMAIL);
+            }
           } else {
+            localStorage.removeItem(STORAGE_KEY_REMEMBER_MODE);
             localStorage.removeItem(STORAGE_KEY_REMEMBER_EMAIL);
+            localStorage.removeItem(STORAGE_KEY_REMEMBER_DOC);
+            localStorage.removeItem(STORAGE_KEY_REMEMBER_DOC_TYPE);
           }
         } catch {
           // Ignorar si localStorage no está disponible
@@ -299,7 +356,8 @@ export const Login = ({
         const user = {
           id: loggedUser.id,
           email: loggedUser.email,
-          name: `${loggedUser.firstName} ${loggedUser.lastName}`.trim() || email.split('@')[0],
+          name: `${loggedUser.firstName} ${loggedUser.lastName}`.trim()
+            || (loggedUser.email ? loggedUser.email.split('@')[0] : docTrim),
           role: roleSlug,
           role_key: roleSlug,
           role_display: roleDisplay,
@@ -525,25 +583,91 @@ export const Login = ({
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="login-email" className="text-sm font-medium text-slate-700 dark:text-slate-200">Identificador (Email)</Label>
-                <div className="relative group">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" aria-hidden />
-                  <Input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10 h-12 bg-white/80 border-slate-200 dark:bg-[#1e293b]/50 dark:border-slate-800 transition-all focus-visible:ring-cyan-500 backdrop-blur-sm shadow-sm"
-                    placeholder="usuario@sistema.com"
-                    autoComplete="email"
-                    aria-required="true"
-                    aria-invalid={!!fieldErrors.email}
-                    aria-describedby={fieldErrors.email ? 'login-error' : undefined}
-                  />
+              {isLogin && (
+                <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white/60 p-1 dark:border-slate-800 dark:bg-[#1A1F2E]/60">
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('email'); setError(null); setFieldErrors({}); }}
+                    className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all ${loginMode === 'email'
+                      ? 'bg-gradient-to-r from-cyan-500 to-purple-600 text-white shadow-md'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'}`}
+                    aria-pressed={loginMode === 'email'}
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('document'); setError(null); setFieldErrors({}); }}
+                    className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all ${loginMode === 'document'
+                      ? 'bg-gradient-to-r from-cyan-500 to-purple-600 text-white shadow-md'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'}`}
+                    aria-pressed={loginMode === 'document'}
+                  >
+                    <CreditCard className="h-3.5 w-3.5" />
+                    Documento
+                  </button>
                 </div>
-                {fieldErrors.email && <p className="text-xs text-red-600 dark:text-red-400" role="status">{fieldErrors.email}</p>}
-              </div>
+              )}
+
+              {(loginMode === 'email' || !isLogin) ? (
+                <div className="space-y-2">
+                  <Label htmlFor="login-email" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    {isLogin ? 'Correo electrónico' : 'Identificador (Email)'}
+                  </Label>
+                  <div className="relative group">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" aria-hidden />
+                    <Input
+                      id="login-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10 h-12 bg-white/80 border-slate-200 dark:bg-[#1e293b]/50 dark:border-slate-800 transition-all focus-visible:ring-cyan-500 backdrop-blur-sm shadow-sm"
+                      placeholder="usuario@sistema.com"
+                      autoComplete="email"
+                      aria-required="true"
+                      aria-invalid={!!fieldErrors.email}
+                      aria-describedby={fieldErrors.email ? 'login-error' : undefined}
+                    />
+                  </div>
+                  {fieldErrors.email && <p className="text-xs text-red-600 dark:text-red-400" role="status">{fieldErrors.email}</p>}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="login-doc" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Documento de identidad
+                  </Label>
+                  <div className="flex gap-2">
+                    <select
+                      value={documentType}
+                      onChange={(e) => setDocumentType(e.target.value)}
+                      className="h-12 w-24 shrink-0 rounded-md border border-slate-200 bg-white/80 px-2 text-sm font-medium text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 dark:border-slate-800 dark:bg-[#1e293b]/50 dark:text-slate-200"
+                      aria-label="Tipo de documento"
+                    >
+                      {DOC_TYPES.map((d) => (
+                        <option key={d.value} value={d.value}>{d.label}</option>
+                      ))}
+                    </select>
+                    <div className="relative group flex-1">
+                      <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" aria-hidden />
+                      <Input
+                        id="login-doc"
+                        type="text"
+                        inputMode="text"
+                        value={documentNumber}
+                        onChange={(e) => setDocumentNumber(e.target.value.replace(/\s+/g, '').slice(0, 20))}
+                        className="pl-10 h-12 bg-white/80 border-slate-200 dark:bg-[#1e293b]/50 dark:border-slate-800 transition-all focus-visible:ring-cyan-500 backdrop-blur-sm shadow-sm"
+                        placeholder="Ej. 71234567"
+                        autoComplete="username"
+                        aria-required="true"
+                        aria-invalid={!!fieldErrors.documentNumber}
+                        aria-describedby={fieldErrors.documentNumber ? 'login-error' : undefined}
+                      />
+                    </div>
+                  </div>
+                  {fieldErrors.documentNumber && <p className="text-xs text-red-600 dark:text-red-400" role="status">{fieldErrors.documentNumber}</p>}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -592,7 +716,7 @@ export const Login = ({
                     htmlFor="remember-me"
                     className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"
                   >
-                    Recordar correo (la contraseña no se guarda)
+                    Recordar {loginMode === 'email' ? 'correo' : 'documento'} (la contraseña no se guarda)
                   </Label>
                 </div>
               )}
