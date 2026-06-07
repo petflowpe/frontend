@@ -169,7 +169,7 @@ export function UserListView({
           <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-purple-500/10 blur-3xl dark:bg-purple-500/10" />
           <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl dark:bg-blue-500/10" />
 
-          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex flex-col gap-4">
             <div className="min-w-0 max-w-2xl">
               <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                 <Users className="h-7 w-7 text-violet-500 sm:h-8 sm:w-8" />
@@ -206,20 +206,26 @@ export function UserListView({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              {canManageRoles ? (
-                <Button variant="outline" size="sm" onClick={onConfigureRoles} className="h-9 gap-2">
-                  <SettingsIcon className="h-4 w-4" />
-                  <span>Configurar Roles</span>
-                </Button>
-              ) : null}
-              {canCreateUsers ? (
-                <Button size="sm" onClick={onNewUser} className="h-9 gap-2 shadow-sm">
-                  <Plus className="h-4 w-4" />
-                  <span>Nuevo Usuario</span>
-                </Button>
-              ) : null}
-            </div>
+            {(canManageRoles || canCreateUsers) ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {canManageRoles ? (
+                  <Button
+                    size="sm"
+                    onClick={onConfigureRoles}
+                    className="h-9 gap-2 border border-violet-300/70 bg-violet-100 text-violet-700 shadow-sm hover:bg-violet-200 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-100 dark:hover:bg-violet-500/25"
+                  >
+                    <SettingsIcon className="h-4 w-4" />
+                    <span>Configurar Roles</span>
+                  </Button>
+                ) : null}
+                {canCreateUsers ? (
+                  <Button size="sm" onClick={onNewUser} className="h-9 gap-2 shadow-sm">
+                    <Plus className="h-4 w-4" />
+                    <span>Nuevo Usuario</span>
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
