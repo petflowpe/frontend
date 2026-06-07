@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { apiClient } from '../utils/api/client';
-import { getStoredCompanyId } from '../utils/appointmentMappers';
+import { API } from '../utils/api/endpoints';
 
 export interface RouteStopItem {
   order: number;
@@ -51,11 +51,10 @@ export function useRoutePlans() {
     async (vehicleId: number, date: string): Promise<DailyScheduleData> => {
       setLoading(true);
       try {
-        const res = await apiClient.get<{ data?: DailyScheduleData }>('/route-plans/daily-schedule', {
-          vehicle_id: vehicleId,
-          date,
-          company_id: getStoredCompanyId(),
-        });
+        const res = await apiClient.get<{ data?: DailyScheduleData }>(
+          API.routePlans.dailySchedule,
+          { vehicle_id: vehicleId, date }
+        );
         return unwrap(res);
       } finally {
         setLoading(false);
@@ -67,10 +66,10 @@ export function useRoutePlans() {
   const fetchDriverDay = useCallback(async (date?: string): Promise<DailyScheduleData> => {
     setLoading(true);
     try {
-      const res = await apiClient.get<{ data?: DailyScheduleData }>('/driver/day', {
-        ...(date ? { date } : {}),
-        company_id: getStoredCompanyId(),
-      });
+      const res = await apiClient.get<{ data?: DailyScheduleData }>(
+        API.driver.day,
+        date ? { date } : undefined
+      );
       return unwrap(res);
     } finally {
       setLoading(false);
@@ -87,14 +86,16 @@ export function useRoutePlans() {
     }) => {
       setLoading(true);
       try {
-        const res = await apiClient.post<{ data?: unknown }>('/route-plans/from-appointments', {
-          company_id: getStoredCompanyId(),
-          vehicle_id: params.vehicleId,
-          date: params.date,
-          appointment_ids: params.appointmentIds,
-          status: params.status,
-          name: params.name,
-        });
+        const res = await apiClient.post<{ data?: unknown }>(
+          API.routePlans.fromAppointments,
+          {
+            vehicle_id: params.vehicleId,
+            date: params.date,
+            appointment_ids: params.appointmentIds,
+            status: params.status,
+            name: params.name,
+          }
+        );
         return unwrap(res);
       } finally {
         setLoading(false);
@@ -104,7 +105,7 @@ export function useRoutePlans() {
   );
 
   const updateRouteStatus = useCallback(async (routeId: number, status: string) => {
-    const res = await apiClient.put<{ data?: unknown }>(`/route-plans/${routeId}`, { status });
+    const res = await apiClient.put<{ data?: unknown }>(API.routePlans.update(routeId), { status });
     return unwrap(res);
   }, []);
 

@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   MapPin,
   Car,
-  Calendar,
   Clock,
   ChevronUp,
   ChevronDown,
@@ -18,13 +17,15 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner';
 import { useVehicles } from '../hooks/useVehicles';
 import { useRoutePlans, type RouteStopItem } from '../hooks/useRoutePlans';
-import { getStoredCompanyId } from '../utils/appointmentMappers';
+import ConfiguracionZonas from './admin/config/ConfiguracionZonas';
 
 interface RoutesProps {
   onNavigate?: (tab: string) => void;
+  currentUser?: { companyId?: number | null } | null;
 }
 
 function todayIso(): string {
@@ -46,9 +47,9 @@ function statusBadge(status: string) {
   }
 }
 
-export function Routes({ onNavigate }: RoutesProps) {
-  const companyId = getStoredCompanyId();
-  const { vehicles, loading: loadingVehicles } = useVehicles(companyId);
+export function Routes({ onNavigate, currentUser }: RoutesProps) {
+  const scopedCompanyId = currentUser?.companyId ?? null;
+  const { vehicles, loading: loadingVehicles } = useVehicles(scopedCompanyId);
   const { loading, fetchDailySchedule, saveRouteFromAppointments, updateRouteStatus } = useRoutePlans();
 
   const [selectedDate, setSelectedDate] = useState(todayIso());
@@ -304,6 +305,8 @@ export function Routes({ onNavigate }: RoutesProps) {
           ))}
         </div>
       )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
