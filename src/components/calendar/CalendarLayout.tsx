@@ -18,14 +18,15 @@ import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Car, RotateCcw, Search } from 'lucide-react';
 import { cn } from '../ui/utils';
+import { getStoredCompanyId } from '../../utils/appointmentMappers';
 
 interface CalendarLayoutProps {
   currentUser?: { companyId?: number } | null;
 }
 
 export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
-  const companyId = currentUser?.companyId ?? 1;
-  const { vehicles, loading: vehiclesLoading } = useVehicles(companyId as number);
+  const companyId = currentUser?.companyId ?? getStoredCompanyId() ?? undefined;
+  const { vehicles, loading: vehiclesLoading } = useVehicles(companyId);
   const { config: calendarConfig } = useCalendarConfig(companyId);
 
   const [currentDate, setCurrentDate] = useState(() => new Date());

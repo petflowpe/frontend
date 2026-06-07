@@ -69,17 +69,18 @@ export function normalizeDateFromBackend(date?: string | null): string {
   return d.length >= 10 ? d.slice(0, 10) : d;
 }
 
-export function getStoredCompanyId(): number {
-  if (typeof window === 'undefined') return 1;
+/** Devuelve company_id del usuario en sesión, o null si no hay (p. ej. super_admin sin empresa). */
+export function getStoredCompanyId(): number | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem('smartpet_user');
-    if (!raw) return 1;
+    if (!raw) return null;
     const user = JSON.parse(raw);
     const id = user?.companyId ?? user?.company_id;
     const n = parseInt(String(id), 10);
-    return Number.isInteger(n) && n > 0 ? n : 1;
+    return Number.isInteger(n) && n > 0 ? n : null;
   } catch {
-    return 1;
+    return null;
   }
 }
 

@@ -74,6 +74,9 @@ export interface Appointment {
   address?: string;
   district?: string;
   reminderSent?: boolean;
+  clientEmail?: string;
+  confirmedAt?: string;
+  confirmationSent?: boolean;
   recurrenceInfo?: any;
   recurrenceSeriesId?: string;
   recurrenceType?: 'daily' | 'weekly' | 'monthly';
@@ -127,6 +130,7 @@ export const useAppointments = () => {
       clientId: backendAppointment.client_id?.toString() || '',
       clientName: backendAppointment.client?.razon_social || backendAppointment.client?.nombre_comercial || '',
       clientPhone: backendAppointment.client?.telefono || '',
+      clientEmail: backendAppointment.client?.email || '',
       petId: backendAppointment.pet_id?.toString() || '',
       petName: backendAppointment.pet?.name || '',
       petBreed: backendAppointment.pet?.breed || '',
@@ -165,6 +169,7 @@ export const useAppointments = () => {
     date_to?: string;
     month?: string;
     limit?: number;
+    per_page?: number;
     status?: string;
     vehicle_id?: number | string;
   }) => {
@@ -176,9 +181,10 @@ export const useAppointments = () => {
       if (filters?.date_to) params.date_to = filters.date_to;
       if (filters?.status) params.status = filters.status;
       if (filters?.vehicle_id) params.vehicle_id = filters.vehicle_id;
-      const perPage = filters?.limit ?? 100;
+      const perPage = filters?.limit ?? filters?.per_page ?? 100;
       params.per_page = perPage;
-      params.company_id = getStoredCompanyId();
+      const scopedCompanyId = getStoredCompanyId();
+      if (scopedCompanyId) params.company_id = scopedCompanyId;
 
       const allRows: any[] = [];
       let page = 1;
@@ -242,7 +248,6 @@ export const useAppointments = () => {
     const backendData: any = {
       client_id: parseInt(appointment.clientId || '0', 10),
       pet_id: parseInt(appointment.petId || '0', 10),
-      company_id: getStoredCompanyId(),
       service_type: serviceTypeCode,
       service_name: serviceName,
       service_category: inferServiceCategory(serviceName, appointment.serviceType),

@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Bell, Check, Clock, Phone, Mail, Calendar, Loader2, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Bell, Check, Clock, Phone, Mail, Calendar, Loader2, RefreshCw, MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { formatDate } from '../utils/helpers';
 import { useAppointments } from '../hooks/useAppointments';
+import { useCompanies } from '../hooks/useCompanies';
+import { getStoredCompanyId } from '../utils/appointmentMappers';
 
 interface Appointment {
   id: string;
@@ -39,6 +41,12 @@ interface CancellationPolicy {
   enabled: boolean;
 }
 
+const DEFAULT_POLICIES: CancellationPolicy[] = [
+  { id: 'POL-001', name: 'Cancelación con 24 horas', windowHours: 24, penaltyPercentage: 0, enabled: true },
+  { id: 'POL-002', name: 'Cancelación 12-24 horas antes', windowHours: 12, penaltyPercentage: 30, enabled: true },
+  { id: 'POL-003', name: 'Cancelación menos de 12 horas', windowHours: 0, penaltyPercentage: 50, enabled: true },
+];
+
 export function AppointmentConfirmation() {
   const {
     appointments: rawAppointments,
@@ -47,17 +55,23 @@ export function AppointmentConfirmation() {
     confirmAppointment,
     sendAppointmentReminder,
   } = useAppointments();
+  const { getCompanyConfig, updateCompanyConfig } = useCompanies();
+  const companyId = getStoredCompanyId();
 
-  useEffect(() => {
+  const loadAppointmentsRange = useCallback(() => {
     const today = new Date().toLocaleDateString('en-CA');
     const in7 = new Date();
     in7.setDate(in7.getDate() + 7);
-    refreshAppointments({
+    return refreshAppointments({
       date_from: today,
       date_to: in7.toLocaleDateString('en-CA'),
-      per_page: 100,
+      limit: 100,
     });
   }, [refreshAppointments]);
+
+  useEffect(() => {
+    loadAppointmentsRange();
+  }, [loadAppointmentsRange]);
 
   const appointments: Appointment[] = useMemo(
     () =>
@@ -71,47 +85,66 @@ export function AppointmentConfirmation() {
           date: a.date,
           time: (a.time || '').slice(0, 5),
           phone: a.clientPhone || a.phone || '',
-          email: '',
+          email: a.clientEmail || '',
           confirmed: a.status === 'confirmed' || a.status === 'in-progress' || a.status === 'completed',
           remindersSent: {
             reminder24h: !!a.reminderSent,
             reminder2h: false,
           },
-          confirmationMethod: undefined,
-          confirmationDate: undefined,
+          confirmationMethod: a.confirmationSent ? 'whatsapp' : undefined,
+          confirmationDate: a.confirmedAt,
         })),
     [rawAppointments]
   );
 
-  const [policies, setPolicies] = useState<CancellationPolicy[]>([
-    {
-      id: 'POL-001',
-      name: 'Cancelación con 24 horas',
-      windowHours: 24,
-      penaltyPercentage: 0,
-      enabled: true
-    },
-    {
-      id: 'POL-002',
-      name: 'Cancelación 12-24 horas antes',
-      windowHours: 12,
-      penaltyPercentage: 30,
-      enabled: true
-    },
-    {
-      id: 'POL-003',
-      name: 'Cancelación menos de 12 horas',
-      windowHours: 0,
-      penaltyPercentage: 50,
-      enabled: true
-    }
-  ]);
-
+  const [policies, setPolicies] = useState<CancellationPolicy[]>(DEFAULT_POLICIES);
   const [autoReminders, setAutoReminders] = useState({
     reminder24h: true,
     reminder2h: true,
-    requireConfirmation: true
+    requireConfirmation: true,
   });
+  const [configLoading, setConfigLoading] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      setConfigLoading(true);
+      try {
+        const config = await getCompanyConfig(companyId, 'document_settings');
+        if (cancelled) return;
+        if (Array.isArray(config?.cancellation_policies) && config.cancellation_policies.length > 0) {
+          setPolicies(config.cancellation_policies as CancellationPolicy[]);
+        }
+        if (config?.appointment_reminders && typeof config.appointment_reminders === 'object') {
+          setAutoReminders((prev) => ({ ...prev, ...config.appointment_reminders }));
+        }
+      } catch {
+        /* defaults */
+      } finally {
+        if (!cancelled) setConfigLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, getCompanyConfig]);
+
+  const persistConfirmationConfig = async (
+    nextPolicies: CancellationPolicy[],
+    nextReminders: typeof autoReminders
+  ) => {
+    if (!companyId) {
+      toast.error('No hay empresa asociada para guardar la configuración');
+      return;
+    }
+    try {
+      await updateCompanyConfig(companyId, 'document_settings', {
+        cancellation_policies: nextPolicies,
+        appointment_reminders: nextReminders,
+      });
+    } catch {
+      toast.error('No se pudo guardar la configuración');
+    }
+  };
 
   const handleConfirm = async (
     appointmentId: string,
@@ -137,10 +170,17 @@ export function AppointmentConfirmation() {
   };
 
   const handleTogglePolicy = (policyId: string) => {
-    setPolicies(prev => prev.map(pol =>
+    const next = policies.map((pol) =>
       pol.id === policyId ? { ...pol, enabled: !pol.enabled } : pol
-    ));
-    toast.success('Política actualizada');
+    );
+    setPolicies(next);
+    void persistConfirmationConfig(next, autoReminders);
+  };
+
+  const handleAutoReminderChange = (patch: Partial<typeof autoReminders>) => {
+    const next = { ...autoReminders, ...patch };
+    setAutoReminders(next);
+    void persistConfirmationConfig(policies, next);
   };
 
   const stats = {
@@ -166,16 +206,7 @@ export function AppointmentConfirmation() {
         </div>
         <Button
           variant="outline"
-          onClick={() => {
-            const today = new Date().toLocaleDateString('en-CA');
-            const in7 = new Date();
-            in7.setDate(in7.getDate() + 7);
-            refreshAppointments({
-              date_from: today,
-              date_to: in7.toLocaleDateString('en-CA'),
-              per_page: 100,
-            });
-          }}
+          onClick={() => loadAppointmentsRange()}
           disabled={loading}
         >
           {loading ? (
@@ -455,9 +486,8 @@ export function AppointmentConfirmation() {
                   <Switch
                     id="reminder-24h"
                     checked={autoReminders.reminder24h}
-                    onCheckedChange={(checked) =>
-                      setAutoReminders({ ...autoReminders, reminder24h: checked })
-                    }
+                    disabled={configLoading}
+                    onCheckedChange={(checked) => handleAutoReminderChange({ reminder24h: checked })}
                   />
                 </div>
 
@@ -471,9 +501,8 @@ export function AppointmentConfirmation() {
                   <Switch
                     id="reminder-2h"
                     checked={autoReminders.reminder2h}
-                    onCheckedChange={(checked) =>
-                      setAutoReminders({ ...autoReminders, reminder2h: checked })
-                    }
+                    disabled={configLoading}
+                    onCheckedChange={(checked) => handleAutoReminderChange({ reminder2h: checked })}
                   />
                 </div>
 
@@ -487,9 +516,8 @@ export function AppointmentConfirmation() {
                   <Switch
                     id="require-confirmation"
                     checked={autoReminders.requireConfirmation}
-                    onCheckedChange={(checked) =>
-                      setAutoReminders({ ...autoReminders, requireConfirmation: checked })
-                    }
+                    disabled={configLoading}
+                    onCheckedChange={(checked) => handleAutoReminderChange({ requireConfirmation: checked })}
                   />
                 </div>
               </div>

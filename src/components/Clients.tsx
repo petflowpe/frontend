@@ -68,22 +68,9 @@ const LIMA_DISTRICTS = [
 ];
 
 export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (tab: string) => void; currentUser?: CurrentUserLike | null }) {
-  // Fallback demo si no llega usuario real desde App
-  const [currentUser, setCurrentUser] = useState({
-    name: 'Admin User',
-    role: 'Administrador'
-  });
-  const effectiveRole = authUser ? getRoleKey(authUser) : currentUser.role;
+  const effectiveRole = authUser ? getRoleKey(authUser) : '';
   const normalizedRole = (effectiveRole || '').toLowerCase();
   const isAdminRole = ['super administrador', 'administrador', 'super_admin', 'company_admin', 'admin'].includes(normalizedRole);
-
-  // Función para cambiar rol (solo para demostración - remover en producción)
-  const toggleUserRole = () => {
-    const roles = ['Super Administrador', 'Administrador', 'Peluquero Canino', 'Recepcionista', 'Veterinario'];
-    const currentIndex = roles.indexOf(currentUser.role);
-    const nextIndex = (currentIndex + 1) % roles.length;
-    setCurrentUser({ ...currentUser, role: roles[nextIndex] });
-  };
 
   const [showNewClient, setShowNewClient] = useState(false);
   const [showNewPet, setShowNewPet] = useState(false);
@@ -516,15 +503,14 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
                 <h1 className="text-2xl text-primary">Gestión de Clientes</h1>
                 <Badge 
                   variant="outline" 
-                  className={`cursor-pointer hover:opacity-80 transition-opacity ${
+                  className={`${
                     normalizedRole === 'super administrador' || normalizedRole === 'super_admin' || normalizedRole === 'admin'
                       ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400'
                       : normalizedRole === 'administrador' || normalizedRole === 'company_admin'
                       ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-950/30 dark:text-purple-400' 
                       : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/30 dark:text-blue-400'
                   }`}
-                  onClick={() => { if (!authUser) toggleUserRole(); }}
-                  title={authUser ? 'Rol del usuario autenticado' : 'Click para cambiar rol (demo)'}
+                  title="Rol del usuario autenticado"
                 >
                   <Shield className="h-3 w-3 mr-1" />
                   {effectiveRole}

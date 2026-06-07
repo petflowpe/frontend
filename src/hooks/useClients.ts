@@ -94,7 +94,6 @@ export const useClients = () => {
   // Convertir formato frontend a formato backend Laravel
   const toBackendFormat = (client: Partial<Client>) => {
     return {
-      company_id: null, // Por ahora null, se puede obtener del contexto de usuario si es necesario
       razon_social: client.fullName || '',
       nombre_comercial: client.fullName || '', // Usar el mismo nombre si no hay comercial
       tipo_documento: client.documentType === 'DNI' ? '1' : client.documentType === 'CE' ? '4' : client.documentType === 'RUC' ? '6' : '1',
