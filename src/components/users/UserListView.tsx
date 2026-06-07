@@ -6,13 +6,6 @@ import {
   Trash2,
   Search,
   Shield,
-  ShieldCheck,
-  ShieldAlert,
-  Briefcase,
-  Wallet,
-  Stethoscope,
-  Scissors,
-  ClipboardList,
   Lock,
   Unlock,
   Phone,
@@ -106,158 +99,6 @@ function initialsOf(name: string): string {
     .toUpperCase();
 }
 
-/* =========================================================
- * Paleta por rol (colores aplicados a las tarjetas KPI)
- * Cada entrada incluye estilos de borde, fondo claro/oscuro,
- * texto del conteo, fondo de icono y color del icono.
- * ========================================================= */
-type RolePalette = {
-  bar: string;
-  ring: string;
-  surface: string;
-  iconWrap: string;
-  iconColor: string;
-  counter: string;
-};
-
-/**
- * Paletas por rol. Cada paleta tiene:
- *  - bar/iconWrap/iconColor/counter: acentos del color
- *  - surface: fondo de la tarjeta. En oscuro usamos un fondo casi sólido oscuro
- *    (slate-950/slate-900) con un tinte muy sutil del color en una esquina
- *    para evitar el efecto "bloque de color" y mantener legibilidad.
- *  - surface en claro mantiene gradient suave con tinte del color.
- */
-const ROLE_PALETTES: Record<string, RolePalette> = {
-  rose: {
-    bar: 'bg-rose-500',
-    ring: 'ring-rose-500/30',
-    surface:
-      'bg-gradient-to-br from-rose-50 to-white border-rose-200 dark:bg-none dark:bg-[#0f1218] dark:border-rose-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(244,63,94,0.25)]',
-    iconWrap: 'border-rose-300 bg-rose-100/60 dark:border-rose-500/40 dark:bg-rose-500/10',
-    iconColor: 'text-rose-600 dark:text-rose-400',
-    counter: 'text-rose-700 dark:text-rose-300',
-  },
-  red: {
-    bar: 'bg-red-500',
-    ring: 'ring-red-500/30',
-    surface:
-      'bg-gradient-to-br from-red-50 to-white border-red-200 dark:bg-none dark:bg-[#0f1218] dark:border-red-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(239,68,68,0.25)]',
-    iconWrap: 'border-red-300 bg-red-100/60 dark:border-red-500/40 dark:bg-red-500/10',
-    iconColor: 'text-red-600 dark:text-red-400',
-    counter: 'text-red-700 dark:text-red-300',
-  },
-  amber: {
-    bar: 'bg-amber-500',
-    ring: 'ring-amber-500/30',
-    surface:
-      'bg-gradient-to-br from-amber-50 to-white border-amber-200 dark:bg-none dark:bg-[#0f1218] dark:border-amber-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(245,158,11,0.22)]',
-    iconWrap: 'border-amber-300 bg-amber-100/60 dark:border-amber-500/40 dark:bg-amber-500/10',
-    iconColor: 'text-amber-600 dark:text-amber-400',
-    counter: 'text-amber-700 dark:text-amber-300',
-  },
-  emerald: {
-    bar: 'bg-emerald-500',
-    ring: 'ring-emerald-500/30',
-    surface:
-      'bg-gradient-to-br from-emerald-50 to-white border-emerald-200 dark:bg-none dark:bg-[#0f1218] dark:border-emerald-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(16,185,129,0.22)]',
-    iconWrap: 'border-emerald-300 bg-emerald-100/60 dark:border-emerald-500/40 dark:bg-emerald-500/10',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
-    counter: 'text-emerald-700 dark:text-emerald-300',
-  },
-  teal: {
-    bar: 'bg-teal-500',
-    ring: 'ring-teal-500/30',
-    surface:
-      'bg-gradient-to-br from-teal-50 to-white border-teal-200 dark:bg-none dark:bg-[#0f1218] dark:border-teal-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(20,184,166,0.22)]',
-    iconWrap: 'border-teal-300 bg-teal-100/60 dark:border-teal-500/40 dark:bg-teal-500/10',
-    iconColor: 'text-teal-600 dark:text-teal-400',
-    counter: 'text-teal-700 dark:text-teal-300',
-  },
-  cyan: {
-    bar: 'bg-cyan-500',
-    ring: 'ring-cyan-500/30',
-    surface:
-      'bg-gradient-to-br from-cyan-50 to-white border-cyan-200 dark:bg-none dark:bg-[#0f1218] dark:border-cyan-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(6,182,212,0.22)]',
-    iconWrap: 'border-cyan-300 bg-cyan-100/60 dark:border-cyan-500/40 dark:bg-cyan-500/10',
-    iconColor: 'text-cyan-600 dark:text-cyan-400',
-    counter: 'text-cyan-700 dark:text-cyan-300',
-  },
-  sky: {
-    bar: 'bg-sky-500',
-    ring: 'ring-sky-500/30',
-    surface:
-      'bg-gradient-to-br from-sky-50 to-white border-sky-200 dark:bg-none dark:bg-[#0f1218] dark:border-sky-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(14,165,233,0.22)]',
-    iconWrap: 'border-sky-300 bg-sky-100/60 dark:border-sky-500/40 dark:bg-sky-500/10',
-    iconColor: 'text-sky-600 dark:text-sky-400',
-    counter: 'text-sky-700 dark:text-sky-300',
-  },
-  indigo: {
-    bar: 'bg-indigo-500',
-    ring: 'ring-indigo-500/30',
-    surface:
-      'bg-gradient-to-br from-indigo-50 to-white border-indigo-200 dark:bg-none dark:bg-[#0f1218] dark:border-indigo-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(99,102,241,0.22)]',
-    iconWrap: 'border-indigo-300 bg-indigo-100/60 dark:border-indigo-500/40 dark:bg-indigo-500/10',
-    iconColor: 'text-indigo-600 dark:text-indigo-400',
-    counter: 'text-indigo-700 dark:text-indigo-300',
-  },
-  violet: {
-    bar: 'bg-violet-500',
-    ring: 'ring-violet-500/30',
-    surface:
-      'bg-gradient-to-br from-violet-50 to-white border-violet-200 dark:bg-none dark:bg-[#0f1218] dark:border-violet-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(139,92,246,0.22)]',
-    iconWrap: 'border-violet-300 bg-violet-100/60 dark:border-violet-500/40 dark:bg-violet-500/10',
-    iconColor: 'text-violet-600 dark:text-violet-400',
-    counter: 'text-violet-700 dark:text-violet-300',
-  },
-  fuchsia: {
-    bar: 'bg-fuchsia-500',
-    ring: 'ring-fuchsia-500/30',
-    surface:
-      'bg-gradient-to-br from-fuchsia-50 to-white border-fuchsia-200 dark:bg-none dark:bg-[#0f1218] dark:border-fuchsia-500/25 dark:shadow-[inset_0_0_30px_-12px_rgba(217,70,239,0.22)]',
-    iconWrap: 'border-fuchsia-300 bg-fuchsia-100/60 dark:border-fuchsia-500/40 dark:bg-fuchsia-500/10',
-    iconColor: 'text-fuchsia-600 dark:text-fuchsia-400',
-    counter: 'text-fuchsia-700 dark:text-fuchsia-300',
-  },
-};
-
-const ROLE_PALETTE_FALLBACK_KEYS: string[] = ['cyan', 'violet', 'amber', 'sky', 'indigo', 'fuchsia', 'teal'];
-
-function paletteKeyForRole(slug: string): string {
-  const s = (slug || '').toLowerCase();
-  if (s.includes('super')) return 'rose';
-  if (s.includes('admin')) return 'red';
-  if (s.includes('audit')) return 'amber';
-  if (s.includes('sede') || s.includes('branch')) return 'emerald';
-  if (s.includes('tesor') || s.includes('treasury') || s.includes('finance') || s.includes('caja')) return 'teal';
-  if (s.includes('gerent') || s.includes('manager') || s.includes('director')) return 'cyan';
-  if (s.includes('groom') || s.includes('estetic')) return 'violet';
-  if (s.includes('vet') || s.includes('medic') || s.includes('doctor')) return 'sky';
-  if (s.includes('client') || s.includes('reception') || s.includes('recep')) return 'indigo';
-  if (s.includes('ventas') || s.includes('sales')) return 'fuchsia';
-
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return ROLE_PALETTE_FALLBACK_KEYS[h % ROLE_PALETTE_FALLBACK_KEYS.length];
-}
-
-function paletteForRole(slug: string): RolePalette {
-  return ROLE_PALETTES[paletteKeyForRole(slug)] ?? ROLE_PALETTES.cyan;
-}
-
-function iconForRole(slug: string): ReactNode {
-  const s = (slug || '').toLowerCase();
-  if (s.includes('super')) return <ShieldAlert className="h-5 w-5" />;
-  if (s.includes('admin')) return <ShieldCheck className="h-5 w-5" />;
-  if (s.includes('audit')) return <ClipboardList className="h-5 w-5" />;
-  if (s.includes('sede') || s.includes('branch')) return <Building2 className="h-5 w-5" />;
-  if (s.includes('tesor') || s.includes('treasury') || s.includes('finance') || s.includes('caja')) return <Wallet className="h-5 w-5" />;
-  if (s.includes('gerent') || s.includes('manager') || s.includes('director')) return <Briefcase className="h-5 w-5" />;
-  if (s.includes('groom') || s.includes('estetic')) return <Scissors className="h-5 w-5" />;
-  if (s.includes('vet') || s.includes('medic') || s.includes('doctor')) return <Stethoscope className="h-5 w-5" />;
-  return <Shield className="h-5 w-5" />;
-}
-
 export function UserListView({
   stats,
   searchTerm,
@@ -295,20 +136,6 @@ export function UserListView({
     setFilterRole('all');
     setFilterStatus('all');
   };
-
-  /** Tarjetas KPI por rol — ordenadas alfabéticamente para estabilidad visual. */
-  const roleCards = useMemo(() => {
-    return [...apiRoles]
-      .filter((r) => r.active !== false)
-      .map((r) => ({
-        id: r.id,
-        slug: r.name,
-        label: r.display_name || r.name,
-        description: r.description ?? null,
-        count: stats.byRole[r.name] ?? 0,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'es'));
-  }, [apiRoles, stats.byRole]);
 
   // ===== Paginación =====
   const [pageSize, setPageSize] = useState<number>(10);
@@ -406,23 +233,6 @@ export function UserListView({
             </p>
           </div>
         </div>
-
-        {/* ============ Sección: Tarjetas KPI por rol ============ */}
-        {roleCards.length > 0 ? (
-          <section className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {roleCards.map((role) => (
-                <RoleKpiCard
-                  key={role.id}
-                  slug={role.slug}
-                  label={role.label}
-                  count={role.count}
-                  description={role.description}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
 
         {/* ============ Toolbar ============ */}
         <Card className="border-border/60 p-3 sm:p-4">
@@ -722,53 +532,6 @@ export function UserListView({
 /* =========================================================
  * Subcomponentes
  * ========================================================= */
-
-interface RoleKpiCardProps {
-  slug: string;
-  label: string;
-  count: number;
-  description?: string | null;
-}
-
-function RoleKpiCard({ slug, label, count, description }: RoleKpiCardProps) {
-  const palette = paletteForRole(slug);
-  const icon = iconForRole(slug);
-  const subtitle = description ?? humanizeRoleSubtitle(slug);
-
-  return (
-    <Card
-      className={`relative overflow-hidden border p-4 shadow-sm transition-shadow hover:shadow-md ${palette.surface}`}
-    >
-      <span className={`absolute left-0 top-0 h-full w-1 ${palette.bar}`} aria-hidden />
-      <div className="flex items-start justify-between gap-3 pl-2">
-        <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${palette.iconWrap} ${palette.iconColor}`}
-        >
-          {icon}
-        </div>
-        <span className={`text-xl font-bold tabular-nums leading-none ${palette.counter}`}>{count}</span>
-      </div>
-      <div className="mt-3 pl-2">
-        <h3 className="truncate text-sm font-semibold text-foreground">{label}</h3>
-        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
-      </div>
-    </Card>
-  );
-}
-
-function humanizeRoleSubtitle(slug: string): string {
-  const s = (slug || '').toLowerCase();
-  if (s.includes('super')) return 'Acceso total al sistema sin restricciones.';
-  if (s.includes('admin')) return 'Administra usuarios, sedes, roles y operación.';
-  if (s.includes('audit')) return 'Revisa y aprueba movimientos de caja chica.';
-  if (s.includes('sede') || s.includes('branch')) return 'Responsable operativo de una sede.';
-  if (s.includes('tesor') || s.includes('treasury') || s.includes('caja')) return 'Gestiona caja, cobros y reportes financieros.';
-  if (s.includes('gerent') || s.includes('manager') || s.includes('director')) return 'Acceso a reportes, finanzas y operaciones.';
-  if (s.includes('groom') || s.includes('estetic')) return 'Atiende citas de estética y servicios.';
-  if (s.includes('vet') || s.includes('medic') || s.includes('doctor')) return 'Atiende consultas y procedimientos médicos.';
-  if (s.includes('client') || s.includes('reception')) return 'Atención al cliente y recepción de mascotas.';
-  return 'Rol del sistema con permisos personalizados.';
-}
 
 function BranchesBadge({ user }: { user: User }) {
   const all = (user as User & { allBranchesAccess?: boolean; branchIds?: Array<number | string> }).allBranchesAccess;
