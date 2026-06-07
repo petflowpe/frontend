@@ -533,7 +533,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const vehicleId = (appointmentData as { vehicleId?: string | number }).vehicleId;
-      const res = await apiClient.post<{ data?: any }>('/appointments', {
+      const res = await apiClient.post<{ data?: any; advance_amount?: number; tracking_code?: string }>('/appointments', {
         client_id: parseInt(clientId, 10),
         pet_id: parseInt(appointmentData.petId),
         service_type: appointmentData.serviceType,
@@ -546,9 +546,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         district: appointmentData.district,
         price: appointmentData.price,
         total: appointmentData.price,
+        booking_source: 'portal_auth',
         notes: '[Portal cliente autenticado]',
         ...(vehicleId != null && String(vehicleId) !== ''
           ? { vehicle_id: parseInt(String(vehicleId), 10) }
+          : {}),
+        ...((appointmentData as { advance_paid?: boolean; advance_payment_method?: string; advance_payment_reference?: string }).advance_paid
+          ? {
+              advance_paid: true,
+              advance_payment_method: (appointmentData as { advance_payment_method?: string }).advance_payment_method,
+              advance_payment_reference: (appointmentData as { advance_payment_reference?: string }).advance_payment_reference,
+            }
           : {}),
       });
       const backendApt = res?.data ?? res;

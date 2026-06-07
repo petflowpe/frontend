@@ -53,6 +53,23 @@ export interface PublicBookingPayload {
   };
 }
 
+export interface PortalSettings {
+  guest_booking_enabled: boolean;
+  registered_only: boolean;
+  require_advance: boolean;
+  advance_type: 'percent' | 'fixed';
+  advance_value: number;
+  payment_mode: 'simulated' | 'gateway';
+  auto_confirm_on_advance: boolean;
+  new_clients_require_approval: boolean;
+}
+
+export interface PortalBookingConfig {
+  company_id: number;
+  working_hours?: Record<string, { open: boolean; start: string; end: string }> | null;
+  portal_settings: PortalSettings;
+}
+
 export interface PublicTrackingData {
   code: string;
   status: string;
@@ -89,6 +106,33 @@ export async function getPortalCompanyId(hint?: number | null): Promise<number> 
     // fallback abajo
   }
   return 1;
+}
+
+export async function fetchPortalBookingConfig(): Promise<PortalBookingConfig> {
+  const res = await apiClient.getPublic<{ data?: PortalBookingConfig }>('/public/booking/config');
+  const data = unwrapData(res);
+  return {
+    company_id: data?.company_id ?? 1,
+    working_hours: data?.working_hours ?? null,
+    portal_settings: {
+      guest_booking_enabled: false,
+      registered_only: true,
+      require_advance: true,
+      advance_type: 'percent',
+      advance_value: 30,
+      payment_mode: 'simulated',
+      auto_confirm_on_advance: true,
+      new_clients_require_approval: true,
+      ...(data?.portal_settings ?? {}),
+    },
+  };
+}
+
+export async function payAppointmentAdvance(
+  appointmentId: string | number,
+  payload: { payment_method: string; reference?: string }
+): Promise<any> {
+  return apiClient.post(`/appointments/${appointmentId}/pay-advance`, payload);
 }
 
 export async function fetchPublicBookingServices(): Promise<PublicBookingService[]> {
