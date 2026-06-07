@@ -1,104 +1,85 @@
-import { useState, useEffect, useCallback } from 'react';
-import { MapPin, Clock, Phone, Navigation, CheckCircle, Star, ShieldCheck, MessageCircle, Share2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, Clock, Phone, Navigation, CheckCircle, Star, ShieldCheck, MessageCircle, Share2, ChevronUp } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
+import { Progress } from '../ui/progress';
 import { toast } from 'sonner';
-import { Avatar, AvatarFallback } from '../ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Separator } from '../ui/separator';
-import { fetchPublicTracking, type PublicTrackingData } from '../../utils/api/publicBooking';
 
 interface BookingTrackingProps {
   bookingCode?: string;
 }
 
-function statusStepIndex(status: string): number {
-  switch (status) {
-    case 'preparing': return 1;
-    case 'on-the-way': return 2;
-    case 'arrived': return 3;
-    case 'in-service': return 4;
-    case 'completed': return 5;
-    default: return 0;
-  }
-}
-
-export function BookingTracking({ bookingCode: initialCode }: BookingTrackingProps) {
-  const [codeInput, setCodeInput] = useState(
-    () => initialCode || new URLSearchParams(window.location.search).get('code') || ''
-  );
-  const [trackingData, setTrackingData] = useState<PublicTrackingData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+export function BookingTracking({ bookingCode = 'SPT-88291' }: BookingTrackingProps) {
+  // Estado para simular el progreso en tiempo real (DEMO)
+  const [demoStep, setDemoStep] = useState(2); 
+  const [etaSeconds, setEtaSeconds] = useState(900); // 15 min
   const [showConfetti, setShowConfetti] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const loadTracking = useCallback(async (code: string) => {
-    const trimmed = code.trim().toUpperCase();
-    if (!trimmed) {
-      setError('Ingresa tu código de seguimiento (ej. SPT-ABC123)');
-      return;
+  // Mock Data
+  const trackingData = {
+    code: bookingCode,
+    status: demoStep === 0 ? 'confirmed' : 
+            demoStep === 1 ? 'preparing' : 
+            demoStep === 2 ? 'on-the-way' : 
+            demoStep === 3 ? 'arrived' : 
+            demoStep === 4 ? 'in-service' : 'completed',
+    service: {
+      name: 'Baño Premium + Corte',
+      price: 85.00,
+      addons: ['Limpieza Dental', 'Lazo Festivo']
+    },
+    pet: {
+      name: 'Thor',
+      breed: 'Golden Retriever',
+    },
+    driver: {
+      name: 'Carlos López',
+      rating: 4.95,
+      trips: '1.2k viajes',
+      photo: 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150&h=150&fit=crop',
+      vehicle: 'Fiat Fiorino • ABC-123',
+      phone: '999888777'
     }
-    setLoading(true);
-    setError('');
-    try {
-      const data = await fetchPublicTracking(trimmed);
-      setTrackingData(data);
-      if (data.status === 'completed') {
-        setShowConfetti(true);
-      }
-    } catch {
-      setTrackingData(null);
-      setError('No encontramos una reserva con ese código.');
-    } finally {
-      setLoading(false);
+  };
+
+  // Efecto de cuenta regresiva ETA
+  useEffect(() => {
+    if (trackingData.status === 'on-the-way' && etaSeconds > 0) {
+      const interval = setInterval(() => setEtaSeconds(s => s - 1), 1000);
+      return () => clearInterval(interval);
     }
+  }, [trackingData.status, etaSeconds]);
+
+  // Demo Loop
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDemoStep(prev => {
+        if (prev >= 5) return 2; 
+        return prev + 1;
+      });
+    }, 12000); 
+    return () => clearInterval(timer);
   }, []);
 
+  // Efecto Confetti
   useEffect(() => {
-    if (initialCode || codeInput) {
-      loadTracking(initialCode || codeInput);
+    if (trackingData.status === 'completed') {
+      setShowConfetti(true);
+      toast.success('¡Servicio Finalizado! 🐶✨');
+    } else {
+      setShowConfetti(false);
     }
-  }, [initialCode]);
+  }, [trackingData.status]);
 
-  useEffect(() => {
-    if (!trackingData?.code) return;
-    const interval = setInterval(() => loadTracking(trackingData.code), 45000);
-    return () => clearInterval(interval);
-  }, [trackingData?.code, loadTracking]);
-
-  useEffect(() => {
-    if (trackingData?.status === 'completed') {
-      toast.success('¡Servicio finalizado! 🐶✨');
-    }
-  }, [trackingData?.status]);
-
-  if (!trackingData) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <h1 className="text-2xl font-bold mb-2">Seguimiento de tu cita</h1>
-        <p className="text-slate-600 mb-6 text-center max-w-md">
-          Ingresa el código que recibiste al reservar (formato SPT-XXXXXX)
-        </p>
-        <div className="flex w-full max-w-md gap-2">
-          <Input
-            value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-            placeholder="SPT-ABC123"
-            className="font-mono"
-          />
-          <Button onClick={() => loadTracking(codeInput)} disabled={loading}>
-            {loading ? 'Buscando...' : 'Buscar'}
-          </Button>
-        </div>
-        {error && <p className="text-red-600 mt-4 text-sm">{error}</p>}
-      </div>
-    );
-  }
-
-  const demoStep = statusStepIndex(trackingData.status);
-  const driver = trackingData.driver;
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins} min`;
+  };
 
   const getStatusInfo = (status: string) => {
     switch(status) {
@@ -204,7 +185,7 @@ export function BookingTracking({ bookingCode: initialCode }: BookingTrackingPro
         {/* Marcador Destino (Casa) */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-20 ml-10 z-10">
            <div className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-2xl mb-2 whitespace-nowrap transform -translate-x-1/2">
-             Casa de {trackingData.pet?.name || 'tu mascota'} 🐶
+             Casa de {trackingData.pet.name} 🐶
              <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-slate-900"></div>
            </div>
            <div className="w-4 h-4 bg-slate-900 rounded-full border-4 border-white shadow-xl mx-auto ring-4 ring-black/10"></div>
@@ -241,51 +222,47 @@ export function BookingTracking({ bookingCode: initialCode }: BookingTrackingPro
           </div>
         </div>
 
-        {driver && (
-          <>
-            <div className="px-6 grid grid-cols-[1fr_auto] gap-4 items-center mb-6">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <Avatar className="h-14 w-14 border-2 border-white shadow-md ring-2 ring-slate-100">
-                    <AvatarFallback>{driver.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow-sm">
-                    <ShieldCheck className="w-4 h-4 text-green-500 fill-green-100" />
-                  </div>
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 leading-tight">{driver.name}</h3>
-                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                    <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                    <span>{driver.vehicle || 'Vehículo asignado'}</span>
-                  </div>
-                </div>
+        {/* ETA & Driver Quick View */}
+        <div className="px-6 grid grid-cols-[1fr_auto] gap-4 items-center mb-6">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Avatar className="h-14 w-14 border-2 border-white shadow-md ring-2 ring-slate-100">
+                <AvatarImage src={trackingData.driver.photo} />
+                <AvatarFallback>DR</AvatarFallback>
+              </Avatar>
+              <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow-sm">
+                 <ShieldCheck className="w-4 h-4 text-green-500 fill-green-100" />
               </div>
             </div>
-
-            {driver.phone && (
-              <div className="px-6 grid grid-cols-2 gap-3 mb-6">
-                <Button
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-200"
-                  asChild
-                >
-                  <a href={`tel:${driver.phone}`}>
-                    <Phone className="w-4 h-4 mr-2" /> Llamar
-                  </a>
-                </Button>
-                <Button variant="outline" className="w-full border-slate-200 text-slate-700">
-                  <MessageCircle className="w-4 h-4 mr-2" /> Chat
-                </Button>
+            <div>
+              <h3 className="font-bold text-slate-900 leading-tight">{trackingData.driver.name}</h3>
+              <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                <span className="font-semibold text-slate-700">{trackingData.driver.rating}</span>
+                <span>• {trackingData.driver.vehicle}</span>
               </div>
-            )}
-          </>
-        )}
+            </div>
+          </div>
 
-        {!driver && (
-          <p className="px-6 text-sm text-slate-500 mb-4">
-            Estado: <strong>{trackingData.status_label}</strong>. El equipo asignará el vehículo antes de la visita.
-          </p>
-        )}
+          <div className="text-right">
+             {trackingData.status === 'on-the-way' && (
+               <>
+                 <p className="text-xs text-slate-400 font-bold uppercase">Llegada</p>
+                 <p className="text-2xl font-bold text-slate-900 tabular-nums">{formatTime(etaSeconds)}</p>
+               </>
+             )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 grid grid-cols-2 gap-3 mb-6">
+           <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-200">
+             <Phone className="w-4 h-4 mr-2" /> Llamar
+           </Button>
+           <Button variant="outline" className="w-full border-slate-200 text-slate-700">
+             <MessageCircle className="w-4 h-4 mr-2" /> Chat
+           </Button>
+        </div>
 
         <Separator className="mb-6 opacity-50" />
 
@@ -304,11 +281,13 @@ export function BookingTracking({ bookingCode: initialCode }: BookingTrackingPro
                  </div>
                  <span className="font-bold text-indigo-600 text-lg">S/ {trackingData.service.price}</span>
               </div>
-              {trackingData.schedule.date && (
-                <p className="text-xs text-slate-500 mt-2">
-                  {trackingData.schedule.date} • {trackingData.schedule.time} — {trackingData.schedule.district}
-                </p>
-              )}
+              <div className="flex flex-wrap gap-2 mt-3">
+                 {trackingData.service.addons.map(addon => (
+                   <span key={addon} className="text-[10px] uppercase font-bold tracking-wide bg-white px-2 py-1 rounded-md text-slate-600 shadow-sm border border-slate-100">
+                     + {addon}
+                   </span>
+                 ))}
+              </div>
            </Card>
 
            {/* Stepper Vertical Minimalista */}
