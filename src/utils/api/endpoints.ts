@@ -69,15 +69,10 @@ export const API = {
   },
   routePlans: {
     list: '/route-plans',
-    dailySchedule: '/route-plans/daily-schedule',
-    fromAppointments: '/route-plans/from-appointments',
     byId: (id: string | number) => `/route-plans/${id}`,
     create: '/route-plans',
     update: (id: string | number) => `/route-plans/${id}`,
     delete: (id: string | number) => `/route-plans/${id}`,
-  },
-  driver: {
-    day: '/driver/day',
   },
   setupProtected: {
     complete: '/setup/complete',
@@ -226,6 +221,15 @@ export const API = {
     geographic: '/reports/growth/geographic',
     segmentation: '/reports/growth/segmentation',
     mobilePatterns: '/reports/growth/mobile-patterns',
+  },
+  routePlans: {
+    list: '/route-plans',
+    dailySchedule: '/route-plans/daily-schedule',
+    fromAppointments: '/route-plans/from-appointments',
+    byId: (id: string | number) => `/route-plans/${id}`,
+  },
+  driver: {
+    day: '/driver/day',
   },
   appointments: {
     list: '/appointments',

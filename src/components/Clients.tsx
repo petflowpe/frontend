@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Users, Plus, Search, Phone, Mail, MapPin, PawPrint, Calendar, Eye, Heart, Edit2, Trash2, UserPlus, FileText, DollarSign, Truck, Settings, ChevronRight, ChevronLeft, Dog, Cat, Bug, Syringe, Shield, Bell, ArrowLeft, StickyNote } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -15,8 +15,6 @@ import { AddressGeocoder } from './admin/AddressGeocoder';
 import { autoAssignClientToRoutes, determineClientZone } from '../lib/routeAutoAssignment';
 import { toast } from 'sonner';
 import { useClients } from '../hooks/useClients';
-import { useZones } from '../hooks/useZones';
-import { useVehicles } from '../hooks/useVehicles';
 import { EmptyState } from './EmptyState';
 import { setPendingAction } from '../utils/navigationBridge';
 import { apiClient } from '../utils/api/client';
@@ -87,37 +85,107 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
   const [billingHistory, setBillingHistory] = useState<Array<any>>([]);
   const [loadingBilling, setLoadingBilling] = useState(false);
 
-  const { zones: apiZones } = useZones(true);
-  const { vehicles: apiVehicles } = useVehicles(authUser?.companyId ?? null);
+  // Estados para configuraciones - REMOVIDOS (ahora están en PetsManagement)
 
-  const zones = useMemo(
-    () =>
-      apiZones.map((z) => ({
-        id: String(z.id),
-        name: z.name,
-        districts: z.districts || [],
-        coordinates: z.coordinates || {
-          center: { lat: -12.0464, lng: -77.0428 },
-          radius: 10,
-        },
-      })),
-    [apiZones]
-  );
+  // 🆕 Zonas y Vehículos para auto-asignación
+  const zones = [
+    {
+      id: 'zona-1',
+      name: 'Lima Centro',
+      color: '#3b82f6',
+      districts: ['Cercado de Lima', 'Breña', 'La Victoria', 'Rímac', 'San Luis'],
+      coverage: 'Alta',
+      demand: 85,
+      coordinates: {
+        center: { lat: -12.0464, lng: -77.0428 },
+        radius: 5
+      }
+    },
+    {
+      id: 'zona-2',
+      name: 'Lima Moderna',
+      color: '#10b981',
+      districts: ['Miraflores', 'San Isidro', 'Barranco', 'Surco', 'San Borja', 'La Molina'],
+      coverage: 'Premium',
+      demand: 95,
+      coordinates: {
+        center: { lat: -12.0797, lng: -77.0365 },
+        radius: 6
+      }
+    },
+    {
+      id: 'zona-3',
+      name: 'Lima Norte',
+      color: '#f59e0b',
+      districts: ['Los Olivos', 'San Martín de Porres', 'Independencia', 'Comas', 'Puente Piedra'],
+      coverage: 'Media',
+      demand: 70,
+      coordinates: {
+        center: { lat: -11.9935, lng: -77.0609 },
+        radius: 7
+      }
+    },
+    {
+      id: 'zona-4',
+      name: 'Lima Sur',
+      color: '#8b5cf6',
+      districts: ['Villa El Salvador', 'Villa María del Triunfo', 'Chorrillos', 'San Juan de Miraflores'],
+      coverage: 'Media',
+      demand: 65,
+      coordinates: {
+        center: { lat: -12.1893, lng: -76.9736 },
+        radius: 8
+      }
+    },
+    {
+      id: 'zona-5',
+      name: 'Lima Este',
+      color: '#ec4899',
+      districts: ['Ate', 'Santa Anita', 'El Agustino', 'San Juan de Lurigancho', 'Lurigancho-Chosica'],
+      coverage: 'Básica',
+      demand: 60,
+      coordinates: {
+        center: { lat: -12.0512, lng: -76.9375 },
+        radius: 9
+      }
+    }
+  ];
 
-  const vehicles = useMemo(() => {
-    const zoneIds = zones.map((z) => z.id);
-    return apiVehicles.map((v) => ({
-      id: `vehiculo-${v.id}`,
-      name: v.name,
-      code: v.plate || v.placa || String(v.id),
-      assignedZones: zoneIds,
-      primaryZone: zoneIds[0] || '',
+  const vehicles = [
+    {
+      id: 'vehiculo-1',
+      name: 'Móvil 1',
+      code: 'VEH-001',
+      assignedZones: ['zona-1', 'zona-2'],
+      primaryZone: 'zona-2',
       maxDistance: 30,
       workDays: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'],
       startTime: '08:00',
-      endTime: '18:00',
-    }));
-  }, [apiVehicles, zones]);
+      endTime: '18:00'
+    },
+    {
+      id: 'vehiculo-2',
+      name: 'Móvil 2',
+      code: 'VEH-002',
+      assignedZones: ['zona-3'],
+      primaryZone: 'zona-3',
+      maxDistance: 25,
+      workDays: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
+      startTime: '09:00',
+      endTime: '17:00'
+    },
+    {
+      id: 'vehiculo-3',
+      name: 'Móvil 3',
+      code: 'VEH-003',
+      assignedZones: ['zona-4', 'zona-5'],
+      primaryZone: 'zona-4',
+      maxDistance: 35,
+      workDays: ['Mar', 'Jue', 'Vie', 'Sáb'],
+      startTime: '08:30',
+      endTime: '17:30'
+    }
+  ];
 
   const { 
     clients, 

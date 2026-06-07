@@ -487,7 +487,7 @@ function AppContent() {
       case 'medical':
         return <PetsManagement onNavigate={setActiveTab} currentUser={currentUser} />;
       case 'vehicles': return <VehicleManagement currentUser={currentUser} />;
-      case 'routes': return <Routes onNavigate={setActiveTab} currentUser={currentUser} />;
+      case 'routes': return <Routes onNavigate={setActiveTab} />;
       case 'invoicing': return <Invoicing currentUser={currentUser} />;
       case 'payments': return <Payments />;
       case 'staff': return <Staff />;
@@ -522,7 +522,7 @@ function AppContent() {
       case 'patrones': return <PatronesPanel />;
       
       // 🆕 CENTRO DE CONTROL (BETA)
-      case 'operations-center': return <OperationsCenter currentUser={currentUser} />;
+      case 'operations-center': return <OperationsCenter />;
       
       // Simulador App Chofer
       case 'driver-session': return <DriverSession />;

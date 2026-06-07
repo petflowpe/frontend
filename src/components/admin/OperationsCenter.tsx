@@ -23,14 +23,12 @@ import { toast } from 'sonner';
 import { useAppointments } from '../../hooks/useAppointments';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useOperationsDashboard } from '../../hooks/useOperationsDashboard';
-interface OperationsCenterProps {
-  currentUser?: { companyId?: number | null } | null;
-}
+import { getStoredCompanyId } from '../../utils/appointmentMappers';
 
-export function OperationsCenter({ currentUser }: OperationsCenterProps = {}) {
-  const scopedCompanyId = currentUser?.companyId ?? null;
+export function OperationsCenter() {
+  const companyId = getStoredCompanyId();
   const { appointments, loading, refreshAppointments } = useAppointments();
-  const { vehicles } = useVehicles(scopedCompanyId);
+  const { vehicles } = useVehicles(companyId);
   const { liveUnits, alerts, stats, todayAppointments } = useOperationsDashboard(
     appointments,
     vehicles
