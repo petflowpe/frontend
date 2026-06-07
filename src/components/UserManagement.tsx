@@ -620,7 +620,7 @@ export function UserManagement({
             if (!open) closeCreateModal();
           }}
         >
-          <DialogContent className="flex max-h-[92vh] max-w-[min(920px,96vw)] flex-col gap-0 overflow-hidden border-border/80 bg-card/98 p-0 shadow-2xl backdrop-blur-sm sm:rounded-xl">
+          <DialogContent className="flex max-h-[92vh] max-w-[min(920px,96vw)] flex-col gap-0 overflow-hidden border-border bg-card p-0 shadow-2xl sm:rounded-xl">
             {editingUser ? (
               <UserEditView
                 {...formViewProps}
