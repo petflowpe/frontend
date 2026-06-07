@@ -18,6 +18,7 @@ interface CalendarResourcesPanelProps {
   onToggleVehicle: (id: string) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
+  compact?: boolean;
 }
 
 export function CalendarResourcesPanel({
@@ -29,11 +30,12 @@ export function CalendarResourcesPanel({
   onToggleVehicle,
   onSelectAll,
   onClearSelection,
+  compact = false,
 }: CalendarResourcesPanelProps) {
   const allSelected = selectedVehicleIds.size === 0;
 
   return (
-    <div className="border rounded-lg bg-muted/30 p-3 space-y-2">
+    <div className={cn(compact ? 'p-3 space-y-2' : 'border rounded-lg bg-muted/30 p-3 space-y-2')}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">Filtrar por móvil</span>
         <div className="flex gap-1">
@@ -54,7 +56,7 @@ export function CalendarResourcesPanel({
           className="pl-8 h-8 text-sm"
         />
       </div>
-      <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
         {filteredResources.map((r) => {
           const checked = allSelected || selectedVehicleIds.has(r.id);
           return (
@@ -63,7 +65,7 @@ export function CalendarResourcesPanel({
               type="button"
               onClick={() => onToggleVehicle(r.id)}
               className={cn(
-                'text-left text-xs rounded-full border px-3 py-1.5 transition-colors',
+                'text-left text-xs rounded-full border px-2.5 py-1 transition-colors',
                 checked
                   ? 'bg-primary/15 border-primary/40 text-primary font-medium'
                   : 'bg-background hover:bg-muted/50 text-muted-foreground'

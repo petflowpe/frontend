@@ -9,7 +9,6 @@ import { AppointmentDetailsDialog } from './AppointmentDetailsDialog';
 import { CalendarFiltersBar, type QuickChip } from './CalendarFiltersBar';
 import { CalendarKpiBar } from './CalendarKpiBar';
 import { CalendarStatusLegend } from './CalendarStatusLegend';
-import { CalendarResourcesPanel } from './CalendarResourcesPanel';
 import { useAppointments } from '../../hooks/useAppointments';
 import { useCalendarNotifications } from '../../hooks/useCalendarNotifications';
 import { useVehicles } from '../../hooks/useVehicles';
@@ -48,7 +47,6 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [showCancelled, setShowCancelled] = useState(stored.showCancelled ?? false);
   const [quickChip, setQuickChip] = useState<QuickChip>('none');
-  const [resourcesOpen, setResourcesOpen] = useState(stored.sidebarOpen ?? false);
 
   const {
     appointments,
@@ -109,9 +107,8 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
       filterDistrict,
       selectedVehicleIds: Array.from(selectedVehicleIds),
       showCancelled,
-      sidebarOpen: resourcesOpen,
     });
-  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled, resourcesOpen]);
+  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled]);
 
   const tipoCitaOptions = useMemo(() => {
     const set = new Set<string>();
@@ -389,7 +386,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
   const dayResources = selectedResources.length > 0 ? selectedResources : resourceList;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] p-3 sm:p-4 gap-3 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-4rem)] p-2 sm:p-3 gap-1.5 overflow-hidden">
       <CalendarHeader
         currentDate={currentDate}
         onDateChange={setCurrentDate}
@@ -416,36 +413,29 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
         onShowCancelledChange={setShowCancelled}
         activeFilterCount={activeFilterCount}
         onClearFilters={clearFilters}
-        resourcesOpen={resourcesOpen}
-        onToggleResources={() => setResourcesOpen((o) => !o)}
         selectedVehicleCount={selectedVehicleIds.size}
         totalVehicles={resourceList.length}
+        resources={resourceList}
+        filteredResources={filteredBySearch}
+        selectedVehicleIds={selectedVehicleIds}
+        vehicleSearch={vehicleSearch}
+        onVehicleSearchChange={setVehicleSearch}
+        onToggleVehicle={toggleVehicle}
+        onSelectAllVehicles={() => setSelectedVehicleIds(new Set())}
+        onClearVehicleSelection={() => setSelectedVehicleIds(new Set(resourceList.map((r) => r.id)))}
       />
-
-      {resourcesOpen && (
-        <CalendarResourcesPanel
-          resources={resourceList}
-          filteredResources={filteredBySearch}
-          selectedVehicleIds={selectedVehicleIds}
-          vehicleSearch={vehicleSearch}
-          onVehicleSearchChange={setVehicleSearch}
-          onToggleVehicle={toggleVehicle}
-          onSelectAll={() => setSelectedVehicleIds(new Set())}
-          onClearSelection={() => setSelectedVehicleIds(new Set(resourceList.map((r) => r.id)))}
-        />
-      )}
 
       <CalendarKpiBar appointments={kpiAppointments} rangeLabel={rangeLabel} />
 
-      <div className="flex-1 min-h-0 flex flex-col relative">
+      <div className="flex-1 min-h-0 flex flex-col relative border rounded-lg overflow-hidden bg-card">
         <CalendarStatusLegend />
         {loading && (
-          <div className="absolute top-12 right-2 z-20 text-xs bg-background/90 border rounded px-2 py-1 text-muted-foreground shadow-sm">
+          <div className="absolute top-8 right-2 z-20 text-xs bg-background/90 border rounded px-2 py-1 text-muted-foreground shadow-sm">
             Cargando citas…
           </div>
         )}
 
-        <div className="flex-1 min-h-0 mt-0">
+        <div className="flex-1 min-h-0">
           {view === 'month' && (
             <MonthView
               currentDate={currentDate}
@@ -492,7 +482,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
         </div>
       </div>
 
-      <p className="text-[10px] text-muted-foreground text-center hidden sm:block">
+      <p className="text-[10px] text-muted-foreground text-center hidden lg:block leading-none">
         Atajos: N nueva cita · T hoy · R agenda móvil · D/W/M vistas
       </p>
 

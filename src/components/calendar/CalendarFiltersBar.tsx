@@ -1,11 +1,18 @@
-import { Search, RotateCcw, Car, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, RotateCcw, Car, ChevronDown } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Badge } from '../ui/badge';
-import { cn } from '../ui/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { CalendarResourcesPanel } from './CalendarResourcesPanel';
 
 export type QuickChip = 'none' | 'today' | 'unconfirmed' | 'no_vehicle';
+
+interface Resource {
+  id: string;
+  name: string;
+  driver?: string;
+}
 
 interface CalendarFiltersBarProps {
   searchQuery: string;
@@ -24,10 +31,16 @@ interface CalendarFiltersBarProps {
   onShowCancelledChange: (v: boolean) => void;
   activeFilterCount: number;
   onClearFilters: () => void;
-  resourcesOpen: boolean;
-  onToggleResources: () => void;
   selectedVehicleCount: number;
   totalVehicles: number;
+  resources: Resource[];
+  filteredResources: Resource[];
+  selectedVehicleIds: Set<string>;
+  vehicleSearch: string;
+  onVehicleSearchChange: (v: string) => void;
+  onToggleVehicle: (id: string) => void;
+  onSelectAllVehicles: () => void;
+  onClearVehicleSelection: () => void;
 }
 
 export function CalendarFiltersBar({
@@ -47,10 +60,16 @@ export function CalendarFiltersBar({
   onShowCancelledChange,
   activeFilterCount,
   onClearFilters,
-  resourcesOpen,
-  onToggleResources,
   selectedVehicleCount,
   totalVehicles,
+  resources,
+  filteredResources,
+  selectedVehicleIds,
+  vehicleSearch,
+  onVehicleSearchChange,
+  onToggleVehicle,
+  onSelectAllVehicles,
+  onClearVehicleSelection,
 }: CalendarFiltersBarProps) {
   const chips: { id: QuickChip; label: string }[] = [
     { id: 'today', label: 'Solo hoy' },
@@ -58,21 +77,24 @@ export function CalendarFiltersBar({
     { id: 'no_vehicle', label: 'Sin móvil' },
   ];
 
+  const vehicleLabel =
+    selectedVehicleCount === 0 ? `Móviles (${totalVehicles})` : `Móviles (${selectedVehicleCount})`;
+
   return (
-    <div className="space-y-2 border rounded-lg bg-card p-3 shadow-sm">
-      <div className="flex flex-col xl:flex-row gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <div className="border rounded-lg bg-card px-2 py-1.5 shadow-sm space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 lg:gap-2">
+        <div className="relative flex-1 min-w-[140px] basis-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar cliente, mascota o código…"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9"
+            className="pl-8 h-8 text-sm"
           />
         </div>
 
         <Select value={statusFilter} onValueChange={onStatusFilterChange}>
-          <SelectTrigger className="w-full xl:w-40 h-9">
+          <SelectTrigger className="w-[130px] h-8 text-xs shrink-0">
             <SelectValue placeholder="Estado" />
           </SelectTrigger>
           <SelectContent>
@@ -86,8 +108,8 @@ export function CalendarFiltersBar({
         </Select>
 
         <Select value={filterTipoCita || 'all'} onValueChange={(v) => onFilterTipoCitaChange(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-full xl:w-44 h-9">
-            <SelectValue placeholder="Tipo de cita" />
+          <SelectTrigger className="w-[130px] h-8 text-xs shrink-0">
+            <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los tipos</SelectItem>
@@ -100,8 +122,8 @@ export function CalendarFiltersBar({
         </Select>
 
         <Select value={filterDistrict || 'all'} onValueChange={(v) => onFilterDistrictChange(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-full xl:w-40 h-9">
-            <SelectValue placeholder="Distrito / zona" />
+          <SelectTrigger className="w-[130px] h-8 text-xs shrink-0">
+            <SelectValue placeholder="Distrito" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los distritos</SelectItem>
@@ -113,24 +135,51 @@ export function CalendarFiltersBar({
           </SelectContent>
         </Select>
 
-        <Button
-          variant={resourcesOpen ? 'secondary' : 'outline'}
-          className="h-9 shrink-0"
-          onClick={onToggleResources}
-        >
-          <Car className="h-4 w-4 mr-1.5" />
-          Móviles ({selectedVehicleCount === 0 ? totalVehicles : selectedVehicleCount})
-          {resourcesOpen ? <ChevronUp className="h-3.5 w-3.5 ml-1" /> : <ChevronDown className="h-3.5 w-3.5 ml-1" />}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant={selectedVehicleCount > 0 ? 'secondary' : 'outline'}
+              className="h-8 text-xs shrink-0 px-2.5"
+            >
+              <Car className="h-3.5 w-3.5 mr-1" />
+              {vehicleLabel}
+              <ChevronDown className="h-3 w-3 ml-0.5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-0" align="end" sideOffset={6}>
+            <CalendarResourcesPanel
+              resources={resources}
+              filteredResources={filteredResources}
+              selectedVehicleIds={selectedVehicleIds}
+              vehicleSearch={vehicleSearch}
+              onVehicleSearchChange={onVehicleSearchChange}
+              onToggleVehicle={onToggleVehicle}
+              onSelectAll={onSelectAllVehicles}
+              onClearSelection={onClearVehicleSelection}
+              compact
+            />
+          </PopoverContent>
+        </Popover>
+
+        {activeFilterCount > 0 && (
+          <Badge variant="secondary" className="h-8 px-2 text-xs shrink-0">
+            {activeFilterCount}
+          </Badge>
+        )}
+
+        <Button size="sm" variant="ghost" className="h-8 text-xs shrink-0 px-2" onClick={onClearFilters}>
+          <RotateCcw className="h-3.5 w-3.5 mr-1" />
+          Limpiar
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin">
         {chips.map((chip) => (
           <Button
             key={chip.id}
             size="sm"
             variant={quickChip === chip.id ? 'default' : 'outline'}
-            className="h-7 text-xs"
+            className="h-7 text-xs shrink-0 px-2.5"
             onClick={() => onQuickChipChange(quickChip === chip.id ? 'none' : chip.id)}
           >
             {chip.label}
@@ -140,21 +189,10 @@ export function CalendarFiltersBar({
         <Button
           size="sm"
           variant={showCancelled ? 'secondary' : 'outline'}
-          className="h-7 text-xs"
+          className="h-7 text-xs shrink-0 px-2.5"
           onClick={() => onShowCancelledChange(!showCancelled)}
         >
           Ver canceladas
-        </Button>
-
-        {activeFilterCount > 0 && (
-          <Badge variant="secondary" className="h-7 px-2">
-            {activeFilterCount} filtro{activeFilterCount !== 1 ? 's' : ''}
-          </Badge>
-        )}
-
-        <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={onClearFilters}>
-          <RotateCcw className="h-3.5 w-3.5 mr-1" />
-          Limpiar
         </Button>
       </div>
     </div>
