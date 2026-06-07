@@ -41,7 +41,7 @@ export function useCompanies() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get<any>('/companies');
+      const res = await apiClient.get<any>(API.companies.list);
       const data = Array.isArray(res) ? res : (res?.data ?? []);
       setList(Array.isArray(data) ? data : []);
     } catch (e: any) {

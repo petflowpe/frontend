@@ -147,7 +147,7 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   // Administración
   staff: { roles: ['super_admin', 'company_admin'] },
   settings: { roles: ['super_admin', 'company_admin'] },
-  companies: { roles: ['super_admin'] },
+  companies: { roles: ['super_admin', 'company_admin'] },
   users: { roles: ['super_admin', 'company_admin'], permissions: ['users.view', 'users.*', 'users.roles', 'users.manage'] },
   'data-export': { roles: ['super_admin', 'company_admin'] },
   prueba: { roles: ['super_admin'] },

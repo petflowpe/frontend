@@ -15,7 +15,12 @@ import {
   DialogFooter,
 } from './ui/dialog';
 import { useCompanies, type Company, type WorkingHours } from '../hooks/useCompanies';
+import { isSuperAdmin, type CurrentUserLike } from '../utils/permissions';
 import { toast } from 'sonner';
+
+interface CompanyManagementProps {
+  currentUser?: CurrentUserLike | null;
+}
 
 const DAY_LABELS: Record<string, string> = {
   monday: 'Lunes',
@@ -27,7 +32,8 @@ const DAY_LABELS: Record<string, string> = {
   sunday: 'Domingo',
 };
 
-export function CompanyManagement() {
+export function CompanyManagement({ currentUser = null }: CompanyManagementProps) {
+  const canCreateCompany = isSuperAdmin(currentUser);
   const {
     companies,
     loading,
@@ -177,14 +183,23 @@ export function CompanyManagement() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Building2 className="h-8 w-8 text-blue-600" />
-          Empresas
-        </h1>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva empresa
-        </Button>
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Building2 className="h-8 w-8 text-blue-600" />
+            {canCreateCompany ? 'Empresas' : 'Mi empresa'}
+          </h1>
+          {!canCreateCompany && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Administra los datos, sedes y horarios de tu empresa.
+            </p>
+          )}
+        </div>
+        {canCreateCompany && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva empresa
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -192,9 +207,13 @@ export function CompanyManagement() {
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {companies.map((c) => (
-            <Card key={c.id} className="p-4">
+        <div className={`grid gap-4 ${canCreateCompany ? 'md:grid-cols-2 lg:grid-cols-3' : 'max-w-xl'}`}>
+          {companies.length === 0 ? (
+            <Card className="p-6 text-center text-muted-foreground">
+              No hay empresas disponibles para tu cuenta.
+            </Card>
+          ) : companies.map((c) => (
+            <Card key={c.id} className="p-4 border border-border/80 bg-card shadow-sm">
               <div className="flex justify-between items-start">
                 <div>
                   <p className="font-semibold">{c.razon_social}</p>
@@ -232,7 +251,7 @@ export function CompanyManagement() {
 
       {/* Dialog Crear/Editar Empresa */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-card">
           <DialogHeader>
             <DialogTitle>{editingCompany ? 'Editar empresa' : 'Nueva empresa'}</DialogTitle>
             <DialogDescription>
@@ -350,13 +369,15 @@ export function CompanyManagement() {
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={formData.activo ?? true}
-                onCheckedChange={(v) => setFormData({ ...formData, activo: v })}
-              />
-              <Label>Activa</Label>
-            </div>
+            {canCreateCompany && (
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.activo ?? true}
+                  onCheckedChange={(v) => setFormData({ ...formData, activo: v })}
+                />
+                <Label>Activa</Label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowForm(false)}>
@@ -372,7 +393,7 @@ export function CompanyManagement() {
 
       {/* Dialog Horarios laborales */}
       <Dialog open={!!showHours} onOpenChange={() => setShowHours(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-card">
           <DialogHeader>
             <DialogTitle>Horarios laborales</DialogTitle>
             <DialogDescription>

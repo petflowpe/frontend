@@ -501,7 +501,7 @@ function AppContent() {
       case 'notifications': return <NotificationsImproved onNavigate={setActiveTab} />;
       case 'user-settings': return <UserSettingsPage />;
       case 'users': return <UserManagement currentUser={currentUser} currentUserId={currentUser.id} companyId={currentUser.companyId} />;
-      case 'companies': return <CompanyManagement />;
+      case 'companies': return <CompanyManagement currentUser={currentUser} />;
       case 'loyalty': return <LoyaltyDashboard />;
       case 'reviews': return <ReviewsPanel />;
       case 'confirmation': return <AppointmentConfirmation />;
