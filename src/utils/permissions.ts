@@ -121,6 +121,11 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
     permissions: ['vehicles.view', 'vehicles.manage', 'vehicles.*'],
   },
   'operations-center': { roles: ['super_admin', 'company_admin'] },
+  'zone-config': {
+    roles: ['super_admin', 'company_admin'],
+    permissions: ['vehicles.view', 'vehicles.manage', 'vehicles.*'],
+  },
+  'public-tracking': null,
   kardex: { roles: ['super_admin', 'company_admin', 'company_user'] },
 
   // Finanzas
@@ -152,8 +157,8 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   'data-export': { roles: ['super_admin', 'company_admin'] },
   prueba: { roles: ['super_admin'] },
 
-  // Conductor (modo aislado)
-  'driver-session': { roles: ['super_admin', 'conductor'] },
+  // App chofer (simulador para admins; modo aislado para conductores)
+  'driver-session': { roles: ['super_admin', 'company_admin', 'conductor'] },
 };
 
 export function canAccessModule(

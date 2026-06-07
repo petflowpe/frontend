@@ -83,6 +83,7 @@ const ReviewsPanel = lazy(() =>
 
 // 🆕 OPERATIONS CENTER (BETA)
 const OperationsCenter = lazy(() => import('./components/admin/OperationsCenter').then(m => ({ default: m.OperationsCenter })));
+const ConfiguracionZonas = lazy(() => import('./components/admin/config/ConfiguracionZonas'));
 
 // Driver Session (Critical for drivers but huge)
 const DriverSession = lazy(() => import('./components/driver/DriverSession').then(m => ({ default: m.DriverSession })));
@@ -523,7 +524,8 @@ function AppContent() {
       
       // 🆕 CENTRO DE CONTROL (BETA)
       case 'operations-center': return <OperationsCenter />;
-      
+      case 'zone-config': return <ConfiguracionZonas />;
+
       // Simulador App Chofer
       case 'driver-session': return <DriverSession />;
 
