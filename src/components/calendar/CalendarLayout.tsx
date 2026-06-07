@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarHeader } from './CalendarHeader';
 import { MonthView } from './MonthView';
 import { WeekView } from './WeekView';
@@ -6,35 +6,49 @@ import { WeekViewWithResources } from './WeekViewWithResources';
 import { ResourceView } from './ResourceView';
 import { NewAppointmentDialog } from './NewAppointmentDialog';
 import { AppointmentDetailsDialog } from './AppointmentDetailsDialog';
+import { CalendarFiltersBar, type QuickChip } from './CalendarFiltersBar';
+import { CalendarKpiBar } from './CalendarKpiBar';
+import { CalendarStatusLegend } from './CalendarStatusLegend';
+import { CalendarResourcesPanel } from './CalendarResourcesPanel';
 import { useAppointments } from '../../hooks/useAppointments';
 import { useCalendarNotifications } from '../../hooks/useCalendarNotifications';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useCalendarConfig } from '../../hooks/useCalendarConfig';
 import { format } from 'date-fns';
-import { getCalendarFetchRange } from './calendarDateUtils';
+import { es } from 'date-fns/locale';
+import { getCalendarFetchRange, parseAppointmentDate, getAppointmentDateOnly, snapTimeToInterval } from './calendarDateUtils';
+import { loadCalendarFilters, saveCalendarFilters } from './calendarFilterStorage';
+import { isUnconfirmed, hasNoVehicle } from './calendarAppointmentStyles';
 import { toast } from 'sonner';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
-import { Label } from '../ui/label';
-import { Car, RotateCcw, Search } from 'lucide-react';
-import { cn } from '../ui/utils';
+import { getStoredCompanyId } from '../../utils/appointmentMappers';
 
 interface CalendarLayoutProps {
   currentUser?: { companyId?: number } | null;
+  onNavigate?: (tab: string) => void;
 }
 
-export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
-  const companyId = currentUser?.companyId ?? 1;
-  const { vehicles, loading: vehiclesLoading } = useVehicles(companyId as number);
+export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps) {
+  const companyId = currentUser?.companyId ?? getStoredCompanyId() ?? undefined;
+  const { vehicles } = useVehicles(companyId);
   const { config: calendarConfig } = useCalendarConfig(companyId);
 
+  const stored = useMemo(() => loadCalendarFilters(), []);
+
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const defaultView = calendarConfig.default_view_current_day ? 'day' : 'month';
+  const defaultView = calendarConfig.default_view_current_day ? 'resource' : 'month';
   const [view, setView] = useState<'month' | 'week' | 'day' | 'resource'>(defaultView);
 
-  const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState(stored.searchQuery ?? '');
+  const [statusFilter, setStatusFilter] = useState(stored.statusFilter ?? 'all');
+  const [filterTipoCita, setFilterTipoCita] = useState(stored.filterTipoCita ?? '');
+  const [filterDistrict, setFilterDistrict] = useState(stored.filterDistrict ?? '');
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(
+    () => new Set(stored.selectedVehicleIds ?? [])
+  );
   const [vehicleSearch, setVehicleSearch] = useState('');
-  const [filterTipoCita, setFilterTipoCita] = useState<string>('');
+  const [showCancelled, setShowCancelled] = useState(stored.showCancelled ?? false);
+  const [quickChip, setQuickChip] = useState<QuickChip>('none');
+  const [resourcesOpen, setResourcesOpen] = useState(stored.sidebarOpen ?? false);
 
   const {
     appointments,
@@ -43,6 +57,8 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
     updateAppointment,
     deleteAppointment,
     changeAppointmentStatus,
+    confirmAppointment,
+    sendAppointmentReminder,
     refreshAppointments,
   } = useAppointments();
   useCalendarNotifications();
@@ -54,65 +70,48 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
   const [prefilledResourceId, setPrefilledResourceId] = useState<string | undefined>();
   const [editingAppointment, setEditingAppointment] = useState<any>(null);
 
-  const resourceList = useMemo(() => {
-    return vehicles.map(v => ({
-      id: String(v.id),
-      name: v.name || `Móvil ${v.id}`,
-      driver: v.driver_name || v.driver || '',
-    }));
-  }, [vehicles]);
+  const resourceList = useMemo(
+    () =>
+      vehicles.map((v) => ({
+        id: String(v.id),
+        name: v.name || `Móvil ${v.id}`,
+        driver: v.driver_name || v.driver || '',
+      })),
+    [vehicles]
+  );
 
   const filteredBySearch = useMemo(() => {
     if (!vehicleSearch.trim()) return resourceList;
     const q = vehicleSearch.trim().toLowerCase();
-    return resourceList.filter(r => r.name.toLowerCase().includes(q) || (r.driver && r.driver.toLowerCase().includes(q)));
+    return resourceList.filter(
+      (r) => r.name.toLowerCase().includes(q) || (r.driver && r.driver.toLowerCase().includes(q))
+    );
   }, [resourceList, vehicleSearch]);
 
   const selectedResources = useMemo(() => {
     if (selectedVehicleIds.size === 0) return resourceList;
-    return resourceList.filter(r => selectedVehicleIds.has(r.id));
+    return resourceList.filter((r) => selectedVehicleIds.has(r.id));
   }, [resourceList, selectedVehicleIds]);
 
-  const toggleVehicle = (id: string) => {
-    setSelectedVehicleIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const clearFilters = () => {
-    setSelectedVehicleIds(new Set());
-    setVehicleSearch('');
-    setFilterTipoCita('');
-  };
-
   const weekStartsOn = (calendarConfig.first_day_of_week ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  const intervalMinutes = calendarConfig.interval_minutes ?? 15;
 
   useEffect(() => {
     const { date_from, date_to } = getCalendarFetchRange(currentDate, view, weekStartsOn);
-    refreshAppointments({ date_from, date_to, limit: 200 });
+    refreshAppointments({ date_from, date_to, limit: 500 });
   }, [currentDate, view, weekStartsOn, refreshAppointments]);
 
-  const filteredAppointments = useMemo(() => {
-    let list = appointments.filter(
-      (apt) => apt.status !== 'cancelled' && apt.status !== 'no_show'
-    );
-
-    if (selectedVehicleIds.size > 0) {
-      list = list.filter((apt) => {
-        const vid = apt.vehicle?.id != null ? String(apt.vehicle.id) : '';
-        return vid && selectedVehicleIds.has(vid);
-      });
-    }
-
-    if (!filterTipoCita) return list;
-    return list.filter((apt: any) => {
-      const tipo = apt.service_type || apt.service_category || apt.serviceType || '';
-      return String(tipo).toLowerCase() === filterTipoCita.toLowerCase();
+  useEffect(() => {
+    saveCalendarFilters({
+      searchQuery,
+      statusFilter,
+      filterTipoCita,
+      filterDistrict,
+      selectedVehicleIds: Array.from(selectedVehicleIds),
+      showCancelled,
+      sidebarOpen: resourcesOpen,
     });
-  }, [appointments, filterTipoCita, selectedVehicleIds]);
+  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled, resourcesOpen]);
 
   const tipoCitaOptions = useMemo(() => {
     const set = new Set<string>();
@@ -123,10 +122,153 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
     return Array.from(set).sort();
   }, [appointments]);
 
+  const districtOptions = useMemo(() => {
+    const set = new Set<string>();
+    appointments.forEach((apt: any) => {
+      if (apt.district) set.add(String(apt.district));
+    });
+    return Array.from(set).sort();
+  }, [appointments]);
+
+  const filteredAppointments = useMemo(() => {
+    let list = [...appointments];
+
+    if (!showCancelled) {
+      list = list.filter((apt) => apt.status !== 'cancelled' && apt.status !== 'no_show');
+    } else if (statusFilter !== 'cancelled') {
+      /* keep all when showing cancelled via toggle */
+    }
+
+    if (statusFilter !== 'all') {
+      list = list.filter((apt) => apt.status === statusFilter);
+    }
+
+    if (selectedVehicleIds.size > 0) {
+      list = list.filter((apt) => {
+        const vid = apt.vehicle?.id != null ? String(apt.vehicle.id) : '';
+        return vid && selectedVehicleIds.has(vid);
+      });
+    }
+
+    if (filterTipoCita) {
+      list = list.filter((apt: any) => {
+        const tipo = apt.service_type || apt.service_category || apt.serviceType || '';
+        return String(tipo).toLowerCase() === filterTipoCita.toLowerCase();
+      });
+    }
+
+    if (filterDistrict) {
+      list = list.filter((apt: any) => String(apt.district || '').toLowerCase() === filterDistrict.toLowerCase());
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((apt: any) => {
+        const fields = [
+          apt.clientName,
+          apt.client,
+          apt.petName,
+          apt.pet,
+          apt.trackingCode,
+          apt.tracking_code,
+          apt.phone,
+        ]
+          .filter(Boolean)
+          .map((s) => String(s).toLowerCase());
+        return fields.some((f) => f.includes(q));
+      });
+    }
+
+    if (quickChip === 'today') {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      list = list.filter((apt) => getAppointmentDateOnly(apt.date) === today);
+    } else if (quickChip === 'unconfirmed') {
+      list = list.filter((apt) => isUnconfirmed(apt));
+    } else if (quickChip === 'no_vehicle') {
+      list = list.filter((apt) => hasNoVehicle(apt));
+    }
+
+    return list;
+  }, [
+    appointments,
+    statusFilter,
+    filterTipoCita,
+    filterDistrict,
+    selectedVehicleIds,
+    searchQuery,
+    showCancelled,
+    quickChip,
+  ]);
+
+  const rangeLabel = useMemo(() => {
+    if (view === 'month') return format(currentDate, 'MMMM yyyy', { locale: es });
+    if (view === 'week') return `Semana del ${format(currentDate, 'd MMM', { locale: es })}`;
+    return format(currentDate, "EEEE d MMM", { locale: es });
+  }, [currentDate, view]);
+
+  const kpiAppointments = useMemo(() => {
+    const { date_from, date_to } = getCalendarFetchRange(currentDate, view, weekStartsOn);
+    return filteredAppointments.filter((apt) => {
+      const d = getAppointmentDateOnly(apt.date);
+      return d >= date_from && d <= date_to;
+    });
+  }, [filteredAppointments, currentDate, view, weekStartsOn]);
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (searchQuery.trim()) n++;
+    if (statusFilter !== 'all') n++;
+    if (filterTipoCita) n++;
+    if (filterDistrict) n++;
+    if (selectedVehicleIds.size > 0) n++;
+    if (showCancelled) n++;
+    if (quickChip !== 'none') n++;
+    return n;
+  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled, quickChip]);
+
+  const toggleVehicle = (id: string) => {
+    setSelectedVehicleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setFilterTipoCita('');
+    setFilterDistrict('');
+    setSelectedVehicleIds(new Set());
+    setVehicleSearch('');
+    setShowCancelled(false);
+    setQuickChip('none');
+  };
+
   useEffect(() => {
     const handleOpenNewAppointment = () => setIsNewAppointmentOpen(true);
     window.addEventListener('open-new-appointment', handleOpenNewAppointment);
     return () => window.removeEventListener('open-new-appointment', handleOpenNewAppointment);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setIsNewAppointmentOpen(true);
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        setCurrentDate(new Date());
+      } else if (e.key === 'd' || e.key === 'D') setView('day');
+      else if (e.key === 'w' || e.key === 'W') setView('week');
+      else if (e.key === 'm' || e.key === 'M') setView('month');
+      else if (e.key === 'r' || e.key === 'R') setView('resource');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const handleDateClick = (date: Date, resourceId?: string) => {
@@ -145,18 +287,18 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
       return;
     }
     const created = await createAppointment(appointment);
-    window.dispatchEvent(
-      new CustomEvent('appointment-created', { detail: { appointment: created } })
-    );
+    window.dispatchEvent(new CustomEvent('appointment-created', { detail: { appointment: created } }));
   };
 
   const handleEditAppointment = (appointment: any) => {
     setEditingAppointment(appointment);
     const dateStr = appointment.date || '';
-    const dateObj = dateStr.includes('T') ? new Date(dateStr) : (() => {
-      const [y, m, d] = dateStr.split('-').map(Number);
-      return isNaN(y) ? undefined : new Date(y, m - 1, d);
-    })();
+    const dateObj = dateStr.includes('T')
+      ? new Date(dateStr)
+      : (() => {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          return isNaN(y) ? undefined : new Date(y, m - 1, d);
+        })();
     setPrefilledDate(dateObj || new Date());
     let timeStr = (appointment.time || '09:00').trim();
     if (timeStr.includes('T')) timeStr = format(new Date(timeStr), 'HH:mm');
@@ -171,31 +313,59 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
   const handleCancelAppointment = async (appointmentId: string) => {
     await changeAppointmentStatus(appointmentId, 'Cancelada', 'Cancelada desde agenda');
     window.dispatchEvent(
-      new CustomEvent('appointment-cancelled', {
-        detail: { appointmentId, message: 'Cita cancelada correctamente' },
-      })
+      new CustomEvent('appointment-cancelled', { detail: { appointmentId, message: 'Cita cancelada correctamente' } })
     );
   };
 
-  const handleRescheduleAppointment = (appointment: any) => handleEditAppointment(appointment);
+  const handleConfirmAppointment = async (appointmentId: string) => {
+    await confirmAppointment(appointmentId);
+    toast.success('Cita confirmada');
+    setSelectedAppointment(null);
+  };
 
+  const handleCompleteAppointment = async (appointmentId: string) => {
+    await changeAppointmentStatus(appointmentId, 'Completada', 'Completada desde agenda');
+    toast.success('Cita marcada como completada');
+    setSelectedAppointment(null);
+  };
+
+  const handleSendReminder = async (appointmentId: string) => {
+    await sendAppointmentReminder(appointmentId);
+    toast.success('Recordatorio enviado');
+  };
+
+  const handleRescheduleAppointment = (appointment: any) => handleEditAppointment(appointment);
   const handleDeleteAppointment = async (appointmentId: string) => await deleteAppointment(appointmentId);
 
-  const handleAppointmentDrop = (appointmentId: string, newDate: Date, newTime?: string, newResourceId?: string) => {
+  const handleAppointmentDrop = (
+    appointmentId: string,
+    newDate: Date,
+    newTime?: string,
+    newResourceId?: string
+  ) => {
     const appointment = appointments.find((a: any) => a.id === appointmentId);
     if (!appointment) return;
-    const updates: any = { date: format(newDate, 'yyyy-MM-dd') };
-    if (newTime) updates.time = newTime;
+    const snapped =
+      newTime ||
+      snapTimeToInterval(newDate.getHours(), newDate.getMinutes(), intervalMinutes);
+    const updates: any = { date: format(newDate, 'yyyy-MM-dd'), time: snapped };
     if (newResourceId) {
       updates.vehicle = newResourceId;
-      const vehicle = resourceList.find(v => v.id === newResourceId);
+      const vehicle = resourceList.find((v) => v.id === newResourceId);
       if (vehicle) updates.groomer = vehicle.driver;
     }
     updateAppointment(appointmentId, updates);
-    toast.success('✅ Cita actualizada exitosamente');
-    window.dispatchEvent(new CustomEvent('appointment-moved', {
-      detail: { appointmentId, newDate: updates.date, newTime: updates.time, message: `Cita movida a ${format(newDate, 'dd/MM/yyyy')} a las ${newTime || appointment.time}` }
-    }));
+    toast.success('Cita actualizada');
+    window.dispatchEvent(
+      new CustomEvent('appointment-moved', {
+        detail: {
+          appointmentId,
+          newDate: updates.date,
+          newTime: updates.time,
+          message: `Cita movida a ${format(newDate, 'dd/MM/yyyy')} a las ${updates.time}`,
+        },
+      })
+    );
   };
 
   const handleCloseNewAppointmentDialog = () => {
@@ -206,102 +376,95 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
     setPrefilledResourceId(undefined);
   };
 
-  const calendarConfigForViews = {
+  const viewProps = {
     firstHour: calendarConfig.day_view_first_hour ?? 8,
     lastHour: calendarConfig.day_view_last_hour ?? 18,
     firstHourWeek: calendarConfig.first_hour ?? 8,
     lastHourWeek: calendarConfig.last_hour ?? 20,
     weekStartsOn,
+    intervalMinutes,
+    showWeekends: calendarConfig.show_weekends ?? true,
   };
 
+  const dayResources = selectedResources.length > 0 ? selectedResources : resourceList;
+
   return (
-    <div className="flex h-screen p-4 gap-4 overflow-hidden">
-      {/* Sidebar filtros */}
-      <aside className="w-64 flex-shrink-0 border rounded-lg bg-background p-3 flex flex-col overflow-hidden">
-        <Button variant="outline" size="sm" className="mb-3" onClick={clearFilters}>
-          <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-          Reiniciar filtros
-        </Button>
-        <div className="flex items-center gap-2 mb-2">
-          <Car className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Móviles</span>
-          <span className="text-xs bg-muted rounded-full px-2 py-0.5">
-            {selectedVehicleIds.size === 0 ? resourceList.length : selectedVehicleIds.size}
-          </span>
-        </div>
-        <div className="relative mb-2">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Filtrar"
-            value={vehicleSearch}
-            onChange={e => setVehicleSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-          {filteredBySearch.map(r => (
-            <label key={r.id} className={cn("flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer hover:bg-muted/50 text-sm", selectedVehicleIds.has(r.id) && "bg-muted")}>
-              <input
-                type="checkbox"
-                checked={selectedVehicleIds.size === 0 || selectedVehicleIds.has(r.id)}
-                onChange={() => toggleVehicle(r.id)}
-                className="rounded border-input"
-              />
-              <span className="truncate">{r.name}</span>
-            </label>
-          ))}
-          {filteredBySearch.length === 0 && <p className="text-xs text-muted-foreground py-2">Sin resultados</p>}
-        </div>
-        <div className="border-t pt-3 mt-2">
-          <Label className="text-xs text-muted-foreground block mb-1">Tipo de cita</Label>
-          <select
-            value={filterTipoCita}
-            onChange={e => setFilterTipoCita(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="">Todos</option>
-            {tipoCitaOptions.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-      </aside>
+    <div className="flex flex-col h-[calc(100vh-4rem)] p-3 sm:p-4 gap-3 overflow-hidden">
+      <CalendarHeader
+        currentDate={currentDate}
+        onDateChange={setCurrentDate}
+        view={view}
+        onViewChange={setView}
+        showDayView={calendarConfig.show_day_view_option}
+        onNavigate={onNavigate}
+      />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <CalendarHeader
-          currentDate={currentDate}
-          onDateChange={setCurrentDate}
-          view={view}
-          onViewChange={setView}
-          showDayView={calendarConfig.show_day_view_option}
+      <CalendarFiltersBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        filterTipoCita={filterTipoCita}
+        onFilterTipoCitaChange={setFilterTipoCita}
+        filterDistrict={filterDistrict}
+        onFilterDistrictChange={setFilterDistrict}
+        tipoCitaOptions={tipoCitaOptions}
+        districtOptions={districtOptions}
+        quickChip={quickChip}
+        onQuickChipChange={setQuickChip}
+        showCancelled={showCancelled}
+        onShowCancelledChange={setShowCancelled}
+        activeFilterCount={activeFilterCount}
+        onClearFilters={clearFilters}
+        resourcesOpen={resourcesOpen}
+        onToggleResources={() => setResourcesOpen((o) => !o)}
+        selectedVehicleCount={selectedVehicleIds.size}
+        totalVehicles={resourceList.length}
+      />
+
+      {resourcesOpen && (
+        <CalendarResourcesPanel
+          resources={resourceList}
+          filteredResources={filteredBySearch}
+          selectedVehicleIds={selectedVehicleIds}
+          vehicleSearch={vehicleSearch}
+          onVehicleSearchChange={setVehicleSearch}
+          onToggleVehicle={toggleVehicle}
+          onSelectAll={() => setSelectedVehicleIds(new Set())}
+          onClearSelection={() => setSelectedVehicleIds(new Set(resourceList.map((r) => r.id)))}
         />
+      )}
 
-        <div className="flex-1 min-h-0 mt-2 relative">
-          {loading && (
-            <div className="absolute top-2 right-2 z-20 text-xs bg-background/90 border rounded px-2 py-1 text-muted-foreground shadow-sm">
-              Cargando citas…
-            </div>
-          )}
+      <CalendarKpiBar appointments={kpiAppointments} rangeLabel={rangeLabel} />
+
+      <div className="flex-1 min-h-0 flex flex-col relative">
+        <CalendarStatusLegend />
+        {loading && (
+          <div className="absolute top-12 right-2 z-20 text-xs bg-background/90 border rounded px-2 py-1 text-muted-foreground shadow-sm">
+            Cargando citas…
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 mt-0">
           {view === 'month' && (
             <MonthView
               currentDate={currentDate}
               appointments={filteredAppointments}
               onDateClick={handleDateClick}
               onAppointmentClick={handleAppointmentClick}
+              weekStartsOn={viewProps.weekStartsOn}
             />
           )}
-          {view === 'week' && (
-            selectedResources.length > 0 ? (
+          {view === 'week' &&
+            (dayResources.length > 0 && selectedVehicleIds.size > 0 ? (
               <WeekViewWithResources
                 currentDate={currentDate}
                 appointments={filteredAppointments}
-                resources={selectedResources}
+                resources={dayResources}
                 onDateClick={handleDateClick}
                 onAppointmentClick={handleAppointmentClick}
                 onAppointmentDrop={handleAppointmentDrop}
-                firstHour={calendarConfigForViews.firstHourWeek}
-                lastHour={calendarConfigForViews.lastHourWeek}
-                weekStartsOn={calendarConfigForViews.weekStartsOn}
+                {...viewProps}
               />
             ) : (
               <WeekView
@@ -310,33 +473,28 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
                 onDateClick={handleDateClick}
                 onAppointmentClick={handleAppointmentClick}
                 onAppointmentDrop={handleAppointmentDrop}
-                firstHour={calendarConfigForViews.firstHourWeek}
-                lastHour={calendarConfigForViews.lastHourWeek}
+                {...viewProps}
               />
-            )
-          )}
-          {(view === 'resource' || view === 'day') && (
-            selectedResources.length > 0 ? (
-              <ResourceView
-                currentDate={currentDate}
-                appointments={filteredAppointments}
-                resources={selectedResources}
-                onDateClick={handleDateClick}
-                onAppointmentClick={handleAppointmentClick}
-                onAppointmentDrop={handleAppointmentDrop}
-                firstHour={calendarConfigForViews.firstHour}
-                lastHour={calendarConfigForViews.lastHour}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full border rounded-lg bg-muted/10">
-                <p className="text-muted-foreground text-center px-4">
-                  Selecciona al menos un móvil en el panel izquierdo para ver la vista por día o por recurso.
-                </p>
-              </div>
-            )
+            ))}
+          {(view === 'resource' || view === 'day') && dayResources.length > 0 && (
+            <ResourceView
+              currentDate={currentDate}
+              appointments={filteredAppointments}
+              resources={dayResources}
+              onDateClick={handleDateClick}
+              onAppointmentClick={handleAppointmentClick}
+              onAppointmentDrop={handleAppointmentDrop}
+              firstHour={viewProps.firstHour}
+              lastHour={viewProps.lastHour}
+              intervalMinutes={viewProps.intervalMinutes}
+            />
           )}
         </div>
       </div>
+
+      <p className="text-[10px] text-muted-foreground text-center hidden sm:block">
+        Atajos: N nueva cita · T hoy · R agenda móvil · D/W/M vistas
+      </p>
 
       <AppointmentDetailsDialog
         appointment={selectedAppointment}
@@ -346,6 +504,10 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
         onCancel={handleCancelAppointment}
         onReschedule={handleRescheduleAppointment}
         onDelete={handleDeleteAppointment}
+        onConfirm={handleConfirmAppointment}
+        onComplete={handleCompleteAppointment}
+        onSendReminder={handleSendReminder}
+        onNavigate={onNavigate}
       />
 
       <NewAppointmentDialog
@@ -357,7 +519,7 @@ export function CalendarLayout({ currentUser }: CalendarLayoutProps) {
         editingAppointment={editingAppointment}
         existingAppointments={appointments}
         onSave={handleSaveNewAppointment}
-        vehicles={selectedResources.length > 0 ? selectedResources : resourceList}
+        vehicles={dayResources}
       />
     </div>
   );

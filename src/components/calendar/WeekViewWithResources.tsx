@@ -4,7 +4,8 @@ import { cn } from '../ui/utils';
 import { ScrollArea } from '../ui/scroll-area';
 import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import { parseAppointmentDate, getAppointmentTimeParts } from './calendarDateUtils';
+import { parseAppointmentDate, getAppointmentTimeParts, getHourSlotHeight, snapTimeToInterval, filterWeekdays } from './calendarDateUtils';
+import { AppointmentBlock } from './AppointmentBlock';
 
 interface Resource {
   id: string;
@@ -22,6 +23,8 @@ interface WeekViewWithResourcesProps {
   firstHour?: number;
   lastHour?: number;
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  intervalMinutes?: number;
+  showWeekends?: boolean;
 }
 
 export function WeekViewWithResources({
@@ -61,7 +64,7 @@ export function WeekViewWithResources({
     const newDate = new Date(day);
     newDate.setHours(hour);
     newDate.setMinutes(0);
-    const newTime = `${hour.toString().padStart(2, '0')}:00`;
+    const newTime = snapTimeToInterval(hour, 0, intervalMinutes);
     onAppointmentDrop(draggedAppointment.id, newDate, newTime, resourceId);
     setDraggedAppointment(null);
   };
@@ -141,11 +144,11 @@ export function WeekViewWithResources({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 h-[600px]">
+      <ScrollArea className="flex-1 min-h-[400px] max-h-[calc(100vh-22rem)]">
         <div className="flex">
           <div className="w-16 flex-shrink-0 border-r bg-muted/10">
             {hours.map(hour => (
-              <div key={hour} className="h-20 text-xs text-muted-foreground text-right pr-2 pt-2 border-b">
+              <div key={hour} className="text-xs text-muted-foreground text-right pr-2 pt-2 border-b" style={{ height: slotHeight }}>
                 {`${hour}:00`}
               </div>
             ))}
@@ -163,9 +166,10 @@ export function WeekViewWithResources({
                       <div
                         key={hour}
                         className={cn(
-                          'h-20 border-b relative transition-colors',
+                          'border-b relative transition-colors',
                           isDragOverHere ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-400' : 'hover:bg-muted/30'
                         )}
+                        style={{ height: slotHeight }}
                         onClick={() => {
                           const d = new Date(day);
                           d.setHours(hour);
@@ -199,30 +203,20 @@ export function WeekViewWithResources({
                       const { hour: aptHour, minute: aptMinute } = getAppointmentTimeParts(apt.time);
                       if (aptHour < firstHour || aptHour > lastHour) return null;
                       const startMinutes = (aptHour - firstHour) * 60 + aptMinute;
-                      const duration = apt.totalDuration || 60;
-                      const height = (duration / 60) * 80;
-                      const top = (startMinutes / 60) * 80;
+                      const duration = apt.totalDuration || apt.duration || 60;
+                      const height = (duration / 60) * slotHeight;
+                      const top = (startMinutes / 60) * slotHeight;
                       return (
-                        <div
+                        <AppointmentBlock
                           key={apt.id}
-                          className={cn(
-                            'absolute left-1 right-1 rounded border p-1 text-xs overflow-hidden cursor-pointer shadow-sm z-10',
-                            apt.status === 'confirmed' ? 'bg-green-100 border-green-300 text-green-900' :
-                            apt.status === 'completed' ? 'bg-blue-100 border-blue-300 text-blue-900' :
-                            'bg-gray-100 border-gray-300 text-gray-900'
-                          )}
-                          style={{ top: `${top}px`, height: `${height}px` }}
-                          onClick={e => {
-                            e.stopPropagation();
-                            onAppointmentClick(apt);
-                          }}
+                          appointment={apt}
+                          compact
+                          style={{ position: 'absolute', top: `${top}px`, height: `${Math.max(height, 22)}px`, left: 2, right: 2 }}
+                          onClick={e => { e.stopPropagation(); onAppointmentClick(apt); }}
                           draggable
                           onDragStart={e => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
-                        >
-                          <div className="font-semibold truncate">{apt.clientName || apt.client}</div>
-                          <div className="truncate text-[10px] opacity-80">{apt.petName || apt.pet}</div>
-                        </div>
+                        />
                       );
                     })}
                 </div>

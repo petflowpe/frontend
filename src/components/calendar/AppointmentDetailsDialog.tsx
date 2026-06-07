@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../ui/alert-dialog';
-import { Calendar, Clock, User, Dog, MapPin, Phone, DollarSign, Car, FileText, Edit, XCircle, Trash2, X } from 'lucide-react';
+import { Calendar, Clock, User, Dog, MapPin, Phone, DollarSign, Car, FileText, Edit, XCircle, Trash2, X, CheckCircle2, Bell, Navigation, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -54,6 +54,10 @@ interface AppointmentDetailsDialogProps {
   onCancel?: (appointmentId: string) => void;
   onReschedule?: (appointment: any) => void;
   onDelete?: (appointmentId: string) => void;
+  onConfirm?: (appointmentId: string) => void | Promise<void>;
+  onComplete?: (appointmentId: string) => void | Promise<void>;
+  onSendReminder?: (appointmentId: string) => void | Promise<void>;
+  onNavigate?: (tab: string) => void;
 }
 
 export function AppointmentDetailsDialog({
@@ -64,6 +68,10 @@ export function AppointmentDetailsDialog({
   onCancel,
   onReschedule,
   onDelete,
+  onConfirm,
+  onComplete,
+  onSendReminder,
+  onNavigate,
 }: AppointmentDetailsDialogProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -276,6 +284,65 @@ export function AppointmentDetailsDialog({
               <p className="text-sm">{appointment.notes}</p>
             </div>
           )}
+
+          {/* Quick actions */}
+          <div className="flex flex-wrap gap-2 pt-2 border-t">
+            {appointment.status === 'pending' && onConfirm && (
+              <Button size="sm" variant="outline" className="gap-1 text-green-700" onClick={() => onConfirm(appointment.id)}>
+                <CheckCircle2 className="h-4 w-4" />
+                Confirmar
+              </Button>
+            )}
+            {canEdit && appointment.status !== 'completed' && onComplete && (
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => onComplete(appointment.id)}>
+                <CheckCircle2 className="h-4 w-4" />
+                Completar
+              </Button>
+            )}
+            {onSendReminder && (
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => onSendReminder(appointment.id)}>
+                <Bell className="h-4 w-4" />
+                Recordatorio
+              </Button>
+            )}
+            {(appointment.address || appointment.district) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() => {
+                  const q = [appointment.address, appointment.district, 'Lima, Perú'].filter(Boolean).join(', ');
+                  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`, '_blank');
+                }}
+              >
+                <Navigation className="h-4 w-4" />
+                Maps
+              </Button>
+            )}
+            {(appointment.trackingCode || appointment.tracking_code) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() => {
+                  const code = appointment.trackingCode || appointment.tracking_code;
+                  window.open(
+                    `${window.location.pathname}?tab=public-tracking&code=${encodeURIComponent(code || '')}`,
+                    '_blank'
+                  );
+                }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Tracking
+              </Button>
+            )}
+            {onNavigate && (
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => onNavigate('routes')}>
+                <Car className="h-4 w-4" />
+                Planificador
+              </Button>
+            )}
+          </div>
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-4 border-t">
