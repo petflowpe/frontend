@@ -486,7 +486,7 @@ function AppContent() {
       case 'purchases': return <Purchases />;
       case 'medical':
         return <PetsManagement onNavigate={setActiveTab} currentUser={currentUser} />;
-      case 'vehicles': return <VehicleManagement />;
+      case 'vehicles': return <VehicleManagement currentUser={currentUser} />;
       case 'routes': return <Routes onNavigate={setActiveTab} />;
       case 'invoicing': return <Invoicing currentUser={currentUser} />;
       case 'payments': return <Payments />;

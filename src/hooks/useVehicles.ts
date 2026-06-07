@@ -51,7 +51,6 @@ export interface Vehicle {
   horario_disponibilidad?: Record<string, { open: boolean; start: string; end: string }>;
 }
 
-const DEFAULT_COMPANY_ID = 1;
 
 function fromBackendFormat(row: any): Vehicle {
   const driverName = row.driver?.name ?? row.driver_name ?? '';
@@ -119,7 +118,6 @@ function toBackendFormat(v: Partial<Vehicle>): Record<string, unknown> {
     else activo = true;
   }
   return {
-    company_id: DEFAULT_COMPANY_ID,
     name: v.name || '',
     type: v.type || 'furgoneta_grande',
     placa: v.plate ?? v.placa ?? null,
@@ -147,7 +145,7 @@ function toBackendFormat(v: Partial<Vehicle>): Record<string, unknown> {
   };
 }
 
-export function useVehicles(companyId: number = DEFAULT_COMPANY_ID) {
+export function useVehicles(companyId?: number | null) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
 

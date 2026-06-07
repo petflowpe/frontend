@@ -169,7 +169,11 @@ interface VehicleInspectionRecord {
   attachments?: Array<{ id: number; name?: string; url?: string; data_url?: string; mime_type?: string; size?: number }>;
 }
 
-export function VehicleManagement() {
+interface VehicleManagementProps {
+  currentUser?: { companyId?: number | null; role?: string } | null;
+}
+
+export function VehicleManagement({ currentUser }: VehicleManagementProps = {}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showNewVehicle, setShowNewVehicle] = useState(false);
@@ -177,8 +181,8 @@ export function VehicleManagement() {
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // companyId 0 = no filtrar por empresa, listar todos los vehículos
-const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, deleteVehicle, reload: reloadVehicles } = useVehicles(0);
+  const scopedCompanyId = currentUser?.companyId ?? null;
+  const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, deleteVehicle, reload: reloadVehicles } = useVehicles(scopedCompanyId);
   const vehiclesForUIBase = useMemo(() => {
     return (vehicles || []).map((v: any) => ({
       ...v,
@@ -1081,7 +1085,17 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
 
           {/* Vehicle Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {filteredVehicles.map((vehicle) => (
+            {vehiclesLoading ? (
+              <Card className="p-8 text-center col-span-full">
+                <Clock className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50 animate-pulse" />
+                <p className="text-muted-foreground">Cargando vehículos...</p>
+              </Card>
+            ) : filteredVehicles.length === 0 ? (
+              <Card className="p-8 text-center col-span-full">
+                <Truck className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No hay vehículos registrados.</p>
+              </Card>
+            ) : filteredVehicles.map((vehicle) => (
               <VehicleCard 
                 key={vehicle.id} 
                 vehicle={vehicle}
@@ -1409,6 +1423,15 @@ const { vehicles, loading: vehiclesLoading, createVehicle, updateVehicle, delete
                          `En ${daysUntil} días`}
                       </p>
                       <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCompleteService(service.id)}
+                          className="bg-green-50 hover:bg-green-100 dark:bg-green-950/30 dark:hover:bg-green-950/50 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/50"
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Completar
+                        </Button>
                         <Button 
                           variant="outline" 
                           size="sm"
