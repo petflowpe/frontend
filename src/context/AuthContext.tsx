@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { apiClient } from '../utils/api/client';
 import { ApiAuthError } from '../utils/api/config';
+import { getPortalCompanyId } from '../utils/api/publicBooking';
 import { User, Pet, Appointment, Notification, Membership } from '../types';
 import type { DocumentType } from '../types';
 
@@ -90,6 +91,53 @@ function mapBackendNotificationToFrontend(backendNotif: any, userId: string): No
   };
 }
 
+function mapDocumentTypeToBackend(documentType?: string): string {
+  if (documentType === 'DNI') return '1';
+  if (documentType === 'CE') return '4';
+  if (documentType === 'RUC') return '6';
+  return '1';
+}
+
+function getEffectiveClientId(user: User | null | undefined): string | null {
+  if (!user) return null;
+  return user.clientId || user.id || null;
+}
+
+async function fetchClientByDocument(
+  documentType: string | undefined,
+  documentNumber: string | undefined,
+  companyIdHint?: number | null
+): Promise<any | null> {
+  const numero = (documentNumber ?? '').trim();
+  if (!numero) return null;
+  try {
+    const company_id = await getPortalCompanyId(companyIdHint);
+    const res = await apiClient.post<{ data?: any } | any>('/clients/search-by-document', {
+      company_id,
+      tipo_documento: mapDocumentTypeToBackend(documentType),
+      numero_documento: numero,
+    });
+    return res && typeof res === 'object' && 'data' in res ? (res as { data: any }).data : res;
+  } catch {
+    return null;
+  }
+}
+
+function mergeClientIntoUser(base: User, client: any): User {
+  const fullName = client.razon_social || client.fullName || client.full_name || '';
+  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  return {
+    ...base,
+    clientId: String(client.id),
+    firstName: base.firstName || parts[0] || base.firstName,
+    lastName: base.lastName || parts.slice(1).join(' ') || base.lastName,
+    phone: base.phone || client.telefono || client.phone || '',
+    address: base.address || client.direccion || client.address || '',
+    district: base.district || client.distrito || client.district || '',
+    email: base.email || client.email || '',
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [pets, setPets] = useState<Pet[]>([]);
@@ -97,21 +145,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [membership, setMembership] = useState<Membership | null>(null);
 
-  const loadUserData = useCallback(async (userId: string) => {
+  const loadUserData = useCallback(async (targetUser: User) => {
+    const clientId = getEffectiveClientId(targetUser);
+    if (!clientId) return;
+
     try {
-      // Notificaciones: siempre desde API (usuario autenticado)
       const notifRes = await apiClient.get<{ data?: any[] }>('/notifications').catch(() => ({ data: [] }));
       const notifList = Array.isArray(notifRes) ? notifRes : (notifRes?.data || []);
-      setNotifications(notifList.map((n: any) => mapBackendNotificationToFrontend(n, userId)));
+      setNotifications(notifList.map((n: any) => mapBackendNotificationToFrontend(n, clientId)));
 
-      // Mascotas y citas: si userId es client_id (ej. usuario registrado como cliente)
-      const petsRes = await apiClient.get<any[] | { data?: any[] }>(`/clients/${userId}/pets`).catch((): any[] => []);
+      const petsRes = await apiClient.get<any[] | { data?: any[] }>(`/clients/${clientId}/pets`).catch((): any[] => []);
       const petsList = Array.isArray(petsRes) ? petsRes : ((petsRes as { data?: any[] })?.data ?? []);
-      setPets(petsList.map((p: any) => mapBackendPetToFrontend(p, userId)));
+      setPets(petsList.map((p: any) => mapBackendPetToFrontend(p, clientId)));
 
-      const aptRes = await apiClient.get<any[] | { data?: any[] }>(`/clients/${userId}/appointments`).catch((): any[] => []);
+      const aptRes = await apiClient.get<any[] | { data?: any[] }>(`/clients/${clientId}/appointments`).catch((): any[] => []);
       const aptList = Array.isArray(aptRes) ? aptRes : ((aptRes as { data?: any[] })?.data ?? []);
-      setAppointments(aptList.map((a: any) => mapBackendAppointmentToFrontend(a, userId)));
+      setAppointments(aptList.map((a: any) => mapBackendAppointmentToFrontend(a, clientId)));
 
       setMembership(null);
     } catch (e) {
@@ -130,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const userData = JSON.parse(storedUser);
         setUser(userData);
-        loadUserData(userData.id);
+        loadUserData(userData);
       } catch {
         localStorage.removeItem('smartpet_user');
       }
@@ -205,10 +254,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ?? 'Sin rol';
         const permissions = Array.isArray(backendUser.permissions) ? backendUser.permissions : [];
 
-        const frontendUser: User = {
+        const backendDocType = (backendUser as { document_type?: string }).document_type;
+        const backendDocNumber = (backendUser as { document_number?: string }).document_number;
+        const resolvedDocType = (documentType || backendDocType || 'DNI') as DocumentType;
+        const resolvedDocNumber = trimmedDoc || backendDocNumber || '';
+
+        let frontendUser: User = {
           id: backendUser.id.toString(),
-          documentType: (documentType || 'DNI') as DocumentType,
-          documentNumber: documentNumber,
+          documentType: resolvedDocType,
+          documentNumber: resolvedDocNumber,
           firstName: backendUser.name.split(' ')[0] || backendUser.name,
           lastName: backendUser.name.split(' ').slice(1).join(' ') || '',
           email: backendUser.email,
@@ -224,9 +278,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           createdAt: new Date().toISOString(),
         };
 
+        const linkedClient = await fetchClientByDocument(
+          resolvedDocType,
+          resolvedDocNumber,
+          (backendUser as any).company_id
+        );
+        if (linkedClient?.id) {
+          frontendUser = mergeClientIntoUser(frontendUser, linkedClient);
+        }
+
         setUser(frontendUser);
-        loadUserData(frontendUser.id);
-        // Devolver el usuario para que el llamador no dependa de auth.user (aún no actualizado por React)
+        await loadUserData(frontendUser);
         return frontendUser;
       }
 
@@ -254,7 +316,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                            userData.documentType === 'CE' ? '4' : '6';
       
       try {
+        const company_id = await getPortalCompanyId();
         const searchRes = await apiClient.post<{ data?: any } | any>('/clients/search-by-document', {
+          company_id,
           tipo_documento: tipoDocumento,
           numero_documento: userData.documentNumber,
         });
@@ -271,8 +335,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Crear usuario en el sistema (si no existe)
           // Nota: Esto requiere que el backend tenga un endpoint para crear usuarios
           // Por ahora, solo creamos la sesión local
-          const newUser: User = {
+          const newUser: User = mergeClientIntoUser({
             id: client.id.toString(),
+            clientId: client.id.toString(),
             documentType: userData.documentType!,
             documentNumber: userData.documentNumber!,
             firstName: client.razon_social?.split(' ')[0] || userData.firstName!,
@@ -281,11 +346,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             phone: client.telefono || userData.phone!,
             address: client.direccion || userData.address!,
             district: client.distrito || userData.district!,
-            password: '', // No guardamos la contraseña
-            createdAt: client.created_at || new Date().toISOString()
-          };
+            password: '',
+            createdAt: client.created_at || new Date().toISOString(),
+          }, client);
+
+          const loggedIn = await login(
+            userData.documentType!,
+            userData.documentNumber!,
+            userData.password,
+            userData.email
+          );
+          if (loggedIn) {
+            return true;
+          }
 
           setUser(newUser);
+          await loadUserData(newUser);
           
           const welcomeNotification: Notification = {
             id: `notif_${Date.now()}`,
@@ -306,7 +382,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // CASO B: NUEVO CLIENTE (REGISTRO COMPLETO)
       // Crear cliente en el backend
+      const company_id = await getPortalCompanyId();
       const newClientData = await apiClient.post<{ data?: any } | any>('/clients', {
+        company_id,
         tipo_documento: tipoDocumento,
         numero_documento: userData.documentNumber,
         razon_social: `${userData.firstName} ${userData.lastName}`,
@@ -322,8 +400,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Crear usuario en el sistema (requiere endpoint en backend)
       // Por ahora solo creamos la sesión local
-      const newUser: User = {
+      const newUser: User = mergeClientIntoUser({
         id: client.id.toString(),
+        clientId: client.id.toString(),
         documentType: userData.documentType!,
         documentNumber: userData.documentNumber!,
         firstName: userData.firstName!,
@@ -332,9 +411,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phone: userData.phone!,
         address: userData.address!,
         district: userData.district!,
-        password: '', // No guardamos la contraseña
-        createdAt: client.created_at || new Date().toISOString()
-      };
+        password: '',
+        createdAt: client.created_at || new Date().toISOString(),
+      }, client);
+
+      const loggedIn = await login(
+        userData.documentType!,
+        userData.documentNumber!,
+        userData.password,
+        userData.email
+      );
+      if (loggedIn) {
+        return true;
+      }
 
       setUser(newUser);
       setPets([]);
@@ -386,9 +475,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const addPet = async (petData: Omit<Pet, 'id' | 'userId' | 'createdAt'>) => {
     if (!user) return;
+    const clientId = getEffectiveClientId(user);
+    if (!clientId) return;
     try {
       const res = await apiClient.post<{ data?: any }>('/pets', {
-        client_id: parseInt(user.id),
+        client_id: parseInt(clientId, 10),
         name: petData.name,
         species: petData.species,
         breed: petData.breed || null,
@@ -398,7 +489,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         birth_date: (petData as any).birthDate || null,
       });
       const backendPet = res?.data ?? res;
-      const newPet = mapBackendPetToFrontend(backendPet, user.id);
+      const newPet = mapBackendPetToFrontend(backendPet, clientId);
       setPets(prev => [...prev, newPet]);
     } catch (e) {
       console.error('addPet:', e);
@@ -431,11 +522,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const addAppointment = async (appointmentData: Omit<Appointment, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<string> => {
-    if (!user) return '';
+    if (!user) throw new Error('Debes iniciar sesión para agendar');
+    const clientId = getEffectiveClientId(user);
+    if (!clientId) throw new Error('No se encontró tu ficha de cliente');
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (!token) {
+      throw new Error('Tu sesión no está activa. Inicia sesión con tu documento y contraseña para reservar.');
+    }
+
     try {
       const vehicleId = (appointmentData as { vehicleId?: string | number }).vehicleId;
       const res = await apiClient.post<{ data?: any }>('/appointments', {
-        client_id: parseInt(user.id),
+        client_id: parseInt(clientId, 10),
         pet_id: parseInt(appointmentData.petId),
         service_type: appointmentData.serviceType,
         service_name: appointmentData.serviceName,
@@ -453,12 +552,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : {}),
       });
       const backendApt = res?.data ?? res;
-      const newApt = mapBackendAppointmentToFrontend(backendApt, user.id);
+      const newApt = mapBackendAppointmentToFrontend(backendApt, clientId);
       setAppointments(prev => [...prev, newApt]);
       return newApt.id;
     } catch (e) {
       console.error('addAppointment:', e);
-      return '';
+      const msg = e instanceof Error ? e.message : 'No se pudo registrar la cita';
+      throw new Error(msg);
     }
   };
 

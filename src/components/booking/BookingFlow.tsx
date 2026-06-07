@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatDateForApi, fetchPublicAvailability } from '../../utils/api/publicBooking';
 import { fetchAvailableVehicles } from '../../hooks/useVehicleCoverage';
 import { getStoredCompanyId } from '../../utils/appointmentMappers';
+import { toast } from 'sonner';
 import { PaymentPage } from './PaymentPage';
 import { BookingTicket } from './BookingTicket';
 import { 
@@ -211,9 +212,14 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
   };
 
   useEffect(() => {
-    if (!selectedDate || !user?.district) {
+    if (!selectedDate) {
       setApiSlots(null);
       setCoverageNote(null);
+      return;
+    }
+    if (!user?.district?.trim()) {
+      setApiSlots([]);
+      setCoverageNote('Completa tu distrito en el perfil para ver horarios disponibles.');
       return;
     }
     let cancelled = false;
@@ -317,7 +323,9 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
         onClose();
       }, 1500);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al agendar la cita. Intenta nuevamente.');
+      const message = err instanceof Error ? err.message : 'Error al agendar la cita. Intenta nuevamente.';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

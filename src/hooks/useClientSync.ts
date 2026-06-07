@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../utils/api/client';
 import { useAuth } from '../context/AuthContext';
+import { getPortalCompanyId } from '../utils/api/publicBooking';
 import { toast } from 'sonner';
 
 export const useClientSync = () => {
@@ -19,7 +20,9 @@ export const useClientSync = () => {
         const tipoDocumento = user.documentType === 'DNI' ? '1' : 
                              user.documentType === 'CE' ? '4' : '6';
         
+        const company_id = await getPortalCompanyId(user.companyId);
         const response = await apiClient.post<{ data: any }>('/clients/search-by-document', {
+          company_id,
           tipo_documento: tipoDocumento,
           numero_documento: user.documentNumber,
         });
@@ -37,15 +40,16 @@ export const useClientSync = () => {
             (!user.district && client.district) ||
             (!user.email && client.email); // Ahora también podemos recuperar el email si falta
 
-          if (needsUpdate) {
+          if (needsUpdate || !user.clientId) {
             updateUser({
               ...user,
-              phone: user.phone || client.phone,
-              address: user.address || client.address,
-              district: user.district || client.district,
+              clientId: String(client.id),
+              phone: user.phone || client.phone || client.telefono,
+              address: user.address || client.address || client.direccion,
+              district: user.district || client.district || client.distrito,
               email: user.email || client.email,
-              firstName: user.firstName || client.full_name?.split(' ')[0] || user.firstName,
-              lastName: user.lastName || client.full_name?.split(' ').slice(1).join(' ') || user.lastName,
+              firstName: user.firstName || client.full_name?.split(' ')[0] || client.razon_social?.split(' ')[0] || user.firstName,
+              lastName: user.lastName || client.full_name?.split(' ').slice(1).join(' ') || client.razon_social?.split(' ').slice(1).join(' ') || user.lastName,
             });
             
             toast.success('Perfil sincronizado', {

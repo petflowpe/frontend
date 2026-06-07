@@ -131,7 +131,7 @@ export function ClientPortal({ onNavigatePublic, onBookService }: ClientPortalPr
             >
               <div className="flex items-center gap-3 mb-6 px-2">
                 <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold text-lg">
-                  {user.firstName[0]}
+                  {(user.firstName?.[0] || user.email?.[0] || '?').toUpperCase()}
                 </div>
                 <div>
                   <p className="font-semibold text-slate-900">{user.firstName} {user.lastName}</p>

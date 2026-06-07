@@ -7,6 +7,8 @@ export type ClientCategory = 'Oro' | 'Bronce' | 'Plata';
 // Usuario/Cliente
 export interface User {
   id: string;
+  /** ID del registro en tabla clients (puede diferir de users.id tras login API) */
+  clientId?: string;
   documentType: DocumentType;
   documentNumber: string;
   firstName: string;

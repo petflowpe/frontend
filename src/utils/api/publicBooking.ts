@@ -1,4 +1,7 @@
 import { apiClient } from './client';
+import { getStoredCompanyId } from '../appointmentMappers';
+
+let cachedPortalCompanyId: number | null = null;
 
 export interface PublicBookingService {
   id: string;
@@ -65,6 +68,27 @@ function unwrapData<T>(res: { data?: T } & T): T {
     return res.data as T;
   }
   return res as T;
+}
+
+/** Empresa del portal público (config backend o sesión staff). */
+export async function getPortalCompanyId(hint?: number | null): Promise<number> {
+  if (hint != null && Number.isInteger(hint) && hint > 0) return hint;
+  const stored = getStoredCompanyId();
+  if (stored) return stored;
+  if (cachedPortalCompanyId) return cachedPortalCompanyId;
+  try {
+    const res = await apiClient.getPublic<{ data?: { company_id?: number }; company_id?: number }>(
+      '/public/booking/config'
+    );
+    const id = res?.data?.company_id ?? res?.company_id;
+    if (id != null && Number.isInteger(id) && id > 0) {
+      cachedPortalCompanyId = id;
+      return id;
+    }
+  } catch {
+    // fallback abajo
+  }
+  return 1;
 }
 
 export async function fetchPublicBookingServices(): Promise<PublicBookingService[]> {

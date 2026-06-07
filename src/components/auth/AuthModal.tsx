@@ -95,25 +95,25 @@ export function AuthModal({ isOpen, onClose, onSuccess, onGuestBook, defaultMode
     setLoading(true);
 
     try {
-      let success = false;
-      
+      let loggedInUser = null as Awaited<ReturnType<typeof login>>;
+
       if (loginMethod === 'document') {
         if (!loginDocNumber || !loginPassword) {
           setError('Por favor ingresa documento y contraseña');
           setLoading(false);
           return;
         }
-        success = await login(loginDocType, loginDocNumber, loginPassword);
+        loggedInUser = await login(loginDocType, loginDocNumber, loginPassword);
       } else {
         if (!loginEmail || !loginPassword) {
           setError('Por favor ingresa correo y contraseña');
           setLoading(false);
           return;
         }
-        success = await login('', '', loginPassword, loginEmail);
+        loggedInUser = await login('', '', loginPassword, loginEmail);
       }
 
-      if (success) {
+      if (loggedInUser) {
         setSuccess(true);
         setTimeout(() => {
           onClose();
