@@ -96,3 +96,29 @@ export function getAppointmentTimeParts(timeStr: string): { hour: number; minute
   const [h, m] = t.split(':').map(Number);
   return { hour: isNaN(h) ? 9 : h, minute: isNaN(m) ? 0 : m };
 }
+
+/** Altura en px de una hora según intervalo (ej. 15 min → 4 sub-slots de 20px) */
+export function getHourSlotHeight(intervalMinutes = 15): number {
+  const slotsPerHour = Math.max(1, Math.floor(60 / intervalMinutes));
+  return slotsPerHour * 20;
+}
+
+/** Ajusta hora:minuto al intervalo más cercano */
+export function snapTimeToInterval(hour: number, minute: number, intervalMinutes = 15): string {
+  const total = hour * 60 + minute;
+  const snapped = Math.round(total / intervalMinutes) * intervalMinutes;
+  const h = Math.floor(snapped / 60) % 24;
+  const m = snapped % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
+export function filterWeekdays<T extends { getDay: () => number }>(
+  days: T[],
+  showWeekends: boolean
+): T[] {
+  if (showWeekends) return days;
+  return days.filter((d) => {
+    const day = d.getDay();
+    return day !== 0 && day !== 6;
+  });
+}
