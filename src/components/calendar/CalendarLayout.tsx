@@ -20,6 +20,7 @@ import { loadCalendarFilters, saveCalendarFilters } from './calendarFilterStorag
 import { isUnconfirmed, hasNoVehicle } from './calendarAppointmentStyles';
 import { toast } from 'sonner';
 import { getStoredCompanyId } from '../../utils/appointmentMappers';
+import { matchesBookingSourceFilter } from '../../utils/bookingSourceHelpers';
 
 interface CalendarLayoutProps {
   currentUser?: { companyId?: number } | null;
@@ -46,6 +47,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
   );
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [showCancelled, setShowCancelled] = useState(stored.showCancelled ?? false);
+  const [bookingSourceFilter, setBookingSourceFilter] = useState(stored.bookingSourceFilter ?? 'all');
   const [quickChip, setQuickChip] = useState<QuickChip>('none');
 
   const {
@@ -107,8 +109,9 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
       filterDistrict,
       selectedVehicleIds: Array.from(selectedVehicleIds),
       showCancelled,
+      bookingSourceFilter,
     });
-  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled]);
+  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled, bookingSourceFilter]);
 
   const tipoCitaOptions = useMemo(() => {
     const set = new Set<string>();
@@ -158,6 +161,10 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
       list = list.filter((apt: any) => String(apt.district || '').toLowerCase() === filterDistrict.toLowerCase());
     }
 
+    if (bookingSourceFilter !== 'all') {
+      list = list.filter((apt: any) => matchesBookingSourceFilter(apt.bookingSource, bookingSourceFilter));
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((apt: any) => {
@@ -195,6 +202,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
     searchQuery,
     showCancelled,
     quickChip,
+    bookingSourceFilter,
   ]);
 
   const rangeLabel = useMemo(() => {
@@ -220,8 +228,9 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
     if (selectedVehicleIds.size > 0) n++;
     if (showCancelled) n++;
     if (quickChip !== 'none') n++;
+    if (bookingSourceFilter !== 'all') n++;
     return n;
-  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled, quickChip]);
+  }, [searchQuery, statusFilter, filterTipoCita, filterDistrict, selectedVehicleIds, showCancelled, quickChip, bookingSourceFilter]);
 
   const toggleVehicle = (id: string) => {
     setSelectedVehicleIds((prev) => {
@@ -241,6 +250,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
     setVehicleSearch('');
     setShowCancelled(false);
     setQuickChip('none');
+    setBookingSourceFilter('all');
   };
 
   useEffect(() => {
@@ -405,6 +415,8 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
         onFilterTipoCitaChange={setFilterTipoCita}
         filterDistrict={filterDistrict}
         onFilterDistrictChange={setFilterDistrict}
+        bookingSourceFilter={bookingSourceFilter}
+        onBookingSourceFilterChange={setBookingSourceFilter}
         tipoCitaOptions={tipoCitaOptions}
         districtOptions={districtOptions}
         quickChip={quickChip}

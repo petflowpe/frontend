@@ -7,6 +7,7 @@ export interface StoredCalendarFilters {
   filterDistrict?: string;
   selectedVehicleIds?: string[];
   showCancelled?: boolean;
+  bookingSourceFilter?: string;
   sidebarOpen?: boolean;
 }
 

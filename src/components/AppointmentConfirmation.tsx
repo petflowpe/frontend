@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Bell, Check, Clock, Phone, Mail, Calendar, Loader2, RefreshCw, MessageSquare } from 'lucide-react';
+import { Bell, Check, Clock, Phone, Mail, Calendar, Loader2, RefreshCw, MessageSquare, Globe, CheckCircle2, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -12,11 +12,15 @@ import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { formatDate } from '../utils/helpers';
 import { useAppointments } from '../hooks/useAppointments';
+import { useClients } from '../hooks/useClients';
 import { useCompanies } from '../hooks/useCompanies';
 import { getStoredCompanyId } from '../utils/appointmentMappers';
+import { BookingSourceBadge } from './appointments/BookingSourceBadge';
+import { isPortalBooking } from '../utils/bookingSourceHelpers';
 
 interface Appointment {
   id: string;
+  clientId?: string;
   clientName: string;
   petName: string;
   service: string;
@@ -25,6 +29,13 @@ interface Appointment {
   phone: string;
   email: string;
   confirmed: boolean;
+  status: string;
+  bookingSource?: string;
+  advanceAmount?: number;
+  advancePaidAt?: string | null;
+  trackingCode?: string;
+  clientPortalBookingEnabled?: boolean;
+  clientPortalApprovalStatus?: string;
   remindersSent: {
     reminder24h: boolean;
     reminder2h: boolean;
@@ -55,6 +66,7 @@ export function AppointmentConfirmation() {
     confirmAppointment,
     sendAppointmentReminder,
   } = useAppointments();
+  const { updateClient } = useClients();
   const { getCompanyConfig, updateCompanyConfig } = useCompanies();
   const companyId = getStoredCompanyId();
 
@@ -79,6 +91,7 @@ export function AppointmentConfirmation() {
         .filter((a) => a.status !== 'cancelled')
         .map((a) => ({
           id: a.id,
+          clientId: a.clientId,
           clientName: a.clientName || a.client || 'Cliente',
           petName: a.petName || a.pet || 'Mascota',
           service: a.serviceType || a.reason || 'Servicio',
@@ -86,6 +99,13 @@ export function AppointmentConfirmation() {
           time: (a.time || '').slice(0, 5),
           phone: a.clientPhone || a.phone || '',
           email: a.clientEmail || '',
+          status: a.status,
+          bookingSource: a.bookingSource,
+          advanceAmount: a.advanceAmount,
+          advancePaidAt: a.advancePaidAt,
+          trackingCode: a.trackingCode,
+          clientPortalBookingEnabled: a.clientPortalBookingEnabled,
+          clientPortalApprovalStatus: a.clientPortalApprovalStatus,
           confirmed: a.status === 'confirmed' || a.status === 'in-progress' || a.status === 'completed',
           remindersSent: {
             reminder24h: !!a.reminderSent,
@@ -96,6 +116,19 @@ export function AppointmentConfirmation() {
         })),
     [rawAppointments]
   );
+
+  const portalInbox = useMemo(
+    () =>
+      appointments.filter(
+        (a) => isPortalBooking(a.bookingSource) && a.status === 'pending'
+      ),
+    [appointments]
+  );
+
+  const needsClientApproval = (appointment: Appointment) =>
+    appointment.clientPortalApprovalStatus === 'pending' ||
+    appointment.clientPortalApprovalStatus === 'rejected' ||
+    appointment.clientPortalBookingEnabled === false;
 
   const [policies, setPolicies] = useState<CancellationPolicy[]>(DEFAULT_POLICIES);
   const [autoReminders, setAutoReminders] = useState({
@@ -158,6 +191,22 @@ export function AppointmentConfirmation() {
     }
   };
 
+  const handleApprovePortalClient = async (appointment: Appointment) => {
+    if (!appointment.clientId) {
+      toast.error('No se encontró el cliente asociado a la cita');
+      return;
+    }
+    try {
+      await updateClient(appointment.clientId, {
+        portalBookingEnabled: true,
+        portalApprovalStatus: 'approved',
+      });
+      toast.success(`Cliente ${appointment.clientName} aprobado para el portal`);
+    } catch {
+      toast.error('No se pudo aprobar el cliente para el portal');
+    }
+  };
+
   const handleSendReminder = async (appointmentId: string) => {
     const appointment = appointments.find((a) => a.id === appointmentId);
     if (!appointment) return;
@@ -187,10 +236,48 @@ export function AppointmentConfirmation() {
     total: appointments.length,
     confirmed: appointments.filter(a => a.confirmed).length,
     pending: appointments.filter(a => !a.confirmed).length,
+    portalPending: portalInbox.length,
     confirmationRate:
       appointments.length > 0
         ? (appointments.filter((a) => a.confirmed).length / appointments.length) * 100
         : 0,
+  };
+
+  const renderAppointmentActions = (appointment: Appointment) => {
+    const reminder24h = !!appointment.remindersSent?.reminder24h;
+    return (
+      <div className="flex justify-end gap-2 flex-wrap">
+        {isPortalBooking(appointment.bookingSource) && needsClientApproval(appointment) && appointment.clientId && (
+          <Button
+            size="sm"
+            variant="default"
+            className="bg-emerald-600 hover:bg-emerald-700"
+            onClick={() => handleApprovePortalClient(appointment)}
+          >
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            Aprobar cliente
+          </Button>
+        )}
+        {!appointment.confirmed && (
+          <>
+            <Button size="sm" onClick={() => handleConfirm(appointment.id, 'whatsapp')}>
+              <MessageSquare className="w-4 h-4 mr-2" />
+              WhatsApp
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleConfirm(appointment.id, 'phone')}>
+              <Phone className="w-4 h-4 mr-2" />
+              Llamada
+            </Button>
+          </>
+        )}
+        {!reminder24h && (
+          <Button size="sm" variant="outline" onClick={() => handleSendReminder(appointment.id)}>
+            <Bell className="w-4 h-4 mr-2" />
+            Recordatorio 24h
+          </Button>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -219,7 +306,7 @@ export function AppointmentConfirmation() {
       </div>
 
       {/* Métricas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
@@ -268,6 +355,22 @@ export function AppointmentConfirmation() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+              Portal pendientes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
+                {stats.portalPending}
+              </p>
+              <Globe className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
               Tasa de Confirmación
             </CardTitle>
           </CardHeader>
@@ -283,6 +386,12 @@ export function AppointmentConfirmation() {
       <Tabs defaultValue="appointments" className="space-y-4">
         <TabsList>
           <TabsTrigger value="appointments">Citas Próximas</TabsTrigger>
+          <TabsTrigger value="portal">
+            Reservas portal
+            {stats.portalPending > 0 && (
+              <Badge className="ml-2 bg-indigo-600 text-white">{stats.portalPending}</Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="policies">Políticas de Cancelación</TabsTrigger>
           <TabsTrigger value="settings">Configuración</TabsTrigger>
         </TabsList>
@@ -301,6 +410,7 @@ export function AppointmentConfirmation() {
                     <TableHead className="px-4">Hora</TableHead>
                     <TableHead className="px-4">Teléfono</TableHead>
                     <TableHead className="px-4">Email</TableHead>
+                    <TableHead className="px-4">Origen</TableHead>
                     <TableHead className="px-4">Estado</TableHead>
                     <TableHead className="px-4">Confirmación</TableHead>
                     <TableHead className="px-4">Recordatorios</TableHead>
@@ -348,6 +458,9 @@ export function AppointmentConfirmation() {
                           </span>
                         </TableCell>
                         <TableCell className="px-4 py-4">
+                          <BookingSourceBadge source={appointment.bookingSource} />
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
                           {appointment.confirmed ? (
                             <Badge className="bg-green-500">
                               <Check className="w-3 h-3 mr-1" />
@@ -378,32 +491,88 @@ export function AppointmentConfirmation() {
                           </div>
                         </TableCell>
                         <TableCell className="px-4 py-4">
-                          <div className="flex justify-end gap-2 flex-wrap">
-                            {!appointment.confirmed && (
-                              <>
-                                <Button size="sm" onClick={() => handleConfirm(appointment.id, 'whatsapp')}>
-                                  <MessageSquare className="w-4 h-4 mr-2" />
-                                  WhatsApp
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => handleConfirm(appointment.id, 'phone')}>
-                                  <Phone className="w-4 h-4 mr-2" />
-                                  Llamada
-                                </Button>
-                              </>
-                            )}
-                            {!reminder24h && (
-                              <Button size="sm" variant="outline" onClick={() => handleSendReminder(appointment.id)}>
-                                <Bell className="w-4 h-4 mr-2" />
-                                Recordatorio 24h
-                              </Button>
-                            )}
-                          </div>
+                          {renderAppointmentActions(appointment)}
                         </TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="portal" className="space-y-4">
+          <Card className="p-4 border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20">
+            <p className="text-sm text-indigo-900 dark:text-indigo-200">
+              Inbox de reservas hechas desde el portal web. Incluye citas pendientes de validación por el staff.
+            </p>
+          </Card>
+          <Card className="p-0 overflow-hidden">
+            <CardContent className="p-0">
+              {portalInbox.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Globe className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                  No hay reservas portal pendientes en los próximos 7 días
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead className="px-4">Código</TableHead>
+                      <TableHead className="px-4">Cliente</TableHead>
+                      <TableHead className="px-4">Mascota</TableHead>
+                      <TableHead className="px-4">Servicio</TableHead>
+                      <TableHead className="px-4">Fecha</TableHead>
+                      <TableHead className="px-4">Hora</TableHead>
+                      <TableHead className="px-4">Adelanto</TableHead>
+                      <TableHead className="px-4">Cliente portal</TableHead>
+                      <TableHead className="px-4 text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {portalInbox.map((appointment) => (
+                      <TableRow key={appointment.id} className="hover:bg-muted/20">
+                        <TableCell className="px-4 py-4 font-mono text-xs">
+                          {appointment.trackingCode || appointment.id}
+                        </TableCell>
+                        <TableCell className="px-4 py-4">{appointment.clientName}</TableCell>
+                        <TableCell className="px-4 py-4">{appointment.petName}</TableCell>
+                        <TableCell className="px-4 py-4">{appointment.service}</TableCell>
+                        <TableCell className="px-4 py-4">{formatDate(appointment.date)}</TableCell>
+                        <TableCell className="px-4 py-4">{appointment.time}</TableCell>
+                        <TableCell className="px-4 py-4">
+                          {appointment.advanceAmount != null && appointment.advanceAmount > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-sm">
+                              <DollarSign className="h-3.5 w-3.5" />
+                              S/ {Number(appointment.advanceAmount).toFixed(2)}
+                              <Badge variant="outline" className="ml-1 text-xs">
+                                {appointment.advancePaidAt ? 'Pagado' : 'Pendiente'}
+                              </Badge>
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          {needsClientApproval(appointment) ? (
+                            <Badge className="bg-amber-100 text-amber-900 border-amber-300">
+                              Requiere aprobación
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300">
+                              Aprobado
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-4">
+                          {renderAppointmentActions(appointment)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

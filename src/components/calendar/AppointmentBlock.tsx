@@ -1,4 +1,4 @@
-import { Repeat, AlertCircle } from 'lucide-react';
+import { Repeat, AlertCircle, Globe } from 'lucide-react';
 import { cn } from '../ui/utils';
 import {
   getAppointmentBlockClasses,
@@ -6,6 +6,7 @@ import {
   isUnconfirmed,
 } from './calendarAppointmentStyles';
 import { formatAppointmentTimeForDisplay } from './calendarDateUtils';
+import { isPortalBooking } from '../../utils/bookingSourceHelpers';
 
 interface AppointmentBlockProps {
   appointment: any;
@@ -35,6 +36,7 @@ export function AppointmentBlock({
   const recurring = isRecurring(appointment);
   const unconfirmed = isUnconfirmed(appointment);
   const noVehicle = !appointment.vehicle?.id && !appointment.groomer;
+  const portal = isPortalBooking(appointment.bookingSource);
 
   return (
     <div
@@ -73,6 +75,7 @@ export function AppointmentBlock({
           )}
         </div>
         <div className="flex flex-col gap-0.5 shrink-0">
+          {portal && <Globe className="h-3 w-3 text-indigo-600" title="Reserva portal" />}
           {recurring && <Repeat className="h-3 w-3 opacity-70" />}
           {(unconfirmed || noVehicle) && <AlertCircle className="h-3 w-3 text-amber-600" />}
         </div>

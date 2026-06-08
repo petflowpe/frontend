@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from '../ui/alert-dialog';
 import { Calendar, Clock, User, Dog, MapPin, Phone, DollarSign, Car, FileText, Edit, XCircle, Trash2, X, CheckCircle2, Bell, Navigation, ExternalLink } from 'lucide-react';
+import { BookingSourceBadge } from '../appointments/BookingSourceBadge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -170,9 +171,12 @@ export function AppointmentDetailsDialog({
                 </span>
               )}
             </span>
-            <Badge className={cn('text-xs', getStatusColor(appointment.status))}>
-              {getStatusLabel(appointment.status)}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <BookingSourceBadge source={appointment.bookingSource} />
+              <Badge className={cn('text-xs', getStatusColor(appointment.status))}>
+                {getStatusLabel(appointment.status)}
+              </Badge>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
@@ -243,6 +247,33 @@ export function AppointmentDetailsDialog({
               </div>
             )}
           </div>
+
+          {(appointment.bookingSource === 'portal_auth' || appointment.advanceAmount) && (
+            <div className="border rounded-lg p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Reserva portal</span>
+                <BookingSourceBadge source={appointment.bookingSource} />
+              </div>
+              {appointment.advanceAmount != null && appointment.advanceAmount > 0 && (
+                <div className="text-sm space-y-1">
+                  <p>
+                    <span className="text-muted-foreground">Adelanto:</span>{' '}
+                    <span className="font-semibold">S/ {Number(appointment.advanceAmount).toFixed(2)}</span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Estado pago:</span>{' '}
+                    {appointment.advancePaidAt ? (
+                      <span className="text-emerald-700 dark:text-emerald-300 font-medium">
+                        Pagado {appointment.advancePaymentMethod ? `(${appointment.advancePaymentMethod})` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 dark:text-amber-300 font-medium">Pendiente</span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Location & Vehicle */}
           <div className="grid grid-cols-2 gap-4">

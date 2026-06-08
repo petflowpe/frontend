@@ -83,6 +83,14 @@ export interface Appointment {
   recurrenceOccurrences?: number;
   recurrenceDays?: string[];
   recurrenceFixedTime?: boolean;
+  /** Origen de la reserva */
+  bookingSource?: 'staff' | 'portal_auth' | 'public_guest';
+  advanceAmount?: number;
+  advancePaidAt?: string | null;
+  advancePaymentMethod?: string;
+  advancePaymentReference?: string;
+  clientPortalBookingEnabled?: boolean;
+  clientPortalApprovalStatus?: 'pending' | 'approved' | 'rejected';
 }
 
 export const useAppointments = () => {
@@ -172,6 +180,7 @@ export const useAppointments = () => {
     per_page?: number;
     status?: string;
     vehicle_id?: number | string;
+    booking_source?: string;
   }) => {
     setLoading(true);
     try {
@@ -181,6 +190,7 @@ export const useAppointments = () => {
       if (filters?.date_to) params.date_to = filters.date_to;
       if (filters?.status) params.status = filters.status;
       if (filters?.vehicle_id) params.vehicle_id = filters.vehicle_id;
+      if (filters?.booking_source) params.booking_source = filters.booking_source;
       const perPage = filters?.limit ?? filters?.per_page ?? 100;
       params.per_page = perPage;
       const scopedCompanyId = getStoredCompanyId();

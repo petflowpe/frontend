@@ -29,6 +29,7 @@ import { Tooltip } from './ui/tooltip';
 import { setupNotificationChecker } from '../services/notificationService';
 import { apiClient } from '../utils/api/client';
 import { getAppointmentDateOnly } from './calendar/calendarDateUtils';
+import { matchesBookingSourceFilter } from '../utils/bookingSourceHelpers';
 import { IssueDocumentDialog } from './appointments/IssueDocumentDialog';
 
 // Días de la semana
@@ -72,6 +73,7 @@ export function Appointments() {
   const [vehicleFilter, setVehicleFilter] = useState('all');
   const [groomerFilter, setGroomerFilter] = useState('all');
   const [petFilter, setPetFilter] = useState('all');
+  const [bookingSourceFilter, setBookingSourceFilter] = useState('all');
   const [activeMainTab, setActiveMainTab] = useState('appointments');
 
   // Estados para historial y clonación
@@ -343,6 +345,7 @@ export function Appointments() {
                          id.includes(term) ||
                          doc.includes(term);
     const matchesStatus = statusFilter === 'all' || appointment.status === statusFilter;
+    const matchesBookingSource = matchesBookingSourceFilter(appointment.bookingSource, bookingSourceFilter);
     
     // Filtro por vehículo
     const matchesVehicle = vehicleFilter === 'all' || 
@@ -382,7 +385,7 @@ export function Appointments() {
       matchesDate = aptDay >= weekStart && aptDay <= weekEnd;
     }
     
-    return matchesSearch && matchesStatus && matchesDate && matchesVehicle && matchesGroomer && matchesPet;
+    return matchesSearch && matchesStatus && matchesDate && matchesVehicle && matchesGroomer && matchesPet && matchesBookingSource;
   });
 
   // Calcular estadísticas (normalizar date por si viene en ISO)
@@ -461,11 +464,14 @@ export function Appointments() {
         onDateFilterChange={setDateFilter}
         vehicleFilter={vehicleFilter}
         onVehicleFilterChange={setVehicleFilter}
+        bookingSourceFilter={bookingSourceFilter}
+        onBookingSourceFilterChange={setBookingSourceFilter}
         vehicles={vehiclesDatabase}
         onClearFilters={() => {
           setStatusFilter('all');
           setDateFilter('today');
           setVehicleFilter('all');
+          setBookingSourceFilter('all');
           setGroomerFilter('all');
           setPetFilter('all');
           setSearchTerm('');

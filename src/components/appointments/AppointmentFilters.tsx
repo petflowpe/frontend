@@ -13,6 +13,8 @@ interface AppointmentFiltersProps {
   onDateFilterChange: (value: string) => void;
   vehicleFilter: string;
   onVehicleFilterChange: (value: string) => void;
+  bookingSourceFilter: string;
+  onBookingSourceFilterChange: (value: string) => void;
   vehicles: Vehicle[];
   onClearFilters: () => void;
 }
@@ -26,6 +28,8 @@ export function AppointmentFilters({
   onDateFilterChange,
   vehicleFilter,
   onVehicleFilterChange,
+  bookingSourceFilter,
+  onBookingSourceFilterChange,
   vehicles,
   onClearFilters,
 }: AppointmentFiltersProps) {
@@ -76,6 +80,18 @@ export function AppointmentFilters({
               {vehicle.name} {vehicle.plate ? `(${vehicle.plate})` : ''}
             </SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={bookingSourceFilter} onValueChange={onBookingSourceFilterChange}>
+        <SelectTrigger className="w-44">
+          <SelectValue placeholder="Origen reserva" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos los orígenes</SelectItem>
+          <SelectItem value="staff">Staff</SelectItem>
+          <SelectItem value="portal_auth">Portal</SelectItem>
+          <SelectItem value="public_guest">Invitado</SelectItem>
         </SelectContent>
       </Select>
       

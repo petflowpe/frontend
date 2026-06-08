@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Tooltip } from '../ui/tooltip';
 import { Appointment } from '../../hooks/useAppointments';
+import { BookingSourceBadge } from './BookingSourceBadge';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -149,6 +150,13 @@ export function AppointmentCard({
             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
               <span>{appointment.address || 'Sin dirección registrada'}</span>
             </div>
+
+            {appointment.bookingSource === 'portal_auth' && appointment.advanceAmount != null && appointment.advanceAmount > 0 && (
+              <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-2 p-2 bg-indigo-50 dark:bg-indigo-950/30 rounded border border-indigo-200 dark:border-indigo-800">
+                Adelanto portal: S/ {Number(appointment.advanceAmount).toFixed(2)}
+                {appointment.advancePaidAt ? ' · Pagado' : ' · Pendiente de pago'}
+              </p>
+            )}
 
             {appointment.notes && (
               <p className="text-xs text-muted-foreground mt-2 p-2 bg-muted/50 rounded">

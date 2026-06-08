@@ -23,6 +23,8 @@ interface CalendarFiltersBarProps {
   onFilterTipoCitaChange: (v: string) => void;
   filterDistrict: string;
   onFilterDistrictChange: (v: string) => void;
+  bookingSourceFilter: string;
+  onBookingSourceFilterChange: (v: string) => void;
   tipoCitaOptions: string[];
   districtOptions: string[];
   quickChip: QuickChip;
@@ -52,6 +54,8 @@ export function CalendarFiltersBar({
   onFilterTipoCitaChange,
   filterDistrict,
   onFilterDistrictChange,
+  bookingSourceFilter,
+  onBookingSourceFilterChange,
   tipoCitaOptions,
   districtOptions,
   quickChip,
@@ -132,6 +136,18 @@ export function CalendarFiltersBar({
                 {d}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={bookingSourceFilter} onValueChange={onBookingSourceFilterChange}>
+          <SelectTrigger className="w-[120px] h-8 text-xs shrink-0">
+            <SelectValue placeholder="Origen" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="staff">Staff</SelectItem>
+            <SelectItem value="portal_auth">Portal</SelectItem>
+            <SelectItem value="public_guest">Invitado</SelectItem>
           </SelectContent>
         </Select>
 

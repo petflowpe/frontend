@@ -13,7 +13,10 @@ export function getStatusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
-export function getAppointmentBlockClasses(status: string, opts?: { recurring?: boolean; unconfirmed?: boolean }): string {
+export function getAppointmentBlockClasses(
+  status: string,
+  opts?: { recurring?: boolean; unconfirmed?: boolean; portal?: boolean }
+): string {
   const base =
     status === 'pending'
       ? 'bg-amber-100 border-amber-300 text-amber-900 dark:bg-amber-900/35 dark:border-amber-700 dark:text-amber-100'
@@ -32,6 +35,7 @@ export function getAppointmentBlockClasses(status: string, opts?: { recurring?: 
   const extras = [
     opts?.recurring ? 'border-dashed ring-1 ring-inset ring-primary/30' : '',
     opts?.unconfirmed ? 'ring-2 ring-amber-400/60' : '',
+    opts?.portal ? 'ring-1 ring-indigo-400/70 border-l-2 border-l-indigo-500' : '',
   ]
     .filter(Boolean)
     .join(' ');
