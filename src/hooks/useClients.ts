@@ -52,6 +52,11 @@ export interface Client {
   loyaltyPoints?: number;
   loyaltyLevel?: string;
   petsCount?: number;
+  /** Portal de reservas (staff) */
+  portalBookingEnabled?: boolean;
+  portalApprovalStatus?: 'pending' | 'approved' | 'rejected';
+  portalRegisteredAt?: string;
+  status?: string;
 }
 
 export const useClients = () => {
@@ -108,6 +113,8 @@ export const useClients = () => {
       critical_note: (client as any).criticalNote || null,
       critical_pet_note: (client as any).criticalPetNote || null,
       activo: client.isActive !== false,
+      portal_booking_enabled: client.portalBookingEnabled ?? false,
+      portal_approval_status: client.portalApprovalStatus ?? 'approved',
     };
   };
 
@@ -137,6 +144,10 @@ export const useClients = () => {
       zone: backendClient.zona_preferida || undefined,
       loyaltyPoints: backendClient.puntos_fidelizacion ?? undefined,
       loyaltyLevel: backendClient.nivel_fidelizacion || undefined,
+      portalBookingEnabled: backendClient.portal_booking_enabled ?? false,
+      portalApprovalStatus: backendClient.portal_approval_status ?? 'approved',
+      portalRegisteredAt: backendClient.portal_registered_at || undefined,
+      status: backendClient.activo !== false ? 'Activo' : 'Inactivo',
     };
   };
 
@@ -183,7 +194,9 @@ export const useClients = () => {
 
   const updateClient = async (id: string, updates: Partial<Client>) => {
     try {
-      const backendData = toBackendFormat(updates);
+      const existing = clients.find(c => c.id === id);
+      const merged: Partial<Client> = { ...existing, ...updates };
+      const backendData = toBackendFormat(merged);
       const response = await apiClient.put<{ data: any }>(`/clients/${id}`, backendData);
       
       const updatedClient = fromBackendFormat(response.data || response);

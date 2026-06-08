@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Search, Phone, Mail, MapPin, PawPrint, Calendar, Eye, Heart, Edit2, Trash2, UserPlus, FileText, DollarSign, Truck, Settings, ChevronRight, ChevronLeft, Dog, Cat, Bug, Syringe, Shield, Bell, ArrowLeft, StickyNote } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, MapPin, PawPrint, Calendar, Eye, Heart, Edit2, Trash2, UserPlus, FileText, DollarSign, Truck, Settings, ChevronRight, ChevronLeft, Dog, Cat, Bug, Syringe, Shield, Bell, ArrowLeft, StickyNote, Globe, CheckCircle2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -228,6 +228,95 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
     }
   };
 
+  const splitFullName = (fullName?: string) => {
+    const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return { name: '', lastName1: '', lastName2: '' };
+    if (parts.length === 1) return { name: parts[0], lastName1: '', lastName2: '' };
+    if (parts.length === 2) return { name: parts[0], lastName1: parts[1], lastName2: '' };
+    return { name: parts[0], lastName1: parts[1], lastName2: parts.slice(2).join(' ') };
+  };
+
+  const mapClientForEdit = (client: any) => {
+    const nameParts = splitFullName(client.fullName);
+    const addressParts = (client.address || '').trim().split(/\s+/);
+    const streetNumber = addressParts.length > 1 ? addressParts[addressParts.length - 1] : '';
+    const street = addressParts.length > 1 ? addressParts.slice(0, -1).join(' ') : (client.address || client.street || '');
+
+    return {
+      ...client,
+      name: client.name || nameParts.name,
+      lastName1: client.lastName1 || nameParts.lastName1,
+      lastName2: client.lastName2 || nameParts.lastName2,
+      phone1: client.phone1 || client.phone || '',
+      street: client.street || street,
+      streetNumber: client.streetNumber || streetNumber,
+      clientType: client.clientType || 'Normal',
+      status: client.status || (client.isActive === false ? 'Inactivo' : 'Activo'),
+      portalBookingEnabled: client.portalBookingEnabled ?? false,
+      portalApprovalStatus: client.portalApprovalStatus || 'approved',
+      portalRegisteredAt: client.portalRegisteredAt,
+    };
+  };
+
+  const getPortalApprovalBadge = (status?: string) => {
+    switch (status) {
+      case 'pending':
+        return { label: 'Portal pendiente', className: 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200 border-amber-300 dark:border-amber-700' };
+      case 'rejected':
+        return { label: 'Portal rechazado', className: 'bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-200 border-red-300 dark:border-red-700' };
+      case 'approved':
+      default:
+        return { label: 'Portal aprobado', className: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700' };
+    }
+  };
+
+  const renderPortalBadges = (client: any) => {
+    const approval = getPortalApprovalBadge(client.portalApprovalStatus);
+    const badges = [];
+
+    if (client.portalApprovalStatus === 'pending' || client.portalApprovalStatus === 'rejected') {
+      badges.push(
+        <Badge key="portal-approval" className={`${approval.className} border`}>
+          <Globe className="h-3 w-3 mr-1" />
+          {approval.label}
+        </Badge>
+      );
+    }
+
+    if (client.portalRegisteredAt && !client.portalBookingEnabled) {
+      badges.push(
+        <Badge key="portal-disabled" className="bg-slate-100 text-slate-800 dark:bg-slate-900/50 dark:text-slate-200 border-slate-300 dark:border-slate-700 border">
+          <Globe className="h-3 w-3 mr-1" />
+          Sin reserva portal
+        </Badge>
+      );
+    }
+
+    if (client.portalBookingEnabled && client.portalApprovalStatus === 'approved') {
+      badges.push(
+        <Badge key="portal-enabled" className="bg-indigo-100 text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700 border">
+          <Globe className="h-3 w-3 mr-1" />
+          Reserva portal activa
+        </Badge>
+      );
+    }
+
+    return badges;
+  };
+
+  const handleApprovePortal = async () => {
+    if (!selectedClient?.id) return;
+    try {
+      await updateClient(selectedClient.id, {
+        portalBookingEnabled: true,
+        portalApprovalStatus: 'approved',
+      });
+      toast.success('Cliente aprobado para reservas en el portal');
+    } catch (error) {
+      console.error('Error approving portal client:', error);
+    }
+  };
+
   // Calcular estado de la MASCOTA basado en su historial
   const getPetStatus = (pet: any, clientAppointments: any[]) => {
     const today = new Date();
@@ -291,6 +380,8 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
         province: clientData.province || 'Lima',
         department: 'Lima',
         isActive: clientData.status !== 'Inactivo',
+        portalBookingEnabled: !!clientData.portalBookingEnabled,
+        portalApprovalStatus: clientData.portalApprovalStatus || 'approved',
       };
 
       if (editingClient) {
@@ -587,6 +678,7 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
                               🔁 Cliente Fijo {client.appointmentFrequency && `· ${client.appointmentFrequency.charAt(0).toUpperCase() + client.appointmentFrequency.slice(1)}`}
                             </Badge>
                           )}
+                          {renderPortalBadges(client)}
                         </div>
                         <div className="text-xs text-muted-foreground mb-2">
                           <span>Registro cliente: {safeRegistrationDate}</span>
@@ -764,11 +856,22 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 items-start justify-end">
+                  {(selectedClient.portalApprovalStatus === 'pending' || !selectedClient.portalBookingEnabled) && (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={handleApprovePortal}
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-1" />
+                      Aprobar para portal
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      setEditingClient(selectedClient);
+                      setEditingClient(mapClientForEdit(selectedClient));
                       setShowNewClient(true);
                     }}
                   >
@@ -827,6 +930,46 @@ export function Clients({ onNavigate, currentUser: authUser }: { onNavigate?: (t
                       <div><span className="text-muted-foreground">Tipo cliente:</span> {selectedClient.clientType}</div>
                       <div><span className="text-muted-foreground">Nivel:</span> {selectedClient.level || '—'}</div>
                       <div><span className="text-muted-foreground">Fecha de alta:</span> {clientRegistrationDate}</div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <h4 className="font-semibold flex items-center gap-2">
+                          <Globe className="h-4 w-4 text-indigo-500" />
+                          Portal de reservas
+                        </h4>
+                        {(selectedClient.portalApprovalStatus === 'pending' || !selectedClient.portalBookingEnabled) && (
+                          <Button size="sm" variant="outline" onClick={handleApprovePortal}>
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Aprobar para portal
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Estado aprobación:</span>{' '}
+                          <Badge className={`${getPortalApprovalBadge(selectedClient.portalApprovalStatus).className} border ml-1`}>
+                            {getPortalApprovalBadge(selectedClient.portalApprovalStatus).label}
+                          </Badge>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Reserva portal:</span>{' '}
+                          {selectedClient.portalBookingEnabled ? (
+                            <span className="text-emerald-700 dark:text-emerald-300 font-medium">Habilitada</span>
+                          ) : (
+                            <span className="text-amber-700 dark:text-amber-300 font-medium">Deshabilitada</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Registro en portal:</span>{' '}
+                          {selectedClient.portalRegisteredAt
+                            ? new Date(selectedClient.portalRegisteredAt).toLocaleDateString('es-PE')
+                            : '—'}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-3">
+                        Los clientes registrados en el portal quedan en estado pendiente hasta que el staff active la reserva.
+                      </p>
                     </div>
                   </Card>
                 </TabsContent>
@@ -1161,7 +1304,10 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
     preferredTimeSlot: client?.preferredTimeSlot || 'tarde',
     preferredTime: client?.preferredTime || '',
     autoAssignRoute: client?.autoAssignRoute || false,
-    scheduleNotes: client?.scheduleNotes || ''
+    scheduleNotes: client?.scheduleNotes || '',
+    portalBookingEnabled: client?.portalBookingEnabled ?? false,
+    portalApprovalStatus: client?.portalApprovalStatus || 'approved',
+    portalRegisteredAt: client?.portalRegisteredAt || '',
   });
 
   const [showSecondOwner, setShowSecondOwner] = useState(!!client?.secondOwner);
@@ -1218,7 +1364,10 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
         preferredTimeSlot: client.preferredTimeSlot || 'tarde',
         preferredTime: client.preferredTime || '',
         autoAssignRoute: client.autoAssignRoute || false,
-        scheduleNotes: client.scheduleNotes || ''
+        scheduleNotes: client.scheduleNotes || '',
+        portalBookingEnabled: client.portalBookingEnabled ?? false,
+        portalApprovalStatus: client.portalApprovalStatus || 'approved',
+        portalRegisteredAt: client.portalRegisteredAt || '',
       });
 
       if (client.secondOwner) {
@@ -1277,7 +1426,10 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
         preferredTimeSlot: 'tarde',
         preferredTime: '',
         autoAssignRoute: false,
-        scheduleNotes: ''
+        scheduleNotes: '',
+        portalBookingEnabled: false,
+        portalApprovalStatus: 'approved',
+        portalRegisteredAt: '',
       });
       setShowSecondOwner(false);
       setSecondOwnerData({
@@ -1575,6 +1727,44 @@ function ClientDialog({ client, vehicles, currentUserRole, onSave, onClose }: an
                   placeholder="Ej: Oro, Plata, Bronce"
                 />
               </div>
+            </div>
+
+            <div className="border rounded-lg p-4 bg-indigo-50/50 dark:bg-indigo-950/20 space-y-4">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-indigo-600" />
+                <h4 className="font-medium">Portal de reservas</h4>
+              </div>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                  checked={!!formData.portalBookingEnabled}
+                  onChange={(e) => setFormData({ ...formData, portalBookingEnabled: e.target.checked })}
+                />
+                <span>
+                  <span className="font-medium block">Permitir reserva en portal</span>
+                  <span className="text-xs text-muted-foreground">
+                    El cliente podrá agendar citas desde el portal web autenticado.
+                  </span>
+                </span>
+              </label>
+              <div>
+                <Label>Estado de aprobación portal</Label>
+                <select
+                  className="w-full p-2 border rounded-md mt-1"
+                  value={formData.portalApprovalStatus}
+                  onChange={(e) => setFormData({ ...formData, portalApprovalStatus: e.target.value })}
+                >
+                  <option value="pending">Pendiente de validación</option>
+                  <option value="approved">Aprobado</option>
+                  <option value="rejected">Rechazado</option>
+                </select>
+              </div>
+              {formData.portalRegisteredAt && (
+                <p className="text-xs text-muted-foreground">
+                  Registrado en portal: {new Date(formData.portalRegisteredAt).toLocaleDateString('es-PE')}
+                </p>
+              )}
             </div>
 
             {/* Segundo Amo */}
