@@ -40,7 +40,10 @@ export const useClientSync = () => {
             (!user.district && client.district) ||
             (!user.email && client.email); // Ahora también podemos recuperar el email si falta
 
-          if (needsUpdate || !user.clientId) {
+          const portalBookingEnabled = client.portal_booking_enabled ?? client.portalBookingEnabled;
+          const portalApprovalStatus = client.portal_approval_status ?? client.portalApprovalStatus;
+
+          if (needsUpdate || !user.clientId || user.portalBookingEnabled !== portalBookingEnabled) {
             updateUser({
               ...user,
               clientId: String(client.id),
@@ -50,6 +53,8 @@ export const useClientSync = () => {
               email: user.email || client.email,
               firstName: user.firstName || client.full_name?.split(' ')[0] || client.razon_social?.split(' ')[0] || user.firstName,
               lastName: user.lastName || client.full_name?.split(' ').slice(1).join(' ') || client.razon_social?.split(' ').slice(1).join(' ') || user.lastName,
+              portalBookingEnabled: !!portalBookingEnabled,
+              portalApprovalStatus: portalApprovalStatus || user.portalApprovalStatus || 'approved',
             });
             
             toast.success('Perfil sincronizado', {

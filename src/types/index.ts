@@ -27,6 +27,8 @@ export interface User {
   cantidad_mascotas?: number; // Se actualiza automáticamente
   companyId?: number; // Empresa asignada (backend)
   branchId?: number; // Sucursal asignada (backend)
+  portalBookingEnabled?: boolean;
+  portalApprovalStatus?: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   updatedAt?: string;
 }

@@ -6,11 +6,18 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { useAuth } from '../../context/AuthContext';
-import { formatDateForApi, fetchPublicAvailability } from '../../utils/api/publicBooking';
+import {
+  formatDateForApi,
+  fetchPublicAvailability,
+  fetchPortalBookingConfig,
+  calculatePortalAdvance,
+  mapPortalPaymentMethod,
+  type PortalSettings,
+} from '../../utils/api/publicBooking';
 import { fetchAvailableVehicles } from '../../hooks/useVehicleCoverage';
 import { getStoredCompanyId } from '../../utils/appointmentMappers';
 import { toast } from 'sonner';
-import { PaymentPage } from './PaymentPage';
+import { PortalPaymentStep, type PortalPaymentResult } from './PortalPaymentStep';
 import { BookingTicket } from './BookingTicket';
 import { 
   ArrowLeft,
@@ -105,6 +112,32 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [coverageNote, setCoverageNote] = useState<string | null>(null);
   const [suggestedVehicle, setSuggestedVehicle] = useState<{ id: string; name: string } | null>(null);
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
+  const [bookingResult, setBookingResult] = useState<{
+    trackingCode?: string;
+    status?: string;
+    advancePaid?: boolean;
+  } | null>(null);
+
+  const effectivePortalSettings: PortalSettings = portalSettings ?? {
+    guest_booking_enabled: false,
+    registered_only: true,
+    require_advance: true,
+    advance_type: 'percent',
+    advance_value: 30,
+    payment_mode: 'simulated',
+    auto_confirm_on_advance: true,
+    new_clients_require_approval: true,
+  };
+  const requiresPaymentStep = effectivePortalSettings.require_advance;
+  const totalSteps = requiresPaymentStep ? 6 : 5;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchPortalBookingConfig()
+      .then((cfg) => setPortalSettings(cfg.portal_settings))
+      .catch(() => setPortalSettings(null));
+  }, [isOpen]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -119,6 +152,7 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
       setLoading(false);
       setError('');
       setSuccess(false);
+      setBookingResult(null);
     }
   }, [isOpen, initialServiceType]);
 
@@ -284,7 +318,35 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
     setSelectedTime(time);
   };
 
-  const handleConfirm = async () => {
+  const buildAppointmentPayload = (payment?: PortalPaymentResult) => {
+    const serviceCategory =
+      serviceType === 'movilvet' ? ('MovilVet' as const) : ('Peluquería' as const);
+
+    return {
+      petId: String(selectedPet.id),
+      serviceType: String(selectedService.id),
+      serviceName: selectedService.name,
+      serviceCategory,
+      date: formatDateForApi(selectedDate!),
+      time: selectedTime,
+      duration: selectedService.duration || 60,
+      address: user!.address || '',
+      district: user!.district || '',
+      price: selectedService.price,
+      status: 'Pendiente' as const,
+      paymentStatus: 'Pendiente' as const,
+      ...(suggestedVehicle ? { vehicleId: suggestedVehicle.id } : {}),
+      ...(payment?.advancePaid
+        ? {
+            advance_paid: true,
+            advance_payment_method: mapPortalPaymentMethod(payment.method),
+            advance_payment_reference: payment.reference,
+          }
+        : {}),
+    };
+  };
+
+  const finalizeBooking = async (payment?: PortalPaymentResult) => {
     if (!selectedService || !selectedPet || !selectedDate || !selectedTime || !user) {
       setError('Por favor completa todos los pasos');
       return;
@@ -294,34 +356,31 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
     setError('');
 
     try {
-      const serviceCategory =
-        serviceType === 'movilvet' ? ('MovilVet' as const) : ('Peluquería' as const);
+      const result = await addAppointment(buildAppointmentPayload(payment));
 
-      const newId = await addAppointment({
-        petId: String(selectedPet.id),
-        serviceType: String(selectedService.id),
-        serviceName: selectedService.name,
-        serviceCategory,
-        date: formatDateForApi(selectedDate),
-        time: selectedTime,
-        duration: selectedService.duration || 60,
-        address: user.address || '',
-        district: user.district || '',
-        price: selectedService.price,
-        status: 'Pendiente',
-        paymentStatus: 'Pendiente',
-        ...(suggestedVehicle ? { vehicleId: suggestedVehicle.id } : {}),
-      });
-
-      if (!newId) {
+      if (!result?.id) {
         throw new Error('No se pudo registrar la cita');
       }
 
+      setBookingResult({
+        trackingCode: result.trackingCode,
+        status: result.status,
+        advancePaid: payment?.advancePaid,
+      });
       setSuccess(true);
+
+      if (result.status === 'Confirmada') {
+        toast.success('¡Cita confirmada!');
+      } else {
+        toast.success('Reserva registrada', {
+          description: 'El equipo validará tu cita pronto.',
+        });
+      }
+
       setTimeout(() => {
         onSuccess?.();
         onClose();
-      }, 1500);
+      }, 3500);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al agendar la cita. Intenta nuevamente.';
       setError(message);
@@ -331,7 +390,22 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
     }
   };
 
-  const progressPercentage = (step / 5) * 100;
+  const handleConfirm = async () => {
+    if (requiresPaymentStep) {
+      setStep(6);
+      return;
+    }
+    await finalizeBooking();
+  };
+
+  const handlePaymentComplete = async (payment: PortalPaymentResult) => {
+    await finalizeBooking(payment);
+  };
+
+  const progressPercentage = (step / totalSteps) * 100;
+  const advancePreview = selectedService
+    ? calculatePortalAdvance(selectedService.price, effectivePortalSettings)
+    : 0;
 
   if (!user || !isOpen) return null;
 
@@ -356,6 +430,7 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                     {step === 3 && 'Selecciona tu mascota'}
                     {step === 4 && 'Elige fecha y hora'}
                     {step === 5 && 'Confirma tu reserva'}
+                    {step === 6 && 'Pago de adelanto'}
                   </p>
                 </div>
                 <button
@@ -368,7 +443,7 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
 
               {/* Progress Bar */}
               <div className="flex items-center gap-2 mb-4">
-                {[1, 2, 3, 4, 5].map((s) => (
+                {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
                   <div
                     key={s}
                     className={`flex-1 h-2 rounded-full transition-all ${
@@ -385,6 +460,9 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                 <span className={step >= 3 ? 'text-primary font-medium' : ''}>Mascota</span>
                 <span className={step >= 4 ? 'text-primary font-medium' : ''}>Fecha/Hora</span>
                 <span className={step >= 5 ? 'text-primary font-medium' : ''}>Confirmar</span>
+                {requiresPaymentStep && (
+                  <span className={step >= 6 ? 'text-primary font-medium' : ''}>Pago</span>
+                )}
               </div>
             </div>
           </div>
@@ -664,11 +742,22 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                   className="space-y-6"
                 >
                   {success ? (
-                    <div className="text-center py-12">
-                      <CheckCircle2 className="w-16 h-16 text-green-600 mx-auto mb-4" />
-                      <h3 className="text-2xl font-bold mb-2">¡Cita Agendada!</h3>
-                      <p className="text-muted-foreground">
-                        Te hemos enviado un correo con los detalles de tu reserva
+                    <div className="text-center py-12 space-y-3">
+                      <CheckCircle2 className="w-16 h-16 text-green-600 mx-auto mb-2" />
+                      <h3 className="text-2xl font-bold">
+                        {bookingResult?.status === 'Confirmada'
+                          ? '¡Cita Confirmada!'
+                          : '¡Reserva Registrada!'}
+                      </h3>
+                      {bookingResult?.trackingCode && (
+                        <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-primary font-mono font-semibold">
+                          {bookingResult.trackingCode}
+                        </div>
+                      )}
+                      <p className="text-muted-foreground max-w-md mx-auto">
+                        {bookingResult?.status === 'Confirmada'
+                          ? 'Tu adelanto fue registrado. Guarda tu código de seguimiento.'
+                          : 'Tu solicitud está pendiente de validación por nuestro equipo.'}
                       </p>
                     </div>
                   ) : (
@@ -755,6 +844,12 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                             <span>Total</span>
                             <span>S/. {selectedService?.price}</span>
                           </div>
+                          {requiresPaymentStep && advancePreview > 0 && (
+                            <div className="flex items-center justify-between text-sm text-primary mt-2">
+                              <span>Adelanto requerido</span>
+                              <span className="font-semibold">S/. {advancePreview.toFixed(2)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -767,18 +862,50 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
 
                       <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                         <p className="text-sm text-blue-900 dark:text-blue-100">
-                          <strong>Nota:</strong> El pago se realizará al momento del servicio. 
-                          Puedes cancelar con hasta 24 horas de anticipación sin cargo.
+                          {requiresPaymentStep ? (
+                            <>
+                              <strong>Siguiente paso:</strong> podrás pagar el adelanto con Yape, Plin o tarjeta
+                              (simulado) para confirmar al instante, o reservar sin adelanto para validación del staff.
+                            </>
+                          ) : (
+                            <>
+                              <strong>Nota:</strong> El saldo se paga al finalizar el servicio.
+                            </>
+                          )}
                         </p>
                       </div>
                     </>
                   )}
                 </motion.div>
               )}
+
+              {/* PASO 6: Pago */}
+              {step === 6 && selectedService && !success && (
+                <motion.div
+                  key="step6"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                >
+                  <PortalPaymentStep
+                    totalPrice={selectedService.price}
+                    portalSettings={effectivePortalSettings}
+                    loading={loading}
+                    onPay={handlePaymentComplete}
+                    onBack={() => setStep(5)}
+                  />
+                  {error && (
+                    <div className="flex items-center gap-2 p-3 mt-4 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <p>{error}</p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
             </AnimatePresence>
 
             {/* Navegación */}
-            {!success && (
+            {!success && step !== 6 && (
               <div className="flex items-center justify-between gap-4 pt-6 border-t mt-6">
                 {step > 1 ? (
                   <Button
@@ -813,11 +940,12 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 ) : (
-                  <Button
-                    onClick={handleConfirm}
-                    disabled={loading}
-                  >
-                    {loading ? 'Agendando...' : 'Confirmar Reserva'}
+                  <Button onClick={handleConfirm} disabled={loading}>
+                    {loading
+                      ? 'Agendando...'
+                      : requiresPaymentStep
+                        ? 'Continuar al pago'
+                        : 'Confirmar Reserva'}
                   </Button>
                 )}
               </div>

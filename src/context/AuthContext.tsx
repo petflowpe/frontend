@@ -19,7 +19,11 @@ interface AuthContextType {
   addPet: (pet: Omit<Pet, 'id' | 'userId' | 'createdAt'>) => void | Promise<void>;
   updatePet: (petId: string, petData: Partial<Pet>) => void | Promise<void>;
   deletePet: (petId: string) => void | Promise<void>;
-  addAppointment: (appointment: Omit<Appointment, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) => string | Promise<string>;
+  addAppointment: (appointment: Omit<Appointment, 'id' | 'userId' | 'createdAt' | 'updatedAt'> & {
+    advance_paid?: boolean;
+    advance_payment_method?: string;
+    advance_payment_reference?: string;
+  }) => Promise<{ id: string; trackingCode?: string; status?: string; advanceAmount?: number }>;
   cancelAppointment: (appointmentId: string) => void | Promise<void>;
   markNotificationAsRead: (notificationId: string) => void | Promise<void>;
 }
@@ -135,6 +139,8 @@ function mergeClientIntoUser(base: User, client: any): User {
     address: base.address || client.direccion || client.address || '',
     district: base.district || client.distrito || client.district || '',
     email: base.email || client.email || '',
+    portalBookingEnabled: client.portal_booking_enabled ?? client.portalBookingEnabled ?? base.portalBookingEnabled,
+    portalApprovalStatus: client.portal_approval_status ?? client.portalApprovalStatus ?? base.portalApprovalStatus ?? 'approved',
   };
 }
 
@@ -394,6 +400,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         direccion: userData.address,
         distrito: userData.district,
         activo: true,
+        registration_source: 'portal',
       });
 
       const client = newClientData.data || newClientData;
@@ -521,7 +528,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addAppointment = async (appointmentData: Omit<Appointment, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+  const addAppointment = async (
+    appointmentData: Omit<Appointment, 'id' | 'userId' | 'createdAt' | 'updatedAt'> & {
+      advance_paid?: boolean;
+      advance_payment_method?: string;
+      advance_payment_reference?: string;
+    }
+  ): Promise<{ id: string; trackingCode?: string; status?: string; advanceAmount?: number }> => {
     if (!user) throw new Error('Debes iniciar sesión para agendar');
     const clientId = getEffectiveClientId(user);
     if (!clientId) throw new Error('No se encontró tu ficha de cliente');
@@ -562,7 +575,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const backendApt = res?.data ?? res;
       const newApt = mapBackendAppointmentToFrontend(backendApt, clientId);
       setAppointments(prev => [...prev, newApt]);
-      return newApt.id;
+      return {
+        id: newApt.id,
+        trackingCode: backendApt?.tracking_code ?? (res as { tracking_code?: string })?.tracking_code,
+        status: backendApt?.status ?? newApt.status,
+        advanceAmount: backendApt?.advance_amount ?? (res as { advance_amount?: number })?.advance_amount,
+      };
     } catch (e) {
       console.error('addAppointment:', e);
       const msg = e instanceof Error ? e.message : 'No se pudo registrar la cita';

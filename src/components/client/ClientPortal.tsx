@@ -58,8 +58,24 @@ export function ClientPortal({ onNavigatePublic, onBookService }: ClientPortalPr
     onNavigatePublic('home');
   };
 
+  const portalBlocked =
+    user.portalApprovalStatus === 'pending' ||
+    user.portalApprovalStatus === 'rejected' ||
+    user.portalBookingEnabled === false;
+
   return (
     <div className="min-h-screen bg-slate-50/50">
+      {portalBlocked && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-center text-sm text-amber-900">
+          {user.portalApprovalStatus === 'pending' ? (
+            <>Tu cuenta está <strong>pendiente de validación</strong>. Podrás reservar cuando el equipo active tu perfil.</>
+          ) : user.portalApprovalStatus === 'rejected' ? (
+            <>Reservas por portal no disponibles. Contacta a la clínica para más información.</>
+          ) : (
+            <>El auto-agendado no está activo en tu perfil. Solicita activación al equipo de la clínica.</>
+          )}
+        </div>
+      )}
       {/* Modern Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm supports-[backdrop-filter]:bg-white/60">
         <div className="container mx-auto px-4 max-w-7xl">

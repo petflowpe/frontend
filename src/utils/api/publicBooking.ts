@@ -128,6 +128,25 @@ export async function fetchPortalBookingConfig(): Promise<PortalBookingConfig> {
   };
 }
 
+export function calculatePortalAdvance(totalPrice: number, settings: PortalSettings): number {
+  if (!settings.require_advance) return 0;
+  const value = Number(settings.advance_value) || 0;
+  if (settings.advance_type === 'fixed') {
+    return Math.round(Math.min(value, totalPrice) * 100) / 100;
+  }
+  return Math.round(totalPrice * (value / 100) * 100) / 100;
+}
+
+export function mapPortalPaymentMethod(method: string): string {
+  const map: Record<string, string> = {
+    card: 'Tarjeta',
+    yape: 'Yape',
+    plin: 'Plin',
+    cash: 'Efectivo',
+  };
+  return map[method] ?? 'Tarjeta';
+}
+
 export async function payAppointmentAdvance(
   appointmentId: string | number,
   payload: { payment_method: string; reference?: string }

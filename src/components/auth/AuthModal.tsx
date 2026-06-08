@@ -342,9 +342,9 @@ export function AuthModal({ isOpen, onClose, onSuccess, onGuestBook, defaultMode
                     {mode === 'login' ? '¡Bienvenido!' : '¡Cuenta Creada!'}
                   </h3>
                   <p className="text-muted-foreground">
-                    {mode === 'login' 
-                      ? 'Redirigiendo a tu portal...' 
-                      : 'Tu cuenta ha sido creada exitosamente'}
+                    {mode === 'login'
+                      ? 'Redirigiendo a tu portal...'
+                      : 'Tu cuenta fue creada. Si eres cliente nuevo, nuestro equipo validará tu perfil antes de activar las reservas automáticas.'}
                   </p>
                 </motion.div>
               ) : mode === 'login' ? (

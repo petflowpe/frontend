@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { fetchPortalBookingConfig } from '../utils/api/publicBooking';
 import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -43,7 +44,14 @@ export default function VetClinicPublic() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [showClientPortal, setShowClientPortal] = useState(false);
   const [showGuestBooking, setShowGuestBooking] = useState(false);
+  const [guestBookingEnabled, setGuestBookingEnabled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    fetchPortalBookingConfig()
+      .then((cfg) => setGuestBookingEnabled(!!cfg.portal_settings?.guest_booking_enabled))
+      .catch(() => setGuestBookingEnabled(false));
+  }, []);
   const [activeSection, setActiveSection] = useState('home');
   const [currentPage, setCurrentPage] = useState<'home' | 'adopcion' | 'paseos' | 'cursos' | 'hoteleria' | 'trabaja' | 'movilvet' | 'peluqueria'>('home');
 
@@ -630,17 +638,18 @@ export default function VetClinicPublic() {
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
           onSuccess={handleAuthSuccess}
-          onGuestBook={() => setShowGuestBooking(true)}
+          onGuestBook={guestBookingEnabled ? () => setShowGuestBooking(true) : undefined}
           defaultMode={authMode}
         />
       )}
 
-      {/* Reserva como invitado (sin login) */}
-      <AppointmentBooking
-        isOpen={showGuestBooking}
-        onClose={() => setShowGuestBooking(false)}
-        currentUser={{ id: 'guest', name: 'Invitado', email: '' }}
-      />
+      {guestBookingEnabled && (
+        <AppointmentBooking
+          isOpen={showGuestBooking}
+          onClose={() => setShowGuestBooking(false)}
+          currentUser={{ id: 'guest', name: 'Invitado', email: '' }}
+        />
+      )}
     </div>
   );
 }
