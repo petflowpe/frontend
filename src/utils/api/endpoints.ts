@@ -202,6 +202,9 @@ export const API = {
     store: '/public/booking',
     track: (code: string) => `/public/booking/track/${encodeURIComponent(code)}`,
   },
+  booking: {
+    availability: '/booking/availability',
+  },
   publicChat: {
     config: '/public/chat/config',
     start: '/public/chat/start',

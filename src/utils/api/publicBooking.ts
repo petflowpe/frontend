@@ -14,10 +14,39 @@ export interface PublicBookingService {
   duration: number;
 }
 
+export type SlotUnavailableReason =
+  | 'fuera_horario'
+  | 'cerrado'
+  | 'ocupado'
+  | 'sin_cobertura'
+  | 'pasado';
+
 export interface PublicTimeSlot {
   time: string;
   available: boolean;
-  reason?: string;
+  reason?: SlotUnavailableReason | string;
+}
+
+export interface AvailabilityResponse {
+  date: string;
+  slots: PublicTimeSlot[];
+  coverage_note?: string | null;
+  day_open?: boolean;
+  working_window?: { start: string; end: string };
+  closed_reason?: SlotUnavailableReason | string | null;
+}
+
+export const SLOT_REASON_LABELS: Record<string, string> = {
+  fuera_horario: 'Fuera de horario',
+  cerrado: 'Día cerrado',
+  ocupado: 'Ocupado',
+  sin_cobertura: 'Sin cobertura',
+  pasado: 'Horario pasado',
+};
+
+export function getSlotReasonLabel(reason?: string | null): string {
+  if (!reason) return 'No disponible';
+  return SLOT_REASON_LABELS[reason] ?? reason;
 }
 
 export interface PublicBookingPayload {
@@ -161,24 +190,65 @@ export async function fetchPublicBookingServices(): Promise<PublicBookingService
   return unwrapData(res) ?? [];
 }
 
+export async function fetchAvailability(
+  params: {
+    date: string;
+    district?: string;
+    duration?: number;
+    vehicle_id?: number | string;
+    exclude_appointment_id?: number | string;
+    company_id?: number;
+  },
+  options?: { public?: boolean }
+): Promise<AvailabilityResponse> {
+  const query = {
+    date: params.date,
+    ...(params.district ? { district: params.district } : {}),
+    ...(params.duration ? { duration: params.duration } : {}),
+    ...(params.vehicle_id ? { vehicle_id: params.vehicle_id } : {}),
+    ...(params.exclude_appointment_id ? { exclude_appointment_id: params.exclude_appointment_id } : {}),
+    ...(params.company_id ? { company_id: params.company_id } : {}),
+  };
+
+  const usePublic = options?.public ?? false;
+  const path = usePublic ? '/public/booking/availability' : '/booking/availability';
+
+  const res = usePublic
+    ? await apiClient.getPublic<{ success?: boolean; data?: AvailabilityResponse }>(path, query)
+    : await apiClient.get<{ success?: boolean; data?: AvailabilityResponse }>(path, query);
+
+  const data = unwrapData(res);
+  return {
+    date: data?.date ?? params.date,
+    slots: data?.slots ?? [],
+    coverage_note: data?.coverage_note ?? null,
+    day_open: data?.day_open,
+    working_window: data?.working_window,
+    closed_reason: data?.closed_reason ?? null,
+  };
+}
+
 export async function fetchPublicAvailability(
   date: string,
   district?: string,
   duration?: number
-): Promise<{ slots: PublicTimeSlot[]; coverage_note?: string | null }> {
-  const res = await apiClient.getPublic<{
-    success?: boolean;
-    data?: { slots: PublicTimeSlot[]; coverage_note?: string | null };
-  }>('/public/booking/availability', {
-    date,
-    ...(district ? { district } : {}),
-    ...(duration ? { duration } : {}),
-  });
-  const data = unwrapData(res);
-  return {
-    slots: data?.slots ?? [],
-    coverage_note: data?.coverage_note ?? null,
-  };
+): Promise<AvailabilityResponse> {
+  return fetchAvailability({ date, district, duration }, { public: true });
+}
+
+/** Disponibilidad unificada para módulos staff (misma API que portal). */
+export async function fetchStaffAvailability(
+  params: {
+    date: string;
+    district?: string;
+    duration?: number;
+    vehicle_id?: number | string;
+    exclude_appointment_id?: number | string;
+    company_id?: number;
+  }
+): Promise<AvailabilityResponse> {
+  const companyId = params.company_id ?? getStoredCompanyId() ?? undefined;
+  return fetchAvailability({ ...params, company_id: companyId });
 }
 
 export async function submitPublicBooking(

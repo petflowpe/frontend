@@ -12,6 +12,7 @@ import {
   fetchPortalBookingConfig,
   calculatePortalAdvance,
   mapPortalPaymentMethod,
+  getSlotReasonLabel,
   type PortalSettings,
 } from '../../utils/api/publicBooking';
 import { fetchAvailableVehicles } from '../../hooks/useVehicleCoverage';
@@ -260,15 +261,20 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
     setSlotsLoading(true);
     const duration = selectedService?.duration || SERVICES[serviceType || 'movilvet']?.duration || 60;
     fetchPublicAvailability(formatDateForApi(selectedDate), user.district, duration)
-      .then(({ slots, coverage_note }) => {
+      .then(({ slots, coverage_note, day_open, closed_reason }) => {
         if (cancelled) return;
         setApiSlots(
           slots.map((s) => ({
             time: s.time,
             available: s.available,
+            reason: s.reason,
           }))
         );
-        setCoverageNote(coverage_note ?? null);
+        if (day_open === false && closed_reason) {
+          setCoverageNote('Este día la clínica no atiende. Elige otra fecha.');
+        } else {
+          setCoverageNote(coverage_note ?? null);
+        }
       })
       .catch(() => {
         if (!cancelled) setApiSlots(null);
@@ -715,6 +721,7 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                             key={slot.time}
                             onClick={() => slot.available && handleTimeSelect(slot.time)}
                             disabled={!slot.available}
+                            title={!slot.available && slot.reason ? getSlotReasonLabel(slot.reason) : undefined}
                             className={`p-3 rounded-lg text-sm font-medium transition-all ${
                               selectedTime === slot.time
                                 ? 'bg-primary text-primary-foreground'
@@ -723,7 +730,12 @@ export function BookingFlow({ serviceType: initialServiceType, isOpen, onClose, 
                                 : 'border border-border bg-muted text-muted-foreground cursor-not-allowed'
                             }`}
                           >
-                            {slot.time}
+                            <span className="block">{slot.time}</span>
+                            {!slot.available && slot.reason && (
+                              <span className="block text-[10px] font-normal opacity-70 mt-0.5">
+                                {getSlotReasonLabel(slot.reason)}
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>
