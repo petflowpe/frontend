@@ -12,6 +12,7 @@ import { ChatAutomationConfig } from './ChatAutomationConfig';
 import { GoogleMapsConfig } from './admin/GoogleMapsConfig';
 import { CalendarSettings } from './settings/CalendarSettings';
 import { OperationsSettings } from './settings/OperationsSettings';
+import { PortalSettings } from './settings/PortalSettings';
 import { toast } from 'sonner';
 
 interface SettingsProps {
@@ -174,6 +175,10 @@ export function Settings({ currentUser }: SettingsProps) {
             <Calendar className="w-4 h-4" />
             Calendario
           </TabsTrigger>
+          <TabsTrigger value="portal" className="flex-1 flex items-center justify-center gap-2">
+            <Globe className="w-4 h-4" />
+            Portal
+          </TabsTrigger>
           <TabsTrigger value="googlemaps" className="flex-1">Google Maps</TabsTrigger>
           <TabsTrigger value="integrations" className="flex-1">Integraciones</TabsTrigger>
           <TabsTrigger value="automation" className="flex-1 flex items-center justify-center gap-2">
@@ -184,6 +189,10 @@ export function Settings({ currentUser }: SettingsProps) {
 
         <TabsContent value="calendar" className="space-y-6">
           <CalendarSettings companyId={currentUser?.companyId ?? 1} />
+        </TabsContent>
+
+        <TabsContent value="portal" className="space-y-6">
+          <PortalSettings companyId={currentUser?.companyId ?? null} />
         </TabsContent>
 
         <TabsContent value="operations" className="space-y-6">
