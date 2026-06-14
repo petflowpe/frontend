@@ -63,6 +63,7 @@ import * as XLSX from 'xlsx';
 import { useClients } from '../hooks/useClients';
 import { usePagination } from '../hooks/usePagination';
 import { apiClient } from '../utils/api/client';
+import { extractPetTimeline } from '../utils/api/config';
 import { setPendingAction, getPendingAction, clearPendingAction } from '../utils/navigationBridge';
 import { PET_DOG_BREEDS, PET_CAT_BREEDS, PET_TEMPERAMENTS, PET_BEHAVIORS } from '../config/defaults';
 import { PetProfile } from './PetProfile';
@@ -560,10 +561,10 @@ export function PetsManagement({
     setTimelineLoading(true);
     try {
       const [timelineRes, auditRes] = await Promise.all([
-        apiClient.get<{ data?: { timeline?: PetTimelineEvent[] } }>(`/pets/${pet.id}/timeline`),
+        apiClient.get(`/pets/${pet.id}/timeline`),
         apiClient.get<{ data?: Array<{ id: number; action: string; description?: string; created_at?: string }> }>(`/pets/${pet.id}/audit-history`, { per_page: '15' }),
       ]);
-      const t = (timelineRes as { data?: { timeline?: PetTimelineEvent[] } })?.data?.timeline ?? [];
+      const t = extractPetTimeline(timelineRes) as PetTimelineEvent[];
       const a = (auditRes as { data?: Array<{ id: number; action: string; description?: string; created_at?: string }> })?.data ?? [];
       setPetTimeline(t);
       setPetAudit(a);

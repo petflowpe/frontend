@@ -49,6 +49,7 @@ import { formatDate, calculatePetAge } from '../utils/helpers';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { apiClient } from '../utils/api/client';
+import { extractPetTimeline } from '../utils/api/config';
 import { setPendingAction } from '../utils/navigationBridge';
 
 interface PetProfileProps {
@@ -77,9 +78,9 @@ export function PetProfile({ petId, onClose, onNavigate, initialTab, openNewAtte
       apiClient.get<any>(`/pets/${petId}/timeline`),
     ]);
     const p = petResponse?.data || petResponse;
-    const timeline = timelineResponse?.data?.timeline || [];
+    const timeline = extractPetTimeline(timelineResponse);
     setPetData(p);
-    setTimelineData(Array.isArray(timeline) ? timeline : []);
+    setTimelineData(timeline);
   };
 
   useEffect(() => {

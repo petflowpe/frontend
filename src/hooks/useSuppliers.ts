@@ -3,20 +3,30 @@ import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
 
+export type SupplierType = 'Mercadería' | 'Servicios' | 'Honorarios' | 'Mixto';
+
 export interface Supplier {
   id: number;
   name: string;
   business_name?: string;
   document_type?: string;
   document_number?: string;
+  supplier_type?: SupplierType | string;
   email?: string;
   phone?: string;
+  contact_name?: string;
+  bank_name?: string;
+  bank_account?: string;
+  billing_email?: string;
+  credit_days?: number;
+  accounting_account_code?: string;
   address?: string;
   notes?: string;
   active: boolean;
   enabled?: boolean;
   contact?: string;
   bankAccount?: string;
+  total_purchases?: number;
   products?: unknown[];
 }
 
@@ -28,14 +38,22 @@ function fromBackendFormat(row: Record<string, unknown>): Supplier {
     business_name: row.business_name as string | undefined,
     document_type: row.document_type as string | undefined,
     document_number: row.document_number as string | undefined,
+    supplier_type: row.supplier_type as string | undefined,
     email: row.email as string | undefined,
     phone: row.phone as string | undefined,
+    contact_name: row.contact_name as string | undefined,
+    bank_name: row.bank_name as string | undefined,
+    bank_account: row.bank_account as string | undefined,
+    bankAccount: row.bank_account as string | undefined,
+    billing_email: row.billing_email as string | undefined,
+    credit_days: row.credit_days != null ? Number(row.credit_days) : 0,
+    accounting_account_code: row.accounting_account_code as string | undefined,
     address: row.address as string | undefined,
     notes: row.notes as string | undefined,
     active,
     enabled: active,
-    contact: (row.phone as string) || (row.email as string),
-    bankAccount: row.bank_account as string | undefined,
+    contact: (row.contact_name as string) || (row.phone as string) || (row.email as string),
+    total_purchases: row.total_purchases != null ? Number(row.total_purchases) : 0,
     products: row.products as unknown[] | undefined,
   };
 }
@@ -50,8 +68,15 @@ function toBackendFormat(
     business_name: supplier.business_name?.trim() || undefined,
     document_type: supplier.document_type || undefined,
     document_number: supplier.document_number?.replace(/\D/g, '') || undefined,
-    email: supplier.email?.trim() || undefined,
+    supplier_type: supplier.supplier_type || undefined,
+    email: supplier.email?.trim() || supplier.billing_email?.trim() || undefined,
     phone: supplier.phone?.trim() || undefined,
+    contact_name: supplier.contact_name?.trim() || undefined,
+    bank_name: supplier.bank_name?.trim() || undefined,
+    bank_account: (supplier.bank_account || supplier.bankAccount)?.trim() || undefined,
+    billing_email: supplier.billing_email?.trim() || undefined,
+    credit_days: supplier.credit_days ?? 0,
+    accounting_account_code: supplier.accounting_account_code || undefined,
     address: supplier.address?.trim() || undefined,
     notes: supplier.notes?.trim() || undefined,
     active: supplier.active ?? true,
@@ -70,12 +95,13 @@ export function useSuppliers(companyId?: number | null) {
     }
     setLoading(true);
     try {
-      const response = await apiClient.get<{ success?: boolean; data?: Record<string, unknown>[] }>(
+      const response = await apiClient.get<{ data?: Record<string, unknown>[] }>(
         API.suppliers.list,
         { company_id: companyId, only_active: false, per_page: 500 },
       );
-      const list = response?.data ?? [];
-      setSuppliers(list.map(fromBackendFormat));
+      const list = (response as { data?: Record<string, unknown>[] })?.data ?? response ?? [];
+      const rows = Array.isArray(list) ? list : [];
+      setSuppliers(rows.map((row) => fromBackendFormat(row as Record<string, unknown>)));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Error cargando proveedores';
       if (import.meta.env.DEV) console.error('Error cargando proveedores', e);

@@ -1,8 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Card } from './ui/card';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import { useAuth } from '../context/AuthContext';
 import { usePurchases } from '../hooks/usePurchases';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useInventory } from '../hooks/useInventory';
+import { SupplierQuickManageDialog } from './suppliers/SupplierQuickManageDialog';
+import { formatSupplierMoney, paymentLabel, supplierInitials } from './suppliers/supplierUtils';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
@@ -89,6 +93,8 @@ const KardexService = {
 };
 
 export function Purchases() {
+  const { user } = useAuth();
+  const companyId = user?.companyId ?? null;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showNewPurchase, setShowNewPurchase] = useState(false);
@@ -101,7 +107,15 @@ export function Purchases() {
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [invoiceData, setInvoiceData] = useState<any>(null);
 
-  const { suppliers, loading: suppliersLoading, reload: reloadSuppliers } = useSuppliers(1);
+  const {
+    suppliers,
+    loading: suppliersLoading,
+    reload: reloadSuppliers,
+    addSupplier,
+    updateSupplier,
+    deleteSupplier,
+    toggleActive,
+  } = useSuppliers(companyId);
   const {
     purchases,
     loading: purchasesLoading,
@@ -111,14 +125,15 @@ export function Purchases() {
     completePurchase,
     deletePurchase,
     reload: reloadPurchases,
-  } = usePurchases(1);
+  } = usePurchases(companyId ?? 1);
   const { products: inventoryProducts } = useInventory();
 
   const suppliersForUI = useMemo(() => suppliers.map(s => ({
     ...s,
-    contact: s.phone || s.email,
+    contact: s.contact_name || s.phone || s.email || s.billing_email || '',
     enabled: s.active,
-    products: [],
+    bankAccount: s.bank_account || s.bankAccount || '',
+    products: s.products ?? [],
   })), [suppliers]);
 
   const lowStockProductsForUI = useMemo(() => {
@@ -471,9 +486,13 @@ export function Purchases() {
                 Config. Proveedores
               </Button>
             </DialogTrigger>
-            <SupplierConfigDialog
+            <SupplierQuickManageDialog
               suppliers={suppliers}
-              onSave={setSuppliers}
+              loading={suppliersLoading}
+              onAdd={addSupplier}
+              onUpdate={updateSupplier}
+              onDelete={deleteSupplier}
+              onToggleActive={toggleActive}
               onClose={() => setShowSupplierConfig(false)}
             />
           </Dialog>
@@ -847,7 +866,9 @@ export function Purchases() {
 
         <TabsContent value="suppliers" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {suppliersForUI.map((supplier) => (
+            {suppliersForUI.map((supplier) => {
+              const payment = paymentLabel(supplier.credit_days);
+              return (
               <Card key={supplier.id} className={`p-6 transition-all ${
                 supplier.enabled 
                   ? 'bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-blue-950/20 border-2 border-blue-200 dark:border-blue-800' 
@@ -855,14 +876,17 @@ export function Purchases() {
               }`}>
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-start gap-3">
-                    <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                      supplier.enabled ? 'bg-blue-500' : 'bg-gray-400'
-                    }`}>
-                      <Building2 className="h-6 w-6 text-white" />
-                    </div>
+                    <Avatar className="h-12 w-12 border">
+                      <AvatarFallback className="bg-cyan-950 text-cyan-200 text-sm font-semibold">
+                        {supplierInitials(supplier.name)}
+                      </AvatarFallback>
+                    </Avatar>
                     <div>
                       <h3 className="font-bold">{supplier.name}</h3>
-                      <p className="text-sm text-muted-foreground">{supplier.contact}</p>
+                      {supplier.document_number && (
+                        <p className="text-xs text-muted-foreground">RUC: {supplier.document_number}</p>
+                      )}
+                      <p className="text-sm text-muted-foreground">{supplier.contact || 'Sin contacto'}</p>
                     </div>
                   </div>
                   <Badge className={supplier.enabled 
@@ -873,21 +897,29 @@ export function Purchases() {
                   </Badge>
                 </div>
                 <div className="space-y-2 text-sm mb-4">
-                  <div className="flex items-center space-x-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{supplier.phone}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{supplier.email}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs">{supplier.address}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <CreditCard className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs">{supplier.bankAccount}</span>
+                  {supplier.phone && (
+                    <div className="flex items-center space-x-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span>{supplier.phone}</span>
+                    </div>
+                  )}
+                  {(supplier.billing_email || supplier.email) && (
+                    <div className="flex items-center space-x-2">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <span className="truncate">{supplier.billing_email || supplier.email}</span>
+                    </div>
+                  )}
+                  {supplier.bank_name && (
+                    <div className="flex items-center space-x-2">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs">{supplier.bank_name}{supplier.bankAccount ? ` — ${supplier.bankAccount}` : ''}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between pt-1">
+                    <Badge variant={payment.variant}>{payment.label}</Badge>
+                    <span className="text-xs font-medium tabular-nums">
+                      {formatSupplierMoney(supplier.total_purchases ?? 0)}
+                    </span>
                   </div>
                 </div>
                 {supplier.enabled && (
@@ -919,7 +951,7 @@ export function Purchases() {
                   </div>
                 )}
               </Card>
-            ))}
+            );})}
           </div>
         </TabsContent>
 
@@ -1518,8 +1550,10 @@ function PurchaseDialog({ purchase, suppliers, lowStockProducts, cartItems, onAd
               </Select>
               {selectedSupplier && (
                 <div className="mt-2 p-3 bg-muted rounded-lg text-sm space-y-1">
-                  <p><span className="font-semibold">Contacto:</span> {selectedSupplier.contact}</p>
-                  <p><span className="font-semibold">Cuenta:</span> {selectedSupplier.bankAccount}</p>
+                  <p><span className="font-semibold">Contacto:</span> {selectedSupplier.contact_name || selectedSupplier.contact || '—'}</p>
+                  <p><span className="font-semibold">Teléfono:</span> {selectedSupplier.phone || '—'}</p>
+                  <p><span className="font-semibold">Cuenta:</span> {selectedSupplier.bank_name ? `${selectedSupplier.bank_name} — ` : ''}{selectedSupplier.bankAccount || selectedSupplier.bank_account || '—'}</p>
+                  <p><span className="font-semibold">Condiciones:</span> {paymentLabel(selectedSupplier.credit_days).label}</p>
                 </div>
               )}
             </div>
@@ -1632,243 +1666,3 @@ function PurchaseDialog({ purchase, suppliers, lowStockProducts, cartItems, onAd
   );
 }
 
-// Diálogo de Configuración de Proveedores
-function SupplierConfigDialog({ suppliers, onSave, onClose }: any) {
-  const [localSuppliers, setLocalSuppliers] = useState([...suppliers]);
-  const [editingSupplier, setEditingSupplier] = useState<any>(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const handleSaveSupplier = (supplierData: any) => {
-    if (editingSupplier) {
-      setLocalSuppliers(localSuppliers.map(s => s.id === editingSupplier.id ? { ...supplierData, id: editingSupplier.id, products: editingSupplier.products } : s));
-      setEditingSupplier(null);
-    } else {
-      setLocalSuppliers([...localSuppliers, { ...supplierData, id: Date.now(), enabled: true, products: [] }]);
-    }
-    setShowForm(false);
-    toast.success('Proveedor guardado correctamente');
-  };
-
-  const handleToggleEnabled = (id: number) => {
-    setLocalSuppliers(localSuppliers.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
-  };
-
-  const handleDelete = (id: number) => {
-    setLocalSuppliers(localSuppliers.filter(s => s.id !== id));
-    toast.success('Proveedor eliminado');
-  };
-
-  const handleSave = () => {
-    onSave(localSuppliers);
-    toast.success('Configuración guardada correctamente');
-    onClose();
-  };
-
-  return (
-    <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>Configurar Proveedores</DialogTitle>
-        <DialogDescription>Gestiona los proveedores del sistema</DialogDescription>
-      </DialogHeader>
-
-      <div className="space-y-4">
-        <Button onClick={() => { setEditingSupplier(null); setShowForm(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Proveedor
-        </Button>
-
-        {showForm && (
-          <SupplierForm
-            supplier={editingSupplier}
-            onSave={handleSaveSupplier}
-            onCancel={() => { setShowForm(false); setEditingSupplier(null); }}
-          />
-        )}
-
-        <div className="space-y-3">
-          {localSuppliers.map((supplier) => (
-            <div key={supplier.id} className={`p-4 rounded-lg border-2 transition-all ${
-              supplier.enabled 
-                ? 'bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border-blue-200 dark:border-blue-800' 
-                : 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 opacity-60'
-            }`}>
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3 flex-1">
-                  <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                    supplier.enabled ? 'bg-blue-500' : 'bg-gray-400'
-                  }`}>
-                    <Building2 className="h-6 w-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-bold">{supplier.name}</h4>
-                      <Badge className={supplier.enabled 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' 
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                      }>
-                        {supplier.enabled ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{supplier.contact}</p>
-                    <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                      <div className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        <span>{supplier.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        <span className="truncate">{supplier.email}</span>
-                      </div>
-                      <div className="flex items-center gap-1 col-span-2">
-                        <MapPin className="h-3 w-3" />
-                        <span className="text-xs">{supplier.address}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <FileText className="h-3 w-3" />
-                        <span>{supplier.taxId}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <CreditCard className="h-3 w-3 text-green-600" />
-                        <span className="font-semibold">{supplier.bankAccount}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => { setEditingSupplier(supplier); setShowForm(true); }}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleToggleEnabled(supplier.id)}
-                    className={supplier.enabled ? 'text-orange-600' : 'text-green-600'}
-                  >
-                    {supplier.enabled ? 'Deshabilitar' : 'Habilitar'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(supplier.id)}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave}>
-            <Save className="h-4 w-4 mr-2" />
-            Guardar Configuración
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
-
-// Formulario de Proveedor
-function SupplierForm({ supplier, onSave, onCancel }: any) {
-  const [formData, setFormData] = useState({
-    name: supplier?.name || '',
-    contact: supplier?.contact || '',
-    phone: supplier?.phone || '',
-    email: supplier?.email || '',
-    address: supplier?.address || '',
-    taxId: supplier?.taxId || '',
-    bankAccount: supplier?.bankAccount || ''
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg border-2 border-blue-200 dark:border-blue-800 space-y-4">
-      <h4 className="font-bold">{supplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h4>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Nombre *</Label>
-          <Input
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Contacto *</Label>
-          <Input
-            value={formData.contact}
-            onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Teléfono *</Label>
-          <Input
-            value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Email *</Label>
-          <Input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>RUC/Tax ID *</Label>
-          <Input
-            value={formData.taxId}
-            onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Cuenta Bancaria *</Label>
-          <Input
-            value={formData.bankAccount}
-            onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
-            placeholder="Ej: BCP - 194-2345678-0-12"
-            required
-          />
-        </div>
-        <div className="col-span-2">
-          <Label>Dirección *</Label>
-          <Input
-            value={formData.address}
-            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            required
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit">
-          <Save className="h-4 w-4 mr-2" />
-          {supplier ? 'Actualizar' : 'Crear'}
-        </Button>
-      </div>
-    </form>
-  );
-}

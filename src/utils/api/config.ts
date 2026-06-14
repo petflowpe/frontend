@@ -113,3 +113,16 @@ export const handleApiResponse = async <T>(response: Response): Promise<T> => {
 
   return data as T;
 };
+
+/** Extrae eventos de GET /pets/{id}/timeline (handleApiResponse ya desenvuelve `data`). */
+export function extractPetTimeline(response: unknown): unknown[] {
+  if (!response || typeof response !== 'object') return [];
+  const payload = response as Record<string, unknown>;
+  if (Array.isArray(payload.timeline)) return payload.timeline;
+  const nested = payload.data;
+  if (nested && typeof nested === 'object') {
+    const timeline = (nested as Record<string, unknown>).timeline;
+    if (Array.isArray(timeline)) return timeline;
+  }
+  return [];
+}

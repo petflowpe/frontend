@@ -108,7 +108,13 @@ export const ACCOUNTING_ACCOUNTS_PERU = {
   '95': { code: '95', name: 'Gastos de Ventas', type: 'Gasto Función' },
 };
 
-// Cuentas contables predefinidas para operaciones comunes
+/** Cuentas de gasto (62–65) para proveedores */
+export function getSupplierExpenseAccounts() {
+  return Object.values(ACCOUNTING_ACCOUNTS_PERU)
+    .filter((account) => /^6[2345]/.test(account.code))
+    .sort((a, b) => a.code.localeCompare(b.code));
+}
+
 export const DEFAULT_ACCOUNTING_MAPPINGS = {
   // Ingresos
   services: '7041', // Prestación de Servicios - Terceros
