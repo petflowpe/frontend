@@ -168,10 +168,15 @@ export function SuppliersManagement() {
     <div className="animate-in fade-in space-y-6 p-6 duration-300">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
-            <Building2 className="h-8 w-8 text-cyan-500" />
-            Directorio de Proveedores
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
+              <Building2 className="h-8 w-8 text-cyan-500" />
+              Directorio de Proveedores
+            </h1>
+            <Badge variant="outline" className="border-cyan-500/40 text-cyan-600 dark:text-cyan-400">
+              build {__APP_BUILD_ID__}
+            </Badge>
+          </div>
           <p className="text-muted-foreground mt-2 text-sm sm:text-base">
             Gestiona tus contactos comerciales, condiciones de crédito y cuentas bancarias.
           </p>

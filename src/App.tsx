@@ -28,7 +28,7 @@ const Calendar = lazy(() => import('./components/Calendar').then(m => ({ default
 const Clients = lazy(() => import('./components/Clients').then(m => ({ default: m.Clients })));
 const Services = lazy(() => import('./components/Services').then(m => ({ default: m.Services })));
 const Products = lazy(() => import('./components/Products').then(m => ({ default: m.Products })));
-const SuppliersManagement = lazy(() => import('./components/SuppliersManagement').then(m => ({ default: m.SuppliersManagement })));
+import { SuppliersManagement } from './components/SuppliersManagement';
 const Inventory = lazy(() => import('./components/Inventory').then(m => ({ default: m.Inventory })));
 const Purchases = lazy(() => import('./components/Purchases').then(m => ({ default: m.Purchases })));
 const VehicleManagement = lazy(() => import('./components/VehicleManagement').then(m => ({ default: m.VehicleManagement })));

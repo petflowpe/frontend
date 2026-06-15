@@ -109,7 +109,7 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   // Operaciones
   services: null,
   products: { permissions: ['products.view', 'products.*', 'inventory.view'] },
-  suppliers: { permissions: ['products.view', 'products.*'] },
+  suppliers: null,
   inventory: { permissions: ['inventory.view', 'inventory.*', 'products.view', 'products.*'] },
   purchases: { permissions: ['purchases.view', 'purchases.*'] },
   vehicles: {

@@ -110,7 +110,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'products', label: 'Productos', icon: Boxes, color: 'text-amber-500' },
       { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-emerald-600' },
       { id: 'kardex', label: 'Kardex', icon: Layers, color: 'text-purple-500' },
-      { id: 'suppliers', label: 'Proveedores', icon: Building2, color: 'text-indigo-500' },
+      { id: 'suppliers', label: 'Directorio Proveedores', icon: Building2, color: 'text-indigo-500' },
       { id: 'purchases', label: 'Compras', icon: ShoppingBag, color: 'text-violet-500' },
     ],
   },

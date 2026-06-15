@@ -3,8 +3,16 @@
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
 
+  const buildId =
+    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ||
+    process.env.VITE_BUILD_ID ||
+    `dev-${Date.now().toString(36)}`;
+
   export default defineConfig({
     plugins: [react()],
+    define: {
+      __APP_BUILD_ID__: JSON.stringify(buildId),
+    },
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {
