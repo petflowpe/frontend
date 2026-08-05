@@ -548,11 +548,6 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
             if (!open) setInvoiceAppointmentId(null);
           }}
           appointmentId={invoiceAppointmentId}
-          onIssued={() => {
-            setIssueDocOpen(false);
-            setInvoiceAppointmentId(null);
-            toast.success('Comprobante emitido');
-          }}
         />
       )}
     </div>
