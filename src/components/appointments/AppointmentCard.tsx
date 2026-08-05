@@ -13,6 +13,7 @@ interface AppointmentCardProps {
   onClone?: (appointment: Appointment) => void;
   onReschedule?: (appointment: Appointment) => void;
   onGenerateInvoice?: (appointment: Appointment) => void;
+  onCorrectDocument?: (appointment: Appointment) => void;
   onCollectPayment?: (appointment: Appointment) => void;
   onConfirm?: (id: string) => void;
   onSendReminder?: (id: string) => void;
@@ -33,6 +34,7 @@ export function AppointmentCard({
   onClone,
   onReschedule,
   onGenerateInvoice,
+  onCorrectDocument,
   onCollectPayment,
   onConfirm,
   onSendReminder,
@@ -63,6 +65,10 @@ export function AppointmentCard({
                   {String(appointment.paymentStatus || '').toLowerCase().includes('pagad') ? (
                     <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300">
                       Cobrado
+                    </Badge>
+                  ) : String(appointment.paymentStatus || '').toLowerCase().includes('parcial') ? (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                      Cobro parcial
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
@@ -239,6 +245,19 @@ export function AppointmentCard({
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Facturar
+                </Button>
+              </Tooltip>
+            )}
+            {appointment.status === 'completed' && appointment.invoiced && onCorrectDocument && (
+              <Tooltip content="Anular (≤7 días) o emitir nota de crédito. No cambia el cobro.">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onCorrectDocument(appointment)}
+                  className="w-full border-rose-300 text-rose-800 hover:bg-rose-50"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Anular / NC
                 </Button>
               </Tooltip>
             )}

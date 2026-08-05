@@ -21,6 +21,7 @@ import { isUnconfirmed, hasNoVehicle } from './calendarAppointmentStyles';
 import { toast } from 'sonner';
 import { goToCashCollect } from '../../utils/navigationBridge';
 import { IssueDocumentDialog } from '../appointments/IssueDocumentDialog';
+import { DocumentCorrectionDialog } from '../appointments/DocumentCorrectionDialog';
 import { getStoredCompanyId } from '../../utils/appointmentMappers';
 import { matchesBookingSourceFilter } from '../../utils/bookingSourceHelpers';
 
@@ -69,6 +70,8 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
   const [issueDocOpen, setIssueDocOpen] = useState(false);
   const [invoiceAppointmentId, setInvoiceAppointmentId] = useState<string | null>(null);
+  const [correctDocOpen, setCorrectDocOpen] = useState(false);
+  const [correctAppointmentId, setCorrectAppointmentId] = useState<string | null>(null);
   const [prefilledDate, setPrefilledDate] = useState<Date | undefined>();
   const [prefilledTime, setPrefilledTime] = useState<string | undefined>();
   const [prefilledResourceId, setPrefilledResourceId] = useState<string | undefined>();
@@ -351,6 +354,12 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
     setIssueDocOpen(true);
   };
 
+  const handleCorrectDocumentFromCalendar = (appointment: any) => {
+    setSelectedAppointment(null);
+    setCorrectAppointmentId(String(appointment.id));
+    setCorrectDocOpen(true);
+  };
+
   const handleSendReminder = async (appointmentId: string) => {
     await sendAppointmentReminder(appointmentId);
     toast.success('Recordatorio enviado');
@@ -526,6 +535,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
         onSendReminder={handleSendReminder}
         onNavigate={onNavigate}
         onGenerateInvoice={handleGenerateInvoiceFromCalendar}
+        onCorrectDocument={handleCorrectDocumentFromCalendar}
       />
 
       <NewAppointmentDialog
@@ -548,6 +558,17 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
             if (!open) setInvoiceAppointmentId(null);
           }}
           appointmentId={invoiceAppointmentId}
+        />
+      )}
+
+      {correctAppointmentId && (
+        <DocumentCorrectionDialog
+          open={correctDocOpen}
+          onOpenChange={(open) => {
+            setCorrectDocOpen(open);
+            if (!open) setCorrectAppointmentId(null);
+          }}
+          appointmentId={correctAppointmentId}
         />
       )}
     </div>

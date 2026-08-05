@@ -61,6 +61,7 @@ interface AppointmentDetailsDialogProps {
   onSendReminder?: (appointmentId: string) => void | Promise<void>;
   onNavigate?: (tab: string) => void;
   onGenerateInvoice?: (appointment: any) => void;
+  onCorrectDocument?: (appointment: any) => void;
 }
 
 export function AppointmentDetailsDialog({
@@ -76,6 +77,7 @@ export function AppointmentDetailsDialog({
   onSendReminder,
   onNavigate,
   onGenerateInvoice,
+  onCorrectDocument,
 }: AppointmentDetailsDialogProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -358,6 +360,19 @@ export function AppointmentDetailsDialog({
               >
                 <FileText className="h-4 w-4" />
                 Facturar
+              </Button>
+            )}
+            {appointment.status === 'completed' &&
+              (appointment.invoiced || appointment.boleta_id || appointment.invoice_id) &&
+              onCorrectDocument && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 border-rose-300 text-rose-800"
+                onClick={() => onCorrectDocument(appointment)}
+              >
+                <FileText className="h-4 w-4" />
+                Anular / NC
               </Button>
             )}
             {onSendReminder && (

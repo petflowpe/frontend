@@ -31,6 +31,7 @@ import { apiClient } from '../utils/api/client';
 import { getAppointmentDateOnly } from './calendar/calendarDateUtils';
 import { matchesBookingSourceFilter } from '../utils/bookingSourceHelpers';
 import { IssueDocumentDialog } from './appointments/IssueDocumentDialog';
+import { DocumentCorrectionDialog } from './appointments/DocumentCorrectionDialog';
 
 // Días de la semana
 const weekDays = [
@@ -92,6 +93,8 @@ export function Appointments() {
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | undefined>();
   const [issueDocOpen, setIssueDocOpen] = useState(false);
   const [appointmentToInvoice, setAppointmentToInvoice] = useState<any>(null);
+  const [correctDocOpen, setCorrectDocOpen] = useState(false);
+  const [appointmentToCorrect, setAppointmentToCorrect] = useState<any>(null);
   
   // Estados de loading para acciones
   const [completingAppointment, setCompletingAppointment] = useState<string | null>(null);
@@ -154,6 +157,11 @@ export function Appointments() {
   const handleGenerateInvoice = (appointment: any) => {
     setAppointmentToInvoice(appointment);
     setIssueDocOpen(true);
+  };
+
+  const handleCorrectDocument = (appointment: any) => {
+    setAppointmentToCorrect(appointment);
+    setCorrectDocOpen(true);
   };
 
   const handleCloneAppointment = (appointment: any) => {
@@ -504,6 +512,7 @@ export function Appointments() {
             onClone={handleCloneAppointment}
             onReschedule={handleReschedule}
             onGenerateInvoice={handleGenerateInvoice}
+            onCorrectDocument={handleCorrectDocument}
             onCollectPayment={handleCollectPayment}
             onViewRecurringSeries={handleViewRecurringSeries}
             onConfirm={async (id) => {
@@ -557,6 +566,19 @@ export function Appointments() {
           onOpenChange={setIssueDocOpen}
           appointmentId={appointmentToInvoice.id}
           appointmentLabel={`${appointmentToInvoice.clientName || appointmentToInvoice.client} — ${appointmentToInvoice.petName || appointmentToInvoice.pet}`}
+          onSuccess={() => fetchAppointments()}
+        />
+      )}
+
+      {appointmentToCorrect && (
+        <DocumentCorrectionDialog
+          open={correctDocOpen}
+          onOpenChange={(open) => {
+            setCorrectDocOpen(open);
+            if (!open) setAppointmentToCorrect(null);
+          }}
+          appointmentId={appointmentToCorrect.id}
+          appointmentLabel={`${appointmentToCorrect.clientName || appointmentToCorrect.client} — ${appointmentToCorrect.petName || appointmentToCorrect.pet}`}
           onSuccess={() => fetchAppointments()}
         />
       )}

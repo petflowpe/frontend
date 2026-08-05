@@ -245,6 +245,9 @@ export const API = {
     registerPayment: (id: string | number) => `/appointments/${id}/register-payment`,
     billingPreview: (id: string | number) => `/appointments/${id}/billing-preview`,
     issueDocument: (id: string | number) => `/appointments/${id}/issue-document`,
+    documentCorrectionOptions: (id: string | number) => `/appointments/${id}/document-correction-options`,
+    voidDocument: (id: string | number) => `/appointments/${id}/void-document`,
+    creditNote: (id: string | number) => `/appointments/${id}/credit-note`,
   },
   vehicles: {
     list: '/vehicles',

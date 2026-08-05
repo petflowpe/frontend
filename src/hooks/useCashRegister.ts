@@ -35,6 +35,8 @@ export interface PendingCashAppointment {
   service_name: string;
   client_name?: string | null;
   total: number;
+  paid_amount?: number;
+  remaining_amount?: number;
   time?: string;
   district?: string;
   vehicle_id?: number;
@@ -57,6 +59,7 @@ export interface DaySummary {
   };
   pending_collections: PendingCashAppointment[];
   pending_invoicing?: PendingCashAppointment[];
+  issued_today?: PendingCashAppointment[];
   expenses_total: number;
   movements: CashMovement[];
   by_vehicle: {

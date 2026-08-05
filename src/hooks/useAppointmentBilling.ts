@@ -25,6 +25,42 @@ export interface IssueDocumentResult {
   };
 }
 
+export interface DocumentCorrectionOptions {
+  has_document: boolean;
+  can_void: boolean;
+  can_credit_note: boolean;
+  void_window_days: number;
+  days_since_emission?: number;
+  within_void_window?: boolean;
+  void_requires_comunicacion_baja?: boolean;
+  void_is_local_only?: boolean;
+  payment_status?: string;
+  credit_note_series?: string;
+  document?: {
+    id: number;
+    tipo_documento: string;
+    tipo_nombre: string;
+    numero_completo?: string;
+    fecha_emision: string;
+    estado_sunat?: string;
+    total: number;
+    detalles: Array<{
+      codigo?: string;
+      descripcion: string;
+      cantidad: number;
+      mto_valor_unitario: number;
+      unidad?: string;
+      tip_afe_igv?: string;
+      porcentaje_igv?: number;
+    }>;
+  };
+  motivos_sugeridos?: {
+    total: { cod_motivo: string; des_motivo: string };
+    partial: { cod_motivo: string; des_motivo: string };
+  };
+  message?: string;
+}
+
 function unwrap<T>(res: { data?: T } | T): T {
   return (res as { data?: T }).data ?? (res as T);
 }
@@ -78,12 +114,65 @@ export function useAppointmentBilling() {
     []
   );
 
+  const loadCorrectionOptions = useCallback(async (appointmentId: string | number) => {
+    const res = await apiClient.get<{ data: DocumentCorrectionOptions }>(
+      API.appointments.documentCorrectionOptions(appointmentId)
+    );
+    return unwrap(res);
+  }, []);
+
+  const voidDocument = useCallback(
+    async (appointmentId: string | number, options?: { motivo?: string; sendToSunat?: boolean }) => {
+      const res = await apiClient.post<{ data: unknown; message?: string }>(
+        API.appointments.voidDocument(appointmentId),
+        {
+          motivo: options?.motivo,
+          send_to_sunat: options?.sendToSunat,
+        }
+      );
+      toast.success((res as { message?: string }).message ?? 'Comprobante anulado');
+      return unwrap(res);
+    },
+    []
+  );
+
+  const issueCreditNote = useCallback(
+    async (
+      appointmentId: string | number,
+      payload: {
+        mode: 'total' | 'partial';
+        cod_motivo?: string;
+        des_motivo?: string;
+        serie?: string;
+        send_to_sunat?: boolean;
+        detalles?: Array<{
+          codigo?: string;
+          descripcion: string;
+          cantidad: number;
+          mto_valor_unitario: number;
+          unidad?: string;
+        }>;
+      }
+    ) => {
+      const res = await apiClient.post<{ data: unknown; message?: string }>(
+        API.appointments.creditNote(appointmentId),
+        payload
+      );
+      toast.success((res as { message?: string }).message ?? 'Nota de crédito emitida');
+      return unwrap(res);
+    },
+    []
+  );
+
   return {
     preview,
     loading,
     issuing,
     loadPreview,
     issueDocument,
+    loadCorrectionOptions,
+    voidDocument,
+    issueCreditNote,
     clearPreview: () => setPreview(null),
   };
 }

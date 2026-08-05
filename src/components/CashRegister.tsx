@@ -30,6 +30,7 @@ import { useVehicles } from '../hooks/useVehicles';
 import { getStoredCompanyId } from '../utils/appointmentMappers';
 import { CorrelativesPanel } from './cash/CorrelativesPanel';
 import { IssueDocumentDialog } from './appointments/IssueDocumentDialog';
+import { DocumentCorrectionDialog } from './appointments/DocumentCorrectionDialog';
 import { useAuth } from '../context/AuthContext';
 import type { PendingCashAppointment } from '../hooks/useCashRegister';
 import { apiClient } from '../utils/api/client';
@@ -71,8 +72,11 @@ export function CashRegister() {
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const [payDialogId, setPayDialogId] = useState<number | null>(null);
   const [payMethod, setPayMethod] = useState<string>('Efectivo');
+  const [payAmountInput, setPayAmountInput] = useState('');
   const [issueDocOpen, setIssueDocOpen] = useState(false);
   const [appointmentToInvoice, setAppointmentToInvoice] = useState<PendingCashAppointment | null>(null);
+  const [correctDocOpen, setCorrectDocOpen] = useState(false);
+  const [appointmentToCorrect, setAppointmentToCorrect] = useState<PendingCashAppointment | null>(null);
   const [mainTab, setMainTab] = useState('caja');
   const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
 
@@ -131,8 +135,15 @@ export function CashRegister() {
       setMainTab('cobros');
       setHighlightAppointmentId(id);
       if (pendingNav.payload?.openPay !== false) {
+        const apt =
+          (daySummary?.pending_collections ?? []).find((p) => p.id === id) ||
+          (daySummary?.pending_invoicing ?? []).find((p) => p.id === id);
+        const remaining = apt
+          ? apt.remaining_amount ?? Math.max(0, (apt.total ?? 0) - (apt.paid_amount ?? 0))
+          : 0;
         setPayDialogId(id);
         setPayMethod('Efectivo');
+        setPayAmountInput(remaining > 0 ? remaining.toFixed(2) : apt ? String(apt.total) : '');
       }
       toast.info('Cita lista para cobro', {
         description: `Se abrió el cobro de la cita #${id}`,
@@ -175,17 +186,37 @@ export function CashRegister() {
     }
   };
 
+  const openPayDialog = (apt: PendingCashAppointment) => {
+    const remaining =
+      apt.remaining_amount ??
+      Math.max(0, (apt.total ?? 0) - (apt.paid_amount ?? 0));
+    setPayDialogId(apt.id);
+    setPayMethod('Efectivo');
+    setPayAmountInput(remaining > 0 ? remaining.toFixed(2) : String(apt.total ?? ''));
+  };
+
   const openInvoiceDialog = (apt: PendingCashAppointment) => {
     setAppointmentToInvoice(apt);
     setIssueDocOpen(true);
+  };
+
+  const openCorrectionDialog = (apt: PendingCashAppointment) => {
+    setAppointmentToCorrect(apt);
+    setCorrectDocOpen(true);
   };
 
   const handleCollect = async () => {
     if (!payDialogId) return;
     try {
       const apt = pending.find((p) => p.id === payDialogId) || pendingInvoicing.find((p) => p.id === payDialogId);
-      await registerAppointmentPayment(payDialogId, payMethod, apt?.total);
+      const remaining =
+        apt?.remaining_amount ??
+        Math.max(0, (apt?.total ?? 0) - (apt?.paid_amount ?? 0));
+      const parsed = parseFloat(payAmountInput);
+      const amount = Number.isFinite(parsed) && parsed > 0 ? parsed : remaining || apt?.total;
+      await registerAppointmentPayment(payDialogId, payMethod, amount);
       setPayDialogId(null);
+      setPayAmountInput('');
       setHighlightAppointmentId(null);
       if (apt && !apt.invoiced) {
         toast.message('Cobro listo. ¿Emitir comprobante?', {
@@ -405,7 +436,7 @@ export function CashRegister() {
                     apt={apt}
                     vehicleLabel={vehicleLabel(apt.vehicle_id)}
                     highlighted={highlightAppointmentId === apt.id}
-                    onCollect={() => setPayDialogId(apt.id)}
+                    onCollect={() => openPayDialog(apt)}
                     onInvoice={() => openInvoiceDialog(apt)}
                     showCollect
                   />
@@ -432,10 +463,37 @@ export function CashRegister() {
                     apt={apt}
                     vehicleLabel={vehicleLabel(apt.vehicle_id)}
                     onInvoice={() => openInvoiceDialog(apt)}
+                    onCorrect={apt.invoiced ? () => openCorrectionDialog(apt) : undefined}
                     showCollect={apt.payment_status !== 'Pagado'}
                     onCollect={
-                      apt.payment_status !== 'Pagado' ? () => setPayDialogId(apt.id) : undefined
+                      apt.payment_status !== 'Pagado' ? () => openPayDialog(apt) : undefined
                     }
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-rose-600" />
+              Anular / Nota de crédito
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Comprobantes emitidos hoy. Anulación total ≤7 días desde emisión; luego NC parcial o total. No cambia el cobro.
+            </p>
+            {(daySummary?.issued_today ?? []).length === 0 ? (
+              <p className="text-slate-500">No hay comprobantes emitidos para corregir hoy.</p>
+            ) : (
+              <div className="space-y-2">
+                {(daySummary?.issued_today ?? []).map((apt) => (
+                  <PendingAppointmentRow
+                    key={`corr-${apt.id}`}
+                    apt={apt}
+                    vehicleLabel={vehicleLabel(apt.vehicle_id)}
+                    onInvoice={() => openInvoiceDialog(apt)}
+                    onCorrect={() => openCorrectionDialog(apt)}
+                    showCollect={false}
                   />
                 ))}
               </div>
@@ -495,11 +553,47 @@ export function CashRegister() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={payDialogId !== null} onOpenChange={() => setPayDialogId(null)}>
+      <Dialog
+        open={payDialogId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPayDialogId(null);
+            setPayAmountInput('');
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar cobro</DialogTitle>
+            <DialogDescription>
+              Puede cobrar el total o un monto parcial. La cita quedará Pendiente, Parcial o Pagado según el saldo.
+            </DialogDescription>
           </DialogHeader>
+          {(() => {
+            const apt =
+              pending.find((p) => p.id === payDialogId) ||
+              pendingInvoicing.find((p) => p.id === payDialogId);
+            const remaining =
+              apt?.remaining_amount ??
+              Math.max(0, (apt?.total ?? 0) - (apt?.paid_amount ?? 0));
+            return apt ? (
+              <p className="text-sm text-muted-foreground">
+                Total S/ {Number(apt.total).toFixed(2)}
+                {typeof apt.paid_amount === 'number' && apt.paid_amount > 0
+                  ? ` · Cobrado S/ ${apt.paid_amount.toFixed(2)}`
+                  : ''}
+                {' · '}Saldo S/ {remaining.toFixed(2)}
+              </p>
+            ) : null;
+          })()}
+          <Label>Monto a cobrar</Label>
+          <Input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={payAmountInput}
+            onChange={(e) => setPayAmountInput(e.target.value)}
+          />
           <Label>Método de pago</Label>
           <Select value={payMethod} onValueChange={setPayMethod}>
             <SelectTrigger>
@@ -537,6 +631,27 @@ export function CashRegister() {
         />
       )}
 
+      {appointmentToCorrect && (
+        <DocumentCorrectionDialog
+          open={correctDocOpen}
+          onOpenChange={(open) => {
+            setCorrectDocOpen(open);
+            if (!open) setAppointmentToCorrect(null);
+          }}
+          appointmentId={appointmentToCorrect.id}
+          appointmentLabel={[
+            appointmentToCorrect.client_name,
+            appointmentToCorrect.service_name || `Cita #${appointmentToCorrect.id}`,
+          ]
+            .filter(Boolean)
+            .join(' — ')}
+          onSuccess={() => {
+            refreshSummary();
+            setAppointmentToCorrect(null);
+          }}
+        />
+      )}
+
       <Dialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
         <DialogContent>
           <DialogHeader>
@@ -566,6 +681,7 @@ function PendingAppointmentRow({
   vehicleLabel,
   onCollect,
   onInvoice,
+  onCorrect,
   showCollect = true,
   highlighted = false,
 }: {
@@ -573,6 +689,7 @@ function PendingAppointmentRow({
   vehicleLabel: string;
   onCollect?: () => void;
   onInvoice: () => void;
+  onCorrect?: () => void;
   showCollect?: boolean;
   highlighted?: boolean;
 }) {
@@ -594,6 +711,14 @@ function PendingAppointmentRow({
               Cobrado
             </Badge>
           )}
+          {apt.payment_status === 'Parcial' && (
+            <Badge variant="outline" className="ml-2 text-amber-700 border-amber-300">
+              Cobro parcial
+              {typeof apt.remaining_amount === 'number'
+                ? ` · Saldo S/ ${apt.remaining_amount.toFixed(2)}`
+                : ''}
+            </Badge>
+          )}
           {apt.invoiced && (
             <Badge variant="outline" className="ml-2">
               Facturado
@@ -602,7 +727,13 @@ function PendingAppointmentRow({
         </p>
       </div>
       <div className="flex items-center gap-2 flex-wrap justify-end">
-        <span className="font-bold">S/ {apt.total.toFixed(2)}</span>
+        <span className="font-bold">
+          S/{' '}
+          {(apt.remaining_amount != null && apt.payment_status !== 'Pagado'
+            ? apt.remaining_amount
+            : apt.total
+          ).toFixed(2)}
+        </span>
         {showCollect && onCollect && (
           <Button size="sm" onClick={onCollect}>
             Cobrar
@@ -612,6 +743,11 @@ function PendingAppointmentRow({
           <Button size="sm" variant="outline" onClick={onInvoice}>
             <FileText className="w-4 h-4 mr-1" />
             Facturar
+          </Button>
+        )}
+        {apt.invoiced && onCorrect && (
+          <Button size="sm" variant="outline" className="border-rose-300 text-rose-800" onClick={onCorrect}>
+            Anular / NC
           </Button>
         )}
       </div>
