@@ -94,7 +94,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Logística y Flota',
     defaultOpen: true,
     items: [
-      { id: 'operations-center', label: 'Centro de Control', icon: Zap, color: 'text-blue-600', badge: 'GPS' },
+      { id: 'operations-center', label: 'Centro de Control', icon: Zap, color: 'text-blue-600', badge: 'BETA' },
       { id: 'routes', label: 'Planificador de Rutas', icon: MapPin, color: 'text-red-500' },
       { id: 'driver-session', label: 'App Chofer', icon: Car, color: 'text-slate-300' },
       { id: 'public-tracking', label: 'Tracking Cliente', icon: Navigation, color: 'text-cyan-400' },

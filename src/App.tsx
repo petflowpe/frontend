@@ -526,7 +526,11 @@ function AppContent() {
       case 'operations-center': return <OperationsCenter />;
       case 'zone-config': return <ConfiguracionZonas />;
 
-      // Simulador App Chofer
+      // Tracking público + App chofer
+      case 'public-tracking': {
+        const code = new URLSearchParams(window.location.search).get('code') || undefined;
+        return <BookingTracking bookingCode={code || undefined} />;
+      }
       case 'driver-session': return <DriverSession />;
 
       // Otros
