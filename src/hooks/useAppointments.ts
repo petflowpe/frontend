@@ -63,6 +63,8 @@ export interface Appointment {
   totalAmount?: number;
   invoiced: boolean;
   documentNumber?: string;
+  /** Estado de cobro proveniente del backend (Pendiente | Pagado | Parcial, etc.) */
+  paymentStatus?: string;
   recurring?: boolean;
   createdAt: string;
   // Extra properties for compatibility
@@ -153,6 +155,7 @@ export const useAppointments = () => {
       documentNumber: backendAppointment.boleta?.numero_completo
         || backendAppointment.invoice?.numero_completo
         || undefined,
+      paymentStatus: backendAppointment.payment_status || backendAppointment.paymentStatus || undefined,
       address: backendAppointment.address || '',
       district: backendAppointment.district || '',
       groomer: backendAppointment.user?.name || vehicle?.driverName || '',

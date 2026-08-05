@@ -34,6 +34,7 @@ import { useAuth } from '../context/AuthContext';
 import type { PendingCashAppointment } from '../hooks/useCashRegister';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { getPendingAction, clearPendingAction } from '../utils/navigationBridge';
 
 const PAYMENT_METHODS = ['Efectivo', 'Tarjeta', 'Yape', 'Plin', 'Transferencia'] as const;
 
@@ -72,6 +73,8 @@ export function CashRegister() {
   const [payMethod, setPayMethod] = useState<string>('Efectivo');
   const [issueDocOpen, setIssueDocOpen] = useState(false);
   const [appointmentToInvoice, setAppointmentToInvoice] = useState<PendingCashAppointment | null>(null);
+  const [mainTab, setMainTab] = useState('caja');
+  const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
 
   const [startingCashInput, setStartingCashInput] = useState('200');
   const [cashCountInput, setCashCountInput] = useState('');
@@ -118,6 +121,26 @@ export function CashRegister() {
   const cashInDrawer =
     (currentSession?.opening_amount ?? 0) + sales.cash - expensesTotal;
 
+  useEffect(() => {
+    if (!companyId) return;
+    const pendingNav = getPendingAction('cash-register');
+    if (!pendingNav || pendingNav.action !== 'collect_appointment') return;
+
+    const id = Number(pendingNav.payload?.appointmentId);
+    if (Number.isFinite(id) && id > 0) {
+      setMainTab('cobros');
+      setHighlightAppointmentId(id);
+      if (pendingNav.payload?.openPay !== false) {
+        setPayDialogId(id);
+        setPayMethod('Efectivo');
+      }
+      toast.info('Cita lista para cobro', {
+        description: `Se abrió el cobro de la cita #${id}`,
+      });
+    }
+    clearPendingAction();
+  }, [companyId, daySummary]);
+
   const handleOpenSession = async () => {
     const startAmount = parseFloat(startingCashInput);
     if (!branchId) {
@@ -160,9 +183,18 @@ export function CashRegister() {
   const handleCollect = async () => {
     if (!payDialogId) return;
     try {
-      const apt = pending.find((p) => p.id === payDialogId);
+      const apt = pending.find((p) => p.id === payDialogId) || pendingInvoicing.find((p) => p.id === payDialogId);
       await registerAppointmentPayment(payDialogId, payMethod, apt?.total);
       setPayDialogId(null);
+      setHighlightAppointmentId(null);
+      if (apt && !apt.invoiced) {
+        toast.message('Cobro listo. ¿Emitir comprobante?', {
+          action: {
+            label: 'Emitir',
+            onClick: () => openInvoiceDialog(apt),
+          },
+        });
+      }
     } catch {
       /* handled */
     }
@@ -252,7 +284,7 @@ export function CashRegister() {
         </div>
       </div>
 
-      <Tabs defaultValue="caja">
+      <Tabs value={mainTab} onValueChange={setMainTab}>
         <TabsList>
           <TabsTrigger value="caja">Caja del día</TabsTrigger>
           <TabsTrigger value="cobros">
@@ -372,6 +404,7 @@ export function CashRegister() {
                     key={apt.id}
                     apt={apt}
                     vehicleLabel={vehicleLabel(apt.vehicle_id)}
+                    highlighted={highlightAppointmentId === apt.id}
                     onCollect={() => setPayDialogId(apt.id)}
                     onInvoice={() => openInvoiceDialog(apt)}
                     showCollect
@@ -534,15 +567,21 @@ function PendingAppointmentRow({
   onCollect,
   onInvoice,
   showCollect = true,
+  highlighted = false,
 }: {
   apt: PendingCashAppointment;
   vehicleLabel: string;
   onCollect?: () => void;
   onInvoice: () => void;
   showCollect?: boolean;
+  highlighted?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap justify-between items-center gap-2 p-3 border rounded-lg">
+    <div
+      className={`flex flex-wrap justify-between items-center gap-2 p-3 border rounded-lg ${
+        highlighted ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 ring-2 ring-amber-300' : ''
+      }`}
+    >
       <div>
         <p className="font-medium">{apt.service_name || `Cita #${apt.id}`}</p>
         {apt.client_name && (

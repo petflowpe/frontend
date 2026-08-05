@@ -12,12 +12,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../ui/alert-dialog';
-import { Calendar, Clock, User, Dog, MapPin, Phone, DollarSign, Car, FileText, Edit, XCircle, Trash2, X, CheckCircle2, Bell, Navigation, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, User, Dog, MapPin, Phone, DollarSign, Car, FileText, Edit, XCircle, Trash2, X, CheckCircle2, Bell, Navigation, ExternalLink, Wallet } from 'lucide-react';
 import { BookingSourceBadge } from '../appointments/BookingSourceBadge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
+import { goToCashCollect } from '../../utils/navigationBridge';
 
 function formatDateForDisplay(dateStr: string): string {
   if (!dateStr) return 'No especificada';
@@ -59,6 +60,7 @@ interface AppointmentDetailsDialogProps {
   onComplete?: (appointmentId: string) => void | Promise<void>;
   onSendReminder?: (appointmentId: string) => void | Promise<void>;
   onNavigate?: (tab: string) => void;
+  onGenerateInvoice?: (appointment: any) => void;
 }
 
 export function AppointmentDetailsDialog({
@@ -73,6 +75,7 @@ export function AppointmentDetailsDialog({
   onComplete,
   onSendReminder,
   onNavigate,
+  onGenerateInvoice,
 }: AppointmentDetailsDialogProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -328,6 +331,33 @@ export function AppointmentDetailsDialog({
               <Button size="sm" variant="outline" className="gap-1" onClick={() => onComplete(appointment.id)}>
                 <CheckCircle2 className="h-4 w-4" />
                 Completar
+              </Button>
+            )}
+            {appointment.status === 'completed' &&
+              !String(appointment.paymentStatus || appointment.payment_status || '').toLowerCase().includes('pagad') && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 border-amber-400 text-amber-800"
+                onClick={() => {
+                  onClose();
+                  goToCashCollect(appointment.id, true);
+                }}
+              >
+                <Wallet className="h-4 w-4" />
+                Cobrar en Caja
+              </Button>
+            )}
+            {appointment.status === 'completed' &&
+              !(appointment.invoiced || appointment.boleta_id || appointment.invoice_id) &&
+              onGenerateInvoice && (
+              <Button
+                size="sm"
+                className="gap-1 bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => onGenerateInvoice(appointment)}
+              >
+                <FileText className="h-4 w-4" />
+                Facturar
               </Button>
             )}
             {onSendReminder && (

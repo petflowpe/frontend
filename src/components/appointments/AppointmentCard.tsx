@@ -1,4 +1,4 @@
-import { Calendar, Clock, User, Phone, Car, FileText, CheckCircle, X, Copy, Edit, Repeat, Bell, Loader2, Eye } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Car, FileText, CheckCircle, X, Copy, Edit, Repeat, Bell, Loader2, Eye, Wallet } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -13,6 +13,7 @@ interface AppointmentCardProps {
   onClone?: (appointment: Appointment) => void;
   onReschedule?: (appointment: Appointment) => void;
   onGenerateInvoice?: (appointment: Appointment) => void;
+  onCollectPayment?: (appointment: Appointment) => void;
   onConfirm?: (id: string) => void;
   onSendReminder?: (id: string) => void;
   sendingReminder?: string | null;
@@ -32,6 +33,7 @@ export function AppointmentCard({
   onClone,
   onReschedule,
   onGenerateInvoice,
+  onCollectPayment,
   onConfirm,
   onSendReminder,
   sendingReminder,
@@ -56,6 +58,28 @@ export function AppointmentCard({
               <Badge className={getStatusColor(appointment.status)}>
                 {getStatusText(appointment.status)}
               </Badge>
+              {appointment.status === 'completed' && (
+                <>
+                  {String(appointment.paymentStatus || '').toLowerCase().includes('pagad') ? (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300">
+                      Cobrado
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                      Pendiente de cobro
+                    </Badge>
+                  )}
+                  {appointment.invoiced ? (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+                      Facturado{appointment.documentNumber ? ` · ${appointment.documentNumber}` : ''}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-300">
+                      Sin comprobante
+                    </Badge>
+                  )}
+                </>
+              )}
               {appointment.recurring && (
                 <Tooltip content="Ver serie completa de citas recurrentes">
                   <Badge 
@@ -188,6 +212,21 @@ export function AppointmentCard({
                       Completar
                     </>
                   )}
+                </Button>
+              </Tooltip>
+            )}
+            {appointment.status === 'completed' &&
+              !String(appointment.paymentStatus || '').toLowerCase().includes('pagad') &&
+              onCollectPayment && (
+              <Tooltip content="Ir a Caja para registrar el cobro de esta cita">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onCollectPayment(appointment)}
+                  className="w-full border-amber-400 text-amber-800 hover:bg-amber-50"
+                >
+                  <Wallet className="h-4 w-4 mr-2" />
+                  Cobrar en Caja
                 </Button>
               </Tooltip>
             )}

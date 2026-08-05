@@ -19,6 +19,8 @@ import { getCalendarFetchRange, parseAppointmentDate, getAppointmentDateOnly, sn
 import { loadCalendarFilters, saveCalendarFilters } from './calendarFilterStorage';
 import { isUnconfirmed, hasNoVehicle } from './calendarAppointmentStyles';
 import { toast } from 'sonner';
+import { goToCashCollect } from '../../utils/navigationBridge';
+import { IssueDocumentDialog } from '../appointments/IssueDocumentDialog';
 import { getStoredCompanyId } from '../../utils/appointmentMappers';
 import { matchesBookingSourceFilter } from '../../utils/bookingSourceHelpers';
 
@@ -65,6 +67,8 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
 
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
+  const [issueDocOpen, setIssueDocOpen] = useState(false);
+  const [invoiceAppointmentId, setInvoiceAppointmentId] = useState<string | null>(null);
   const [prefilledDate, setPrefilledDate] = useState<Date | undefined>();
   const [prefilledTime, setPrefilledTime] = useState<string | undefined>();
   const [prefilledResourceId, setPrefilledResourceId] = useState<string | undefined>();
@@ -332,8 +336,19 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
 
   const handleCompleteAppointment = async (appointmentId: string) => {
     await changeAppointmentStatus(appointmentId, 'Completada', 'Completada desde agenda');
-    toast.success('Cita marcada como completada');
+    toast.success('Cita marcada como completada', {
+      action: {
+        label: 'Cobrar en Caja',
+        onClick: () => goToCashCollect(appointmentId, true),
+      },
+    });
     setSelectedAppointment(null);
+  };
+
+  const handleGenerateInvoiceFromCalendar = (appointment: any) => {
+    setSelectedAppointment(null);
+    setInvoiceAppointmentId(String(appointment.id));
+    setIssueDocOpen(true);
   };
 
   const handleSendReminder = async (appointmentId: string) => {
@@ -510,6 +525,7 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
         onComplete={handleCompleteAppointment}
         onSendReminder={handleSendReminder}
         onNavigate={onNavigate}
+        onGenerateInvoice={handleGenerateInvoiceFromCalendar}
       />
 
       <NewAppointmentDialog
@@ -523,6 +539,22 @@ export function CalendarLayout({ currentUser, onNavigate }: CalendarLayoutProps)
         onSave={handleSaveNewAppointment}
         vehicles={dayResources}
       />
+
+      {invoiceAppointmentId && (
+        <IssueDocumentDialog
+          open={issueDocOpen}
+          onOpenChange={(open) => {
+            setIssueDocOpen(open);
+            if (!open) setInvoiceAppointmentId(null);
+          }}
+          appointmentId={invoiceAppointmentId}
+          onIssued={() => {
+            setIssueDocOpen(false);
+            setInvoiceAppointmentId(null);
+            toast.success('Comprobante emitido');
+          }}
+        />
+      )}
     </div>
   );
 }

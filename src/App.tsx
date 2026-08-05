@@ -310,6 +310,16 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Navegación entre módulos (p. ej. "Cobrar en Caja" desde Citas/Agenda)
+  useEffect(() => {
+    const handleNavigateTab = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab?: string }>).detail?.tab;
+      if (tab) setActiveTab(tab);
+    };
+    window.addEventListener('navigate-tab', handleNavigateTab);
+    return () => window.removeEventListener('navigate-tab', handleNavigateTab);
+  }, []);
+
   // Navegación eventos
   useEffect(() => {
     const handleNavigateToInvoicing = () => setActiveTab('invoicing');

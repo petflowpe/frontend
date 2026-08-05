@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { Separator } from './ui/separator';
 import { Checkbox } from './ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { setPendingAction, getPendingAction, clearPendingAction } from '../utils/navigationBridge';
+import { setPendingAction, getPendingAction, clearPendingAction, goToCashCollect } from '../utils/navigationBridge';
 import { useAppointments } from '../hooks/useAppointments';
 import { useClients } from '../hooks/useClients';
 import { useProducts } from '../hooks/useProducts';
@@ -272,7 +272,11 @@ export function Appointments() {
       }
 
       toast.success('Cita completada correctamente', {
-        description: `La cita de ${appointment.pet || appointment.petName} ha sido marcada como completada`
+        description: `La cita de ${appointment.pet || appointment.petName} ha sido marcada como completada`,
+        action: {
+          label: 'Cobrar en Caja',
+          onClick: () => goToCashCollect(appointmentId, true),
+        },
       });
     } catch (error) {
       toast.error('Error al completar la cita', {
@@ -281,6 +285,10 @@ export function Appointments() {
     } finally {
       setCompletingAppointment(null);
     }
+  };
+
+  const handleCollectPayment = (appointment: any) => {
+    goToCashCollect(appointment.id, true);
   };
 
   const handleSendReminder = async (appointmentId: string) => {
@@ -496,6 +504,7 @@ export function Appointments() {
             onClone={handleCloneAppointment}
             onReschedule={handleReschedule}
             onGenerateInvoice={handleGenerateInvoice}
+            onCollectPayment={handleCollectPayment}
             onViewRecurringSeries={handleViewRecurringSeries}
             onConfirm={async (id) => {
               try {
