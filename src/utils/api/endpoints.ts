@@ -87,6 +87,7 @@ export const API = {
   },
   companies: {
     list: '/companies',
+    onboarding: '/company-onboardings',
     byId: (id: string | number) => `/companies/${id}`,
     activate: (id: string | number) => `/companies/${id}/activate`,
     toggleProduction: (id: string | number) => `/companies/${id}/toggle-production`,

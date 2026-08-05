@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Building2, Plus, Clock, Save, Edit, Loader2, MapPin } from 'lucide-react';
 import { BranchesConfigModal } from './users/BranchesConfigModal';
+import { CompanyOnboardingWizard } from './onboarding/CompanyOnboardingWizard';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -46,6 +47,7 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
   } = useCompanies();
 
   const [showForm, setShowForm] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [showHours, setShowHours] = useState<Company | null>(null);
   const [hoursLoading, setHoursLoading] = useState(false);
@@ -70,24 +72,7 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
   const [saving, setSaving] = useState(false);
 
   const openCreate = () => {
-    setEditingCompany(null);
-    setFormData({
-      razon_social: '',
-      nombre_comercial: '',
-      ruc: '',
-      direccion: '',
-      ubigeo: '150101',
-      distrito: '',
-      provincia: '',
-      departamento: '',
-      telefono: '',
-      email: '',
-      web: '',
-      usuario_sol: '',
-      clave_sol: '',
-      activo: true,
-    });
-    setShowForm(true);
+    setShowOnboarding(true);
   };
 
   const openEdit = (c: Company) => {
@@ -197,7 +182,7 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
         {canCreateCompany && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4 mr-2" />
-            Nueva empresa
+            Alta de empresa
           </Button>
         )}
       </div>
@@ -249,13 +234,26 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
         </div>
       )}
 
-      {/* Dialog Crear/Editar Empresa */}
+      <CompanyOnboardingWizard
+        open={showOnboarding}
+        onOpenChange={setShowOnboarding}
+        onCompleted={(result) => {
+          refresh();
+          const steps = result.next_steps?.slice(0, 3)?.join(' · ');
+          toast.message(
+            `Listo: ${result.company?.razon_social || 'Empresa'} / admin ${result.admin?.email || ''}`,
+            { description: steps || 'Configura SUNAT y servicios cuando estés listo.' }
+          );
+        }}
+      />
+
+      {/* Dialog Editar Empresa */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-card">
           <DialogHeader>
-            <DialogTitle>{editingCompany ? 'Editar empresa' : 'Nueva empresa'}</DialogTitle>
+            <DialogTitle>Editar empresa</DialogTitle>
             <DialogDescription>
-              {editingCompany ? 'Actualiza los datos de la empresa.' : 'Registra una nueva empresa.'}
+              Actualiza los datos de la empresa.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
