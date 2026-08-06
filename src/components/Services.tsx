@@ -578,8 +578,8 @@ export function Services() {
               <TabsContent value="insumos" className="space-y-4 mt-4">
                 <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border-2 border-emerald-200 dark:border-emerald-800">
                   <p className="text-sm text-emerald-800 dark:text-emerald-200">
-                    Al completar una cita con este servicio se descontará automáticamente el stock
-                    de estos productos (kardex OUT).
+                    Al emitir boleta o factura de una cita con este servicio se descontará
+                    automáticamente el stock de estos productos (kardex OUT).
                   </p>
                 </Card>
 
@@ -623,7 +623,7 @@ export function Services() {
                   {form.requiredProducts.length === 0 ? (
                     <Card className="p-4">
                       <p className="text-sm text-muted-foreground text-center">
-                        Sin insumos. El servicio no descontará inventario al completarse.
+                        Sin insumos. El servicio no descontará inventario al facturar.
                       </p>
                     </Card>
                   ) : (
