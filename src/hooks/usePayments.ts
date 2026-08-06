@@ -7,6 +7,8 @@ export interface PaymentRecord {
   id: number | string;
   invoice_id?: number | null;
   appointment_id?: number | null;
+  cash_session_id?: number | null;
+  in_cash_register?: boolean;
   client: string;
   amount: number;
   fee: number;

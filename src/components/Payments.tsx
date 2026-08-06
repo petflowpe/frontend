@@ -11,6 +11,7 @@ import {
   Loader2,
   ExternalLink,
   Plug,
+  Wallet,
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -78,6 +79,7 @@ export function Payments() {
   const { invoices } = useInvoices();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [gatewayFilter, setGatewayFilter] = useState('all');
   const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
   const [showNewPayment, setShowNewPayment] = useState(false);
 
@@ -91,9 +93,10 @@ export function Payments() {
         (p.invoice_number ?? '').toLowerCase().includes(q) ||
         (p.reference ?? '').toLowerCase().includes(q);
       const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesGateway = gatewayFilter === 'all' || p.gateway === gatewayFilter;
+      return matchesSearch && matchesStatus && matchesGateway;
     });
-  }, [payments, searchTerm, statusFilter]);
+  }, [payments, searchTerm, statusFilter, gatewayFilter]);
 
   const completed = payments.filter((p) => p.status === 'completed');
   const totalRevenue = completed.reduce((acc, p) => acc + p.net, 0);
@@ -210,10 +213,24 @@ export function Payments() {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="all">Todos</option>
+              <option value="all">Todos los estados</option>
               <option value="completed">Completados</option>
               <option value="pending">Pendientes</option>
               <option value="failed">Fallidos</option>
+            </select>
+            <select
+              className="px-3 py-2 border rounded-md bg-background"
+              value={gatewayFilter}
+              onChange={(e) => {
+                const g = e.target.value;
+                setGatewayFilter(g);
+                void fetchPayments(g === 'all' ? {} : { gateway: g });
+              }}
+            >
+              <option value="all">Todas las pasarelas</option>
+              <option value="manual">Manual</option>
+              <option value="mercado_pago">Mercado Pago</option>
+              <option value="niubiz">Niubiz</option>
             </select>
           </div>
 
@@ -258,6 +275,19 @@ export function Payments() {
                               <Badge variant="outline">
                                 {GATEWAY_LABELS[payment.gateway] ?? payment.gateway}
                               </Badge>
+                              {payment.status === 'completed' && (
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    payment.in_cash_register
+                                      ? 'border-green-300 text-green-800 bg-green-50'
+                                      : 'border-amber-300 text-amber-800 bg-amber-50'
+                                  }
+                                >
+                                  <Wallet className="w-3 h-3 mr-1 inline" />
+                                  {payment.in_cash_register ? 'En caja' : 'Sin caja'}
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-sm">{payment.client}</p>
                             <p className="text-xs text-muted-foreground">
@@ -296,6 +326,16 @@ export function Payments() {
                     />
                     <Row label="Referencia" value={selectedPayment.reference ?? '—'} />
                     <Row label="Monto" value={`S/ ${selectedPayment.amount.toFixed(2)}`} />
+                    <Row
+                      label="Caja"
+                      value={
+                        selectedPayment.in_cash_register
+                          ? `En caja${selectedPayment.cash_session_id ? ` (#${selectedPayment.cash_session_id})` : ''}`
+                          : selectedPayment.status === 'completed'
+                            ? 'Sin caja abierta al cobrar'
+                            : '—'
+                      }
+                    />
                     {selectedPayment.status === 'pending' &&
                       (selectedPayment.gateway === 'mercado_pago' ||
                         selectedPayment.gateway === 'niubiz') && (
