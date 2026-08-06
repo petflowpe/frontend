@@ -111,6 +111,7 @@ export class ApiClient {
     if (tokenToUse) {
       headers['Authorization'] = `Bearer ${tokenToUse}`;
     }
+    headers['Accept'] = 'application/json';
 
     const config: RequestInit = {
       method: 'POST',

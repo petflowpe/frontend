@@ -19,6 +19,17 @@ function normalizeApiBaseUrl(raw: string | undefined): string {
 // URL base del backend Laravel (debe ser URL completa: https://dominio.com/api)
 export const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL);
 
+/** Origen del servidor (sin /api) para archivos públicos /storage/... */
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+
+/** URL pública de un path en disco storage (o URL absoluta). */
+export function publicStorageUrl(path?: string | null): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const clean = path.replace(/^\/+/, '').replace(/^storage\//, '');
+  return `${API_ORIGIN}/storage/${clean}`;
+}
+
 // Versión de la API (solo para rutas protegidas)
 export const API_VERSION = 'v1';
 

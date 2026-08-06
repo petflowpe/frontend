@@ -124,6 +124,8 @@ export const API = {
     activate: (id: string | number) => `/products/${id}/activate`,
     lowStock: '/products/low-stock',
     adjustStock: (id: string | number) => `/products/${id}/adjust-stock`,
+    uploadImage: (id: string | number) => `/products/${id}/image`,
+    deleteImage: (id: string | number) => `/products/${id}/image`,
     kardex: (id: string | number) => `/products/${id}/kardex`,
   },
   categories: { list: '/categories', byId: (id: string | number) => `/categories/${id}` },

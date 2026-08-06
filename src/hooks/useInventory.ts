@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { publicStorageUrl } from '../utils/api/config';
 
 export interface Product {
   id: string;
@@ -230,12 +231,47 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
     }
   };
 
-  const uploadProductImage = async (_file: File): Promise<string | null> => {
-    toast.message('Subida de imágenes pendiente de endpoint en el backend');
-    return null;
+  const uploadProductImage = async (productId: string | number, file: File): Promise<string | null> => {
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const res = await apiClient.post<{
+        data?: { path?: string; url?: string; product?: any };
+      }>(API.products.uploadImage(productId), form, undefined, true);
+      const path = (res as any)?.data?.path ?? (res as any)?.path ?? null;
+      const productPayload = (res as any)?.data?.product;
+      if (productPayload) {
+        const updated = fromBackendFormat(productPayload);
+        setProducts((prev) => prev.map((p) => (String(p.id) === String(productId) ? updated : p)));
+      } else if (path) {
+        setProducts((prev) =>
+          prev.map((p) => (String(p.id) === String(productId) ? { ...p, imagePath: path } : p))
+        );
+      }
+      toast.success('Imagen actualizada');
+      return path;
+    } catch (e: any) {
+      toast.error(e.message || 'Error al subir imagen');
+      return null;
+    }
   };
 
-  const getSignedUrl = async (_path: string): Promise<string | null> => null;
+  const deleteProductImage = async (productId: string | number): Promise<void> => {
+    try {
+      await apiClient.delete(API.products.deleteImage(productId));
+      setProducts((prev) =>
+        prev.map((p) => (String(p.id) === String(productId) ? { ...p, imagePath: undefined } : p))
+      );
+      toast.success('Imagen eliminada');
+    } catch (e: any) {
+      toast.error(e.message || 'Error al eliminar imagen');
+      throw e;
+    }
+  };
+
+  const getSignedUrl = async (path: string): Promise<string | null> => {
+    return publicStorageUrl(path);
+  };
 
   return {
     products,
@@ -247,6 +283,7 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
     getInventoryMetrics,
     fetchLowStock,
     uploadProductImage,
+    deleteProductImage,
     getSignedUrl,
     refreshInventory: loadProducts,
   };

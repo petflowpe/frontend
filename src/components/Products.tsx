@@ -79,6 +79,8 @@ export function Products({ initialTab = 'catalog' }: ProductsProps) {
     adjustStock,
     getInventoryMetrics,
     refreshInventory,
+    uploadProductImage,
+    deleteProductImage,
   } = useInventory(companyId, defaultAreaId);
   const { lowStockProducts: apiLowStock, loading: loadingLowStockApi, refresh: refreshLowStockApi } =
     useLowStock(companyId);
@@ -90,6 +92,7 @@ export function Products({ initialTab = 'catalog' }: ProductsProps) {
   const [supplierFilter, setSupplierFilter] = useState('all');
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     setActiveModuleTab(initialTab);
@@ -155,6 +158,33 @@ export function Products({ initialTab = 'catalog' }: ProductsProps) {
       await refreshLowStockApi();
     } catch {
       // toast en hook
+    }
+  };
+
+  const handleImageFileChange = async (file?: File | null) => {
+    if (!file || !editingProduct) return;
+    setUploadingImage(true);
+    try {
+      const path = await uploadProductImage(editingProduct.id, file);
+      if (path) {
+        setFormData((prev) => ({ ...prev, imagePath: path }));
+        setEditingProduct((prev) => (prev ? { ...prev, imagePath: path } : prev));
+      }
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (!editingProduct?.imagePath) return;
+    if (!confirm('¿Quitar la imagen del producto?')) return;
+    setUploadingImage(true);
+    try {
+      await deleteProductImage(editingProduct.id);
+      setFormData((prev) => ({ ...prev, imagePath: undefined }));
+      setEditingProduct((prev) => (prev ? { ...prev, imagePath: undefined } : prev));
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -597,6 +627,46 @@ export function Products({ initialTab = 'catalog' }: ProductsProps) {
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-2 col-span-2">
+              <Label>Imagen del producto</Label>
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-md overflow-hidden border bg-muted shrink-0">
+                  <ProductImage
+                    path={formData.imagePath}
+                    alt={formData.name || 'Producto'}
+                    className="h-full w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  {editingProduct ? (
+                    <>
+                      <Input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={uploadingImage}
+                        onChange={(e) => handleImageFileChange(e.target.files?.[0])}
+                      />
+                      {formData.imagePath && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={uploadingImage}
+                          onClick={handleRemoveImage}
+                        >
+                          Quitar imagen
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Guarde el producto primero para poder subir una imagen.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2 col-span-2">
               <Label>Nombre del Producto *</Label>
               <Input
