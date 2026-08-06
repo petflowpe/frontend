@@ -20,6 +20,8 @@ export interface Product {
   active?: boolean;
   includes?: string[];
   description?: string;
+  /** Insumos: [{ product_id, quantity }] — solo servicios */
+  requiredProducts?: Array<{ product_id: number; quantity: number }>;
 }
 
 // Convertir formato backend a frontend
@@ -42,6 +44,12 @@ const fromBackendFormat = (backendProduct: any): Product => {
     breedExceptions: metadata.breedExceptions ?? backendProduct.breedExceptions ?? [],
     includes: metadata.includes ?? backendProduct.includes ?? [],
     duration: metadata.duration ?? backendProduct.duration,
+    requiredProducts: Array.isArray(metadata.required_products)
+      ? metadata.required_products.map((r: any) => ({
+          product_id: Number(r.product_id),
+          quantity: Number(r.quantity) || 1,
+        }))
+      : [],
   };
 };
 
@@ -277,6 +285,7 @@ export const useProducts = () => {
         includes: product.includes,
         duration: product.duration,
         area: product.area,
+        required_products: product.requiredProducts ?? [],
       },
     };
   };

@@ -76,13 +76,23 @@ export function Services() {
       large: { price: 65, cost: 22, duration: 75 },
       xlarge: { price: 95, cost: 35, duration: 120 },
     } as Record<string, { price: number; cost: number; duration: number }>,
+    requiredProducts: [] as Array<{ product_id: number; quantity: number }>,
   });
 
   const [form, setForm] = useState(emptyForm);
+  const [insumoProductId, setInsumoProductId] = useState('');
+  const [insumoQty, setInsumoQty] = useState('1');
 
   const { categories, loading: categoriesLoading, reload: reloadCategories } = useCategories(companyId);
   const { areas, loading: areasLoading, reload: reloadAreas } = useAreas(companyId);
-  const { services: servicesFromApi, loading: servicesLoading, createProduct, fetchProducts, deleteProduct } = useProducts();
+  const {
+    products: catalogProducts,
+    services: servicesFromApi,
+    loading: servicesLoading,
+    createProduct,
+    fetchProducts,
+    deleteProduct,
+  } = useProducts();
 
   useEffect(() => {
     if (!showNewService) {
@@ -99,11 +109,35 @@ export function Services() {
         areaId: String(areas.find((a) => a.name === editingService.area)?.id || ''),
         pricingBySize: editingService.pricingBySize !== false,
         pricing: editingService.pricing || emptyForm().pricing,
+        requiredProducts: editingService.requiredProducts || [],
       });
     } else {
       setForm(emptyForm());
     }
   }, [showNewService, editingService, categories, areas]);
+
+  const addInsumo = () => {
+    const pid = Number(insumoProductId);
+    const qty = Number(insumoQty) || 1;
+    if (!pid || qty <= 0) {
+      toast.error('Seleccione un producto y una cantidad válida');
+      return;
+    }
+    setForm((f) => {
+      const existing = f.requiredProducts.find((r) => r.product_id === pid);
+      if (existing) {
+        return {
+          ...f,
+          requiredProducts: f.requiredProducts.map((r) =>
+            r.product_id === pid ? { ...r, quantity: r.quantity + qty } : r
+          ),
+        };
+      }
+      return { ...f, requiredProducts: [...f.requiredProducts, { product_id: pid, quantity: qty }] };
+    });
+    setInsumoProductId('');
+    setInsumoQty('1');
+  };
 
   const handleSaveService = async () => {
     if (!form.name.trim()) {
@@ -124,6 +158,7 @@ export function Services() {
         duration: Number(medium.duration) || 45,
         pricingBySize: form.pricingBySize,
         pricing: form.pricing,
+        requiredProducts: form.requiredProducts,
         active: true,
       };
 
@@ -140,6 +175,7 @@ export function Services() {
             pricingBySize: payload.pricingBySize,
             duration: payload.duration,
             area: payload.area,
+            required_products: payload.requiredProducts,
           },
         });
         toast.success('Servicio actualizado');
@@ -182,6 +218,7 @@ export function Services() {
     area: s.area || '',
     active: s.active !== false,
     includes: s.includes || [],
+    requiredProducts: s.requiredProducts || [],
     pricingBySize: s.pricingBySize ?? true,
     pricing: s.pricing || {
       toy: { price: s.price, cost: s.cost, duration: 30 },
@@ -317,6 +354,11 @@ export function Services() {
       <div className="flex flex-wrap gap-2">
         <Badge variant="secondary">{service.category}</Badge>
         <Badge variant="outline">{service.area}</Badge>
+        {(service.requiredProducts?.length ?? 0) > 0 && (
+          <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+            {service.requiredProducts.length} insumo(s)
+          </Badge>
+        )}
         {service.active ? (
           <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Activo</Badge>
         ) : (
@@ -358,10 +400,11 @@ export function Services() {
             </DialogHeader>
             
             <Tabs value={activeServiceTab} onValueChange={setActiveServiceTab}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="basic">📋 Datos Básicos</TabsTrigger>
-                <TabsTrigger value="pricing">💰 Precios por Tamaño</TabsTrigger>
-                <TabsTrigger value="exceptions">🐕 Excepciones por Raza</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="basic">Datos básicos</TabsTrigger>
+                <TabsTrigger value="pricing">Precios</TabsTrigger>
+                <TabsTrigger value="insumos">Insumos</TabsTrigger>
+                <TabsTrigger value="exceptions">Excepciones</TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4 mt-4">
@@ -529,6 +572,92 @@ export function Services() {
                       </div>
                     </Card>
                   ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="insumos" className="space-y-4 mt-4">
+                <Card className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border-2 border-emerald-200 dark:border-emerald-800">
+                  <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                    Al completar una cita con este servicio se descontará automáticamente el stock
+                    de estos productos (kardex OUT).
+                  </p>
+                </Card>
+
+                <Card className="p-4 border-2 space-y-3">
+                  <h4 className="font-semibold">Agregar insumo</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2 space-y-2">
+                      <Label>Producto</Label>
+                      <Select value={insumoProductId || undefined} onValueChange={setInsumoProductId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar producto..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {catalogProducts.map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>
+                              {p.name} (stock: {p.stock})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cantidad</Label>
+                      <Input
+                        type="number"
+                        min={0.1}
+                        step={0.1}
+                        value={insumoQty}
+                        onChange={(e) => setInsumoQty(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button type="button" className="w-full" variant="secondary" onClick={addInsumo}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar insumo
+                  </Button>
+                </Card>
+
+                <div className="space-y-2">
+                  <Label>Insumos configurados ({form.requiredProducts.length})</Label>
+                  {form.requiredProducts.length === 0 ? (
+                    <Card className="p-4">
+                      <p className="text-sm text-muted-foreground text-center">
+                        Sin insumos. El servicio no descontará inventario al completarse.
+                      </p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-2">
+                      {form.requiredProducts.map((r) => {
+                        const p = catalogProducts.find((x) => x.id === r.product_id);
+                        return (
+                          <Card key={r.product_id} className="p-3 flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium">{p?.name || `Producto #${r.product_id}`}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Cantidad: {r.quantity} {p?.unit || ''}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600"
+                              onClick={() =>
+                                setForm((f) => ({
+                                  ...f,
+                                  requiredProducts: f.requiredProducts.filter(
+                                    (x) => x.product_id !== r.product_id
+                                  ),
+                                }))
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
