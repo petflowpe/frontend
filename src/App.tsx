@@ -29,7 +29,6 @@ const Clients = lazy(() => import('./components/Clients').then(m => ({ default: 
 const Services = lazy(() => import('./components/Services').then(m => ({ default: m.Services })));
 const Products = lazy(() => import('./components/Products').then(m => ({ default: m.Products })));
 import { SuppliersManagement } from './components/SuppliersManagement';
-const Inventory = lazy(() => import('./components/Inventory').then(m => ({ default: m.Inventory })));
 const Purchases = lazy(() => import('./components/Purchases').then(m => ({ default: m.Purchases })));
 const VehicleManagement = lazy(() => import('./components/VehicleManagement').then(m => ({ default: m.VehicleManagement })));
 const PetsManagement = lazy(() => import('./components/PetsManagement').then(m => ({ default: m.PetsManagement })));
@@ -492,8 +491,8 @@ function AppContent() {
       case 'pets': return <PetsManagement onNavigate={setActiveTab} currentUser={currentUser} />;
       case 'services': return <Services />;
       case 'products': return <Products />;
+      case 'inventory': return <Products initialTab="stock" />;
       case 'suppliers': return <SuppliersManagement />;
-      case 'inventory': return <Inventory />;
       case 'purchases': return <Purchases />;
       case 'medical':
         return <PetsManagement onNavigate={setActiveTab} currentUser={currentUser} />;

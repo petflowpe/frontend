@@ -60,8 +60,8 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
         toast.info('Mostrando detalles del pago', { description: notification.title });
         break;
       case 'inventory':
-        if (setActiveTab && !notification.relatedModule) setActiveTab('kardex');
-        toast.info('Mostrando detalles del inventario', { description: notification.title });
+        if (setActiveTab && !notification.relatedModule) setActiveTab('products');
+        toast.info('Abriendo productos e inventario', { description: notification.title });
         break;
       case 'vehicle':
         if (setActiveTab && !notification.relatedModule) setActiveTab('vehicles');
@@ -93,8 +93,8 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
       case 'appointments': return 'Gestión de Citas';
       case 'clients': return 'Gestión de Clientes';
       case 'services': return 'Catálogo de Servicios';
-      case 'products': return 'Productos';
-      case 'inventory': return 'Inventario';
+      case 'products': return 'Productos e inventario';
+      case 'inventory': return 'Productos e inventario';
       case 'purchases': return 'Compras';
       case 'medical': return 'Mascotas';
       case 'vehicles': return 'Gestión de Vehículos';
@@ -124,8 +124,8 @@ export function Header({ activeTab, setActiveTab, onSearchOpen, currentUser, onS
       case 'appointments': return 'Programa y gestiona las citas de tus clientes';
       case 'clients': return 'Administra tu base de datos de clientes y mascotas';
       case 'services': return 'Define precios y especialidades de tus servicios';
-      case 'products': return 'Catálogo de productos y servicios';
-      case 'inventory': return 'Stock, ajustes y movimientos de inventario';
+      case 'products': return 'Catálogo, stock y alertas de mercadería';
+      case 'inventory': return 'Catálogo, stock y alertas de mercadería';
       case 'purchases': return 'Gestión de compras y proveedores';
       case 'medical': return 'Historial clínico y atenciones desde el perfil de cada mascota';
       case 'vehicles': return 'Administra tu flota móvil, mantenimiento y gastos operativos';
