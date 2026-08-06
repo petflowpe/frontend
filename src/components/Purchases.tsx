@@ -16,11 +16,14 @@ import {
   CreditCard,
   Layers,
   BarChart3,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePurchases, type PurchaseOrder, type PurchaseStatus } from '../hooks/usePurchases';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useInventory } from '../hooks/useInventory';
+import { apiClient } from '../utils/api/client';
+import { API } from '../utils/api/endpoints';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
@@ -262,6 +265,16 @@ export function Purchases() {
     toast.success('Exportación CSV lista');
   };
 
+  const downloadPdf = async (purchase: PurchaseOrder) => {
+    try {
+      const name = `OC_${purchase.order_number || purchase.id}.pdf`;
+      await apiClient.downloadFile(API.purchaseOrders.downloadPdf(purchase.id), name);
+      toast.success('PDF descargado');
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo generar el PDF');
+    }
+  };
+
   const StatusIcon = ({ status }: { status: PurchaseStatus }) => {
     if (status === 'delivered') return <CheckCircle2 className="h-4 w-4" />;
     if (status === 'in_transit') return <Truck className="h-4 w-4" />;
@@ -480,6 +493,14 @@ export function Purchases() {
                           <Eye className="h-4 w-4 mr-1" />
                           Ver
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadPdf(purchase)}
+                        >
+                          <FileText className="h-4 w-4 mr-1" />
+                          PDF
+                        </Button>
                         {purchase.status === 'pending' && (
                           <Button
                             size="sm"
@@ -544,6 +565,14 @@ export function Purchases() {
                       : selectedPurchase.supplierData?.name}
                   </p>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadPdf(selectedPurchase)}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  PDF
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => setSelectedPurchase(null)}>
                   Cerrar
                 </Button>
