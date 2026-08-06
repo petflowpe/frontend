@@ -1,15 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PackageCheck, Paperclip } from 'lucide-react';
+import { PackageCheck, Paperclip, ScanBarcode } from 'lucide-react';
 import { Button } from '../ui/button';
 import { DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
+import { toast } from 'sonner';
 import type { PurchaseOrder } from '../../hooks/usePurchases';
+
+type AreaOpt = { id: number; name: string };
 
 type Props = {
   purchase: PurchaseOrder;
+  areas?: AreaOpt[];
   onReceive: (payload: {
-    items: { item_id?: number; product_id?: number; quantity: number }[];
+    items: { item_id?: number; product_id?: number; quantity: number; area_id?: number }[];
+    area_id?: number;
     invoice_number?: string;
     invoice_date?: string;
     invoice_total?: number;
@@ -18,16 +30,20 @@ type Props = {
     invoice_number?: string;
     invoice_date?: string;
     invoice_total?: number;
+    area_id?: number;
   }) => Promise<void>;
   onUploadAttachment?: (file: File) => Promise<void>;
+  onLookupBarcode?: (code: string) => Promise<{ id: number; name?: string; code?: string } | null | undefined>;
   onClose: () => void;
 };
 
 export function ReceivePurchaseDialog({
   purchase,
+  areas = [],
   onReceive,
   onReceiveAll,
   onUploadAttachment,
+  onLookupBarcode,
   onClose,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,6 +54,10 @@ export function ReceivePurchaseDialog({
   const [invoiceTotal, setInvoiceTotal] = useState(
     String(purchase.invoice_total ?? purchase.total ?? '')
   );
+  const [areaId, setAreaId] = useState(
+    purchase.default_area_id ? String(purchase.default_area_id) : ''
+  );
+  const [barcode, setBarcode] = useState('');
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [attachmentName, setAttachmentName] = useState(purchase.invoice_attachment_name || '');
@@ -51,6 +71,7 @@ export function ReceivePurchaseDialog({
     }
     setQtys(init);
     setAttachmentName(purchase.invoice_attachment_name || '');
+    if (purchase.default_area_id) setAreaId(String(purchase.default_area_id));
   }, [purchase]);
 
   const lines = useMemo(
@@ -63,6 +84,8 @@ export function ReceivePurchaseDialog({
     [purchase.items]
   );
 
+  const areaNum = areaId ? Number(areaId) : undefined;
+
   const submitPartial = async () => {
     const items = lines
       .map(({ it, key, pending }) => {
@@ -71,6 +94,7 @@ export function ReceivePurchaseDialog({
           item_id: it.id,
           product_id: it.product_id,
           quantity: q,
+          area_id: areaNum,
         };
       })
       .filter((r) => r.quantity > 0);
@@ -80,6 +104,7 @@ export function ReceivePurchaseDialog({
     try {
       await onReceive({
         items,
+        area_id: areaNum,
         invoice_number: invoiceNumber || undefined,
         invoice_date: invoiceDate || undefined,
         invoice_total: invoiceTotal ? parseFloat(invoiceTotal) : undefined,
@@ -97,6 +122,7 @@ export function ReceivePurchaseDialog({
         invoice_number: invoiceNumber || undefined,
         invoice_date: invoiceDate || undefined,
         invoice_total: invoiceTotal ? parseFloat(invoiceTotal) : undefined,
+        area_id: areaNum,
       });
       onClose();
     } finally {
@@ -116,6 +142,34 @@ export function ReceivePurchaseDialog({
     }
   };
 
+  const handleScan = async () => {
+    if (!onLookupBarcode || !barcode.trim()) return;
+    setBusy(true);
+    try {
+      const product = await onLookupBarcode(barcode.trim());
+      if (!product) {
+        toast.error('Código no encontrado');
+        return;
+      }
+      const line = lines.find((l) => l.it.product_id === product.id || l.it.product?.id === product.id);
+      if (!line) {
+        toast.error(`"${product.name || product.code}" no está en esta OC`);
+        return;
+      }
+      if (line.pending <= 0) {
+        toast.message('Ese ítem ya está completamente recibido');
+        return;
+      }
+      const current = parseFloat(qtys[line.key] || '0') || 0;
+      const next = Math.min(line.pending, current + 1);
+      setQtys((prev) => ({ ...prev, [line.key]: String(next) }));
+      toast.success(`+1 ${product.name || product.code}`);
+      setBarcode('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
       <DialogHeader>
@@ -124,11 +178,29 @@ export function ReceivePurchaseDialog({
           Recibir mercadería
         </DialogTitle>
         <DialogDescription>
-          {purchase.order_number || `Orden #${purchase.id}`} — ingresa al stock y kardex
+          {purchase.order_number || `Orden #${purchase.id}`} — stock, kardex y almacén
         </DialogDescription>
       </DialogHeader>
 
       <div className="space-y-3 mt-2">
+        {areas.length > 0 && (
+          <div>
+            <Label>Área / almacén destino</Label>
+            <Select value={areaId} onValueChange={setAreaId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Área por defecto" />
+              </SelectTrigger>
+              <SelectContent>
+                {areas.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Nº factura proveedor</Label>
@@ -144,14 +216,42 @@ export function ReceivePurchaseDialog({
           </div>
         </div>
         <div>
-          <Label>Total factura (S/)</Label>
+          <Label>Total factura (S/) — con IGV si aplica</Label>
           <Input
             type="number"
             step="0.01"
             value={invoiceTotal}
             onChange={(e) => setInvoiceTotal(e.target.value)}
           />
+          {(purchase.subtotal != null || purchase.igv_amount != null) && (
+            <p className="text-xs text-muted-foreground mt-1">
+              OC: subt. {(purchase.subtotal ?? 0).toFixed(2)} + IGV{' '}
+              {(purchase.igv_amount ?? 0).toFixed(2)} = {(purchase.total ?? 0).toFixed(2)}
+            </p>
+          )}
         </div>
+
+        {onLookupBarcode && (
+          <div className="space-y-2">
+            <Label>Escanear código / SKU</Label>
+            <div className="flex gap-2">
+              <Input
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleScan();
+                  }
+                }}
+                placeholder="Leer código y Enter"
+              />
+              <Button type="button" variant="outline" onClick={handleScan} disabled={busy}>
+                <ScanBarcode className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {onUploadAttachment && (
           <div className="space-y-2">

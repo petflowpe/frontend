@@ -19,18 +19,26 @@ export interface PurchaseOrderItem {
 
 export type PurchaseStatus = 'pending' | 'in_transit' | 'partial' | 'delivered' | 'cancelled';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
+export type ApprovalStatus = 'not_required' | 'pending_approval' | 'approved' | 'rejected';
 
 export interface PurchaseOrder {
   id: number | string;
   company_id?: number;
   supplier_id: number;
+  default_area_id?: number | null;
   order_number?: string | null;
   supplier?: string | { id: number; name: string };
   supplierData?: { id: number; name: string };
   order_date: string;
   delivery_date?: string | null;
   status: PurchaseStatus;
+  approval_status?: ApprovalStatus;
+  approval_notes?: string | null;
   total: number;
+  subtotal?: number;
+  igv_rate?: number;
+  igv_amount?: number;
+  prices_include_igv?: boolean;
   invoice_number?: string | null;
   invoice_date?: string | null;
   invoice_total?: number | null;
@@ -41,6 +49,9 @@ export interface PurchaseOrder {
   amount_paid?: number;
   paid_at?: string | null;
   notes?: string | null;
+  email_sent_at?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   items: PurchaseOrderItem[];
   date?: string;
   deliveryDate?: string;
@@ -57,7 +68,7 @@ function normalizeStatus(raw: string): PurchaseStatus {
   return 'pending';
 }
 
-function fromBackendFormat(row: any): PurchaseOrder {
+export function fromBackendFormat(row: any): PurchaseOrder {
   const items = (row.items || []).map((it: any) => ({
     id: it.id,
     product_id: it.product_id,
@@ -76,13 +87,20 @@ function fromBackendFormat(row: any): PurchaseOrder {
     id: row.id,
     company_id: row.company_id,
     supplier_id: row.supplier_id,
+    default_area_id: row.default_area_id ?? null,
     order_number: row.order_number,
     supplier: supplierName as any,
     supplierData: row.supplier,
     order_date: row.order_date,
     delivery_date: row.delivery_date,
     status: normalizeStatus(row.status || 'pending'),
+    approval_status: (row.approval_status || 'not_required') as ApprovalStatus,
+    approval_notes: row.approval_notes ?? null,
     total: parseFloat(row.total) || 0,
+    subtotal: parseFloat(row.subtotal ?? 0) || 0,
+    igv_rate: parseFloat(row.igv_rate ?? 18) || 18,
+    igv_amount: parseFloat(row.igv_amount ?? 0) || 0,
+    prices_include_igv: row.prices_include_igv !== false,
     invoice_number: row.invoice_number,
     invoice_date: row.invoice_date,
     invoice_total: row.invoice_total != null ? parseFloat(row.invoice_total) : null,
@@ -93,6 +111,9 @@ function fromBackendFormat(row: any): PurchaseOrder {
     amount_paid: parseFloat(row.amount_paid ?? 0) || 0,
     paid_at: row.paid_at ?? null,
     notes: row.notes,
+    email_sent_at: row.email_sent_at ?? null,
+    cancelled_at: row.cancelled_at ?? null,
+    cancellation_reason: row.cancellation_reason ?? null,
     items,
     date: row.order_date,
     deliveryDate: row.delivery_date,
@@ -101,7 +122,7 @@ function fromBackendFormat(row: any): PurchaseOrder {
           number: row.invoice_number,
           date: row.invoice_date,
           amount: row.invoice_total,
-          tax: 0,
+          tax: parseFloat(row.igv_amount ?? 0) || 0,
           total: row.invoice_total,
         }
       : undefined,
@@ -119,10 +140,8 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
         API.purchaseOrders.list,
         { company_id: companyId, per_page: 100, ...filters }
       );
-      const list = response?.data ?? [];
-      setPurchases(list.map(fromBackendFormat));
+      setPurchases((response?.data ?? []).map(fromBackendFormat));
     } catch (e: any) {
-      console.error('Error cargando órdenes de compra', e);
       toast.error(e.message || 'Error cargando órdenes de compra');
       setPurchases([]);
     } finally {
@@ -151,22 +170,19 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
     notes?: string;
     items: { product_id: number; quantity: number; unit_cost: number }[];
   }) => {
-    const payload = {
+    const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.list, {
       company_id: companyId,
-      supplier_id: data.supplier_id,
-      order_date: data.order_date,
+      ...data,
       delivery_date: data.delivery_date || null,
       notes: data.notes || null,
-      items: data.items.map((it) => ({
-        product_id: it.product_id,
-        quantity: it.quantity,
-        unit_cost: it.unit_cost,
-      })),
-    };
-    const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.list, payload);
+    });
     const order = fromBackendFormat(res?.data ?? res);
     setPurchases((prev) => [order, ...prev]);
-    toast.success(`Orden ${order.order_number || order.id} creada`);
+    toast.success(
+      order.approval_status === 'pending_approval'
+        ? `OC ${order.order_number} creada · pendiente de aprobación`
+        : `Orden ${order.order_number || order.id} creada`
+    );
     return order;
   };
 
@@ -178,16 +194,11 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
       items: { product_id: number; quantity: number; unit_cost: number }[];
     }
   ) => {
-    const payload = {
+    const res = await apiClient.put<{ data?: any }>(API.purchaseOrders.byId(id), {
       delivery_date: data.delivery_date || null,
       notes: data.notes || null,
-      items: data.items.map((it) => ({
-        product_id: it.product_id,
-        quantity: it.quantity,
-        unit_cost: it.unit_cost,
-      })),
-    };
-    const res = await apiClient.put<{ data?: any }>(API.purchaseOrders.byId(id), payload);
+      items: data.items,
+    });
     const order = fromBackendFormat(res?.data ?? res);
     upsertLocal(order);
     toast.success('Orden actualizada');
@@ -205,7 +216,8 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
   const receivePurchase = async (
     id: number | string,
     payload: {
-      items: { item_id?: number; product_id?: number; quantity: number }[];
+      items: { item_id?: number; product_id?: number; quantity: number; area_id?: number }[];
+      area_id?: number;
       invoice_number?: string;
       invoice_date?: string;
       invoice_total?: number;
@@ -220,7 +232,12 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
 
   const completePurchase = async (
     id: number | string,
-    invoice?: { invoice_number?: string; invoice_date?: string; invoice_total?: number }
+    invoice?: {
+      invoice_number?: string;
+      invoice_date?: string;
+      invoice_total?: number;
+      area_id?: number;
+    }
   ) => {
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.complete(id), invoice || {});
     const order = fromBackendFormat(res?.data ?? res);
@@ -241,8 +258,104 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.pay(id), payload);
     const order = fromBackendFormat(res?.data ?? res);
     upsertLocal(order);
-    toast.success('Pago registrado');
+    toast.success('Pago registrado · CxP actualizada');
     return order;
+  };
+
+  const cancelPurchase = async (id: number | string, reason: string) => {
+    const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.cancel(id), { reason });
+    const order = fromBackendFormat(res?.data ?? res);
+    upsertLocal(order);
+    toast.success('Orden anulada · kardex revertido');
+    return order;
+  };
+
+  const approvePurchase = async (id: number | string, notes?: string) => {
+    const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.approve(id), { notes });
+    const order = fromBackendFormat(res?.data ?? res);
+    upsertLocal(order);
+    toast.success('Orden aprobada');
+    return order;
+  };
+
+  const rejectPurchase = async (id: number | string, notes?: string) => {
+    const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.reject(id), { notes });
+    const order = fromBackendFormat(res?.data ?? res);
+    upsertLocal(order);
+    toast.success('Orden rechazada');
+    return order;
+  };
+
+  const emailPurchase = async (id: number | string) => {
+    const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.email(id), {});
+    const order = fromBackendFormat(res?.data ?? res);
+    upsertLocal(order);
+    toast.success('Email enviado al proveedor');
+    return order;
+  };
+
+  const suggestRestock = async () => {
+    const res = await apiClient.get<{ data?: any[] }>(API.purchaseOrders.suggestRestock, {
+      company_id: companyId,
+    });
+    return res?.data ?? [];
+  };
+
+  const createFromRestock = async (groups: any[]) => {
+    const res = await apiClient.post<{ data?: any[] }>(API.purchaseOrders.fromRestock, {
+      company_id: companyId,
+      groups,
+    });
+    const orders = (res?.data ?? []).map(fromBackendFormat);
+    setPurchases((prev) => [...orders, ...prev]);
+    toast.success(`${orders.length} orden(es) generada(s) por reposición`);
+    return orders;
+  };
+
+  const loadDeliveryAlerts = async () => {
+    const res = await apiClient.get<{ data?: any }>(API.purchaseOrders.deliveryAlerts, {
+      company_id: companyId,
+    });
+    return res?.data ?? { overdue: [], due_soon: [] };
+  };
+
+  const loadPriceHistory = async (params?: { product_id?: number; supplier_id?: number }) => {
+    const res = await apiClient.get<{ data?: any[] }>(API.purchaseOrders.priceHistory, {
+      company_id: companyId,
+      ...params,
+    });
+    return res?.data ?? [];
+  };
+
+  const loadPayables = async () => {
+    const res = await apiClient.get<{ data?: any[] }>(API.purchaseOrders.payables, {
+      company_id: companyId,
+    });
+    return res?.data ?? [];
+  };
+
+  const loadSettings = async () => {
+    const res = await apiClient.get<{ data?: any }>(API.purchaseOrders.settings, {
+      company_id: companyId,
+    });
+    return res?.data;
+  };
+
+  const saveSettings = async (data: Record<string, unknown>) => {
+    const res = await apiClient.put<{ data?: any }>(API.purchaseOrders.settings, {
+      company_id: companyId,
+      ...data,
+    });
+    toast.success('Configuración de compras guardada');
+    return res?.data;
+  };
+
+  const lookupBarcode = async (code: string) => {
+    const res = await apiClient.get<{ data?: any }>(API.purchaseOrders.lookupBarcode, {
+      company_id: companyId,
+      code,
+    });
+    return res?.data;
   };
 
   const uploadInvoiceAttachment = async (id: number | string, file: File) => {
@@ -291,6 +404,18 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
     receivePurchase,
     completePurchase,
     payPurchase,
+    cancelPurchase,
+    approvePurchase,
+    rejectPurchase,
+    emailPurchase,
+    suggestRestock,
+    createFromRestock,
+    loadDeliveryAlerts,
+    loadPriceHistory,
+    loadPayables,
+    loadSettings,
+    saveSettings,
+    lookupBarcode,
     uploadInvoiceAttachment,
     downloadInvoiceAttachment,
     deleteInvoiceAttachment,

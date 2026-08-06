@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ShoppingCart,
   Plus,
@@ -18,7 +18,12 @@ import {
   BarChart3,
   FileText,
   Paperclip,
+  Mail,
+  Ban,
+  ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { usePurchases, type PurchaseOrder, type PurchaseStatus } from '../hooks/usePurchases';
 import { useSuppliers } from '../hooks/useSuppliers';
@@ -86,6 +91,14 @@ export function Purchases() {
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseOrder | null>(null);
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrder | null>(null);
   const [payTarget, setPayTarget] = useState<PurchaseOrder | null>(null);
+  const [areas, setAreas] = useState<Array<{ id: number; name: string }>>([]);
+  const [deliveryAlerts, setDeliveryAlerts] = useState<{ overdue: any[]; due_soon: any[] }>({
+    overdue: [],
+    due_soon: [],
+  });
+  const [priceHistory, setPriceHistory] = useState<any[]>([]);
+  const [payables, setPayables] = useState<any[]>([]);
+  const [purchaseSettings, setPurchaseSettings] = useState<any>(null);
 
   const { suppliers } = useSuppliers(companyId);
   const {
@@ -97,6 +110,18 @@ export function Purchases() {
     receivePurchase,
     completePurchase,
     payPurchase,
+    cancelPurchase,
+    approvePurchase,
+    rejectPurchase,
+    emailPurchase,
+    suggestRestock,
+    createFromRestock,
+    loadDeliveryAlerts,
+    loadPriceHistory,
+    loadPayables,
+    loadSettings,
+    saveSettings,
+    lookupBarcode,
     uploadInvoiceAttachment,
     downloadInvoiceAttachment,
     deleteInvoiceAttachment,
@@ -104,6 +129,31 @@ export function Purchases() {
     reload,
   } = usePurchases(companyId ?? 1);
   const { products: inventoryProducts } = useInventory();
+
+  useEffect(() => {
+    if (!companyId) return;
+    (async () => {
+      try {
+        const res = await apiClient.get<{ data?: any[] }>(API.areas.list, {
+          company_id: companyId,
+          only_active: true,
+        });
+        setAreas(
+          (res?.data ?? []).map((a: any) => ({ id: a.id, name: a.name || `Área ${a.id}` }))
+        );
+      } catch {
+        setAreas([]);
+      }
+      try {
+        setDeliveryAlerts(await loadDeliveryAlerts());
+        setPriceHistory(await loadPriceHistory());
+        setPayables(await loadPayables());
+        setPurchaseSettings(await loadSettings());
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [companyId]);
 
   const activeSuppliers = useMemo(
     () => suppliers.filter((s) => s.active !== false),
@@ -240,6 +290,8 @@ export function Purchases() {
         'Proveedor',
         'Estado',
         'Pago',
+        'Subtotal',
+        'IGV',
         'Total',
         'Pagado',
         'Factura',
@@ -253,6 +305,8 @@ export function Purchases() {
           `"${supplierName.replace(/"/g, '""')}"`,
           STATUS_LABEL[p.status] || p.status,
           PAY_LABEL[p.payment_status || 'unpaid'],
+          p.subtotal ?? '',
+          p.igv_amount ?? '',
           p.total,
           p.amount_paid || 0,
           p.invoice_number || '',
@@ -267,6 +321,61 @@ export function Purchases() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Exportación CSV lista');
+  };
+
+  const exportExcelDetail = () => {
+    const headerRows = filtered.map((p) => {
+      const supplierName =
+        typeof p.supplier === 'string' ? p.supplier : p.supplierData?.name || '';
+      return {
+        Orden: p.order_number || p.id,
+        Fecha: p.order_date,
+        Proveedor: supplierName,
+        Estado: STATUS_LABEL[p.status],
+        Subtotal: p.subtotal ?? '',
+        IGV: p.igv_amount ?? '',
+        Total: p.total,
+        Pagado: p.amount_paid || 0,
+        Factura: p.invoice_number || '',
+      };
+    });
+    const itemRows: any[] = [];
+    for (const p of filtered) {
+      const supplierName =
+        typeof p.supplier === 'string' ? p.supplier : p.supplierData?.name || '';
+      for (const it of p.items || []) {
+        itemRows.push({
+          Orden: p.order_number || p.id,
+          Proveedor: supplierName,
+          Producto: it.name || it.productName,
+          Codigo: it.product?.code || '',
+          Cantidad: it.quantity,
+          Recibido: it.quantity_received || 0,
+          'Costo unit.': it.unit_cost,
+          Subtotal: it.total_cost,
+        });
+      }
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(headerRows), 'Ordenes');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemRows), 'Detalle');
+    XLSX.writeFile(wb, `compras_detalle_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Excel con detalle exportado');
+  };
+
+  const handleAutoRestock = async () => {
+    try {
+      const groups = await suggestRestock();
+      if (!groups.length) {
+        toast.message('No hay productos con stock bajo y proveedor asignado');
+        return;
+      }
+      if (!confirm(`Se generarán ${groups.length} OC sugerida(s). ¿Continuar?`)) return;
+      await createFromRestock(groups);
+      await reload();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo generar reposición');
+    }
   };
 
   const downloadPdf = async (purchase: PurchaseOrder) => {
@@ -299,7 +408,15 @@ export function Purchases() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportCsv}>
             <Download className="h-4 w-4 mr-2" />
-            Exportar CSV
+            CSV
+          </Button>
+          <Button variant="outline" onClick={exportExcelDetail}>
+            <Download className="h-4 w-4 mr-2" />
+            Excel detalle
+          </Button>
+          <Button variant="outline" onClick={handleAutoRestock}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Reposición auto
           </Button>
           <Button variant="outline" onClick={() => reload()}>
             Actualizar
@@ -383,11 +500,15 @@ export function Purchases() {
       </div>
 
       <Tabs defaultValue="orders" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="orders">Órdenes</TabsTrigger>
           <TabsTrigger value="low-stock">Stock bajo</TabsTrigger>
+          <TabsTrigger value="alerts">Alertas entrega</TabsTrigger>
+          <TabsTrigger value="prices">Historial precios</TabsTrigger>
+          <TabsTrigger value="payables">CxP</TabsTrigger>
           <TabsTrigger value="comparison">Comparación</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="settings">Config</TabsTrigger>
         </TabsList>
 
         <TabsContent value="orders" className="space-y-4">
@@ -473,6 +594,14 @@ export function Purchases() {
                           <Badge variant="outline">
                             {PAY_LABEL[purchase.payment_status || 'unpaid']}
                           </Badge>
+                          {purchase.approval_status === 'pending_approval' && (
+                            <Badge className="bg-amber-100 text-amber-900">Por aprobar</Badge>
+                          )}
+                          {(purchase.igv_amount ?? 0) > 0 && (
+                            <Badge variant="outline">
+                              IGV {(purchase.igv_amount ?? 0).toFixed(2)}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {supplierName} · {purchase.order_date}
@@ -505,7 +634,38 @@ export function Purchases() {
                           <FileText className="h-4 w-4 mr-1" />
                           PDF
                         </Button>
-                        {purchase.status === 'pending' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => emailPurchase(purchase.id).catch(() => {})}
+                        >
+                          <Mail className="h-4 w-4 mr-1" />
+                          Email
+                        </Button>
+                        {purchase.approval_status === 'pending_approval' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => approvePurchase(purchase.id)}
+                            >
+                              <ShieldCheck className="h-4 w-4 mr-1" />
+                              Aprobar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                const notes = prompt('Motivo de rechazo (opcional)') || undefined;
+                                rejectPurchase(purchase.id, notes);
+                              }}
+                            >
+                              Rechazar
+                            </Button>
+                          </>
+                        )}
+                        {purchase.status === 'pending' &&
+                          purchase.approval_status !== 'pending_approval' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -515,7 +675,9 @@ export function Purchases() {
                             En tránsito
                           </Button>
                         )}
-                        {!['delivered', 'cancelled'].includes(purchase.status) && (
+                        {!['delivered', 'cancelled'].includes(purchase.status) &&
+                          purchase.approval_status !== 'pending_approval' &&
+                          purchase.approval_status !== 'rejected' && (
                           <Button size="sm" onClick={() => setReceiveTarget(purchase)}>
                             <PackageCheck className="h-4 w-4 mr-1" />
                             Recibir
@@ -529,6 +691,21 @@ export function Purchases() {
                           >
                             <CreditCard className="h-4 w-4 mr-1" />
                             Pagar
+                          </Button>
+                        )}
+                        {purchase.status !== 'cancelled' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600"
+                            onClick={() => {
+                              const reason = prompt('Motivo de anulación (obligatorio)');
+                              if (!reason?.trim()) return;
+                              cancelPurchase(purchase.id, reason.trim());
+                            }}
+                          >
+                            <Ban className="h-4 w-4 mr-1" />
+                            Anular
                           </Button>
                         )}
                         {purchase.status === 'pending' &&
@@ -696,6 +873,101 @@ export function Purchases() {
           )}
         </TabsContent>
 
+        </TabsContent>
+
+        <TabsContent value="alerts" className="space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card className="p-4">
+              <h3 className="font-bold mb-2 text-red-700">Vencidas</h3>
+              {(deliveryAlerts.overdue || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin OC vencidas</p>
+              ) : (
+                (deliveryAlerts.overdue || []).map((a: any) => (
+                  <div key={a.id} className="text-sm border-b py-2">
+                    <strong>{a.order_number || a.id}</strong> · {a.supplier} · entrega{' '}
+                    {a.delivery_date}
+                  </div>
+                ))
+              )}
+            </Card>
+            <Card className="p-4">
+              <h3 className="font-bold mb-2 text-amber-700">Por vencer</h3>
+              {(deliveryAlerts.due_soon || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin alertas próximas</p>
+              ) : (
+                (deliveryAlerts.due_soon || []).map((a: any) => (
+                  <div key={a.id} className="text-sm border-b py-2">
+                    <strong>{a.order_number || a.id}</strong> · {a.supplier} · entrega{' '}
+                    {a.delivery_date}
+                  </div>
+                ))
+              )}
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="prices" className="space-y-4">
+          <Card className="p-4">
+            <h3 className="font-bold mb-3">Historial de costos proveedor–producto</h3>
+            {priceHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Se registra al recibir mercadería.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {priceHistory.map((h: any) => (
+                  <div
+                    key={h.id}
+                    className={`text-sm flex flex-wrap justify-between gap-2 border-b py-2 ${
+                      h.price_alert ? 'bg-amber-50 dark:bg-amber-950/30' : ''
+                    }`}
+                  >
+                    <span>
+                      {h.product?.name} · {h.supplier?.name}
+                      {h.price_alert ? ' ⚠ subida' : ''}
+                    </span>
+                    <span className="font-semibold">
+                      {Number(h.unit_cost).toFixed(2)} S/
+                      {h.variation_percent != null
+                        ? ` (${Number(h.variation_percent) > 0 ? '+' : ''}${Number(
+                            h.variation_percent
+                          ).toFixed(1)}%)`
+                        : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payables" className="space-y-4">
+          <Card className="p-4">
+            <h3 className="font-bold mb-3">Cuentas por pagar (CxP)</h3>
+            {payables.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin CxP registradas</p>
+            ) : (
+              <div className="space-y-2">
+                {payables.map((row: any) => (
+                  <div key={row.id} className="flex justify-between text-sm border-b py-2">
+                    <span>
+                      {row.purchase_order?.order_number || row.purchase_order_id} ·{' '}
+                      {row.supplier?.name} · {row.status}
+                      {row.accounting_account_code
+                        ? ` · cta ${row.accounting_account_code}`
+                        : ''}
+                    </span>
+                    <span className="font-semibold">
+                      saldo {Number(row.balance).toFixed(2)} /{' '}
+                      {Number(row.original_amount).toFixed(2)} S/
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
         <TabsContent value="comparison" className="space-y-4">
           <Card className="p-4">
             <h3 className="font-bold mb-3 flex items-center gap-2">
@@ -761,6 +1033,85 @@ export function Purchases() {
             )}
           </Card>
         </TabsContent>
+
+        <TabsContent value="settings" className="space-y-4">
+          <Card className="p-4 space-y-3 max-w-lg">
+            <h3 className="font-bold">Configuración de compras</h3>
+            <div>
+              <label className="text-sm">Umbral de aprobación (0 = off)</label>
+              <Input
+                type="number"
+                value={purchaseSettings?.approval_threshold ?? 0}
+                onChange={(e) =>
+                  setPurchaseSettings((s: any) => ({
+                    ...(s || {}),
+                    approval_threshold: parseFloat(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm">Alerta subida de precio %</label>
+              <Input
+                type="number"
+                value={purchaseSettings?.price_alert_percent ?? 10}
+                onChange={(e) =>
+                  setPurchaseSettings((s: any) => ({
+                    ...(s || {}),
+                    price_alert_percent: parseFloat(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm">Días alerta entrega</label>
+              <Input
+                type="number"
+                value={purchaseSettings?.delivery_alert_days ?? 2}
+                onChange={(e) =>
+                  setPurchaseSettings((s: any) => ({
+                    ...(s || {}),
+                    delivery_alert_days: parseInt(e.target.value, 10) || 0,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm">IGV % por defecto</label>
+              <Input
+                type="number"
+                value={purchaseSettings?.default_igv_rate ?? 18}
+                onChange={(e) =>
+                  setPurchaseSettings((s: any) => ({
+                    ...(s || {}),
+                    default_igv_rate: parseFloat(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={purchaseSettings?.prices_include_igv !== false}
+                onChange={(e) =>
+                  setPurchaseSettings((s: any) => ({
+                    ...(s || {}),
+                    prices_include_igv: e.target.checked,
+                  }))
+                }
+              />
+              Precios de línea incluyen IGV
+            </label>
+            <Button
+              onClick={async () => {
+                const saved = await saveSettings(purchaseSettings || {});
+                setPurchaseSettings(saved);
+              }}
+            >
+              Guardar configuración
+            </Button>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <Dialog open={!!receiveTarget} onOpenChange={(o) => !o && setReceiveTarget(null)}>
@@ -769,17 +1120,23 @@ export function Purchases() {
             purchase={
               purchases.find((p) => String(p.id) === String(receiveTarget.id)) || receiveTarget
             }
+            areas={areas}
             onReceive={async (payload) => {
               await receivePurchase(receiveTarget.id, payload);
               setReceiveTarget(null);
+              setPriceHistory(await loadPriceHistory());
+              setPayables(await loadPayables());
             }}
             onReceiveAll={async (invoice) => {
               await completePurchase(receiveTarget.id, invoice);
               setReceiveTarget(null);
+              setPriceHistory(await loadPriceHistory());
+              setPayables(await loadPayables());
             }}
             onUploadAttachment={async (file) => {
               await uploadInvoiceAttachment(receiveTarget.id, file);
             }}
+            onLookupBarcode={async (code) => lookupBarcode(code)}
             onClose={() => setReceiveTarget(null)}
           />
         )}
@@ -792,6 +1149,7 @@ export function Purchases() {
             onPay={async (payload) => {
               await payPurchase(payTarget.id, payload);
               setPayTarget(null);
+              setPayables(await loadPayables());
             }}
             onClose={() => setPayTarget(null)}
           />
