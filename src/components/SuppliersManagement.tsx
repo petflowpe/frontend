@@ -39,14 +39,14 @@ import {
 } from './ui/table';
 import { toast } from 'sonner';
 
-export function SuppliersManagement() {
+export function SuppliersManagement({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const companyId = user?.companyId;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!companyId) {
     return (
-      <div className="p-6">
+      <div className={embedded ? 'py-2' : 'p-6'}>
         <p className="text-muted-foreground">No hay empresa asociada a su usuario. Contacte al administrador.</p>
       </div>
     );
@@ -165,20 +165,24 @@ export function SuppliersManagement() {
   };
 
   return (
-    <div className="animate-in fade-in space-y-6 p-6 duration-300">
+    <div className={embedded ? 'space-y-4' : 'animate-in fade-in space-y-6 p-6 duration-300'}>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
-              <Building2 className="h-8 w-8 text-cyan-500" />
-              Directorio de Proveedores
-            </h1>
-            <Badge variant="outline" className="border-cyan-500/40 text-cyan-600 dark:text-cyan-400">
-              build {__APP_BUILD_ID__}
-            </Badge>
+            {embedded ? (
+              <h2 className="flex items-center gap-2 text-xl font-bold">
+                <Building2 className="h-6 w-6 text-cyan-500" />
+                Proveedores
+              </h2>
+            ) : (
+              <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
+                <Building2 className="h-8 w-8 text-cyan-500" />
+                Proveedores
+              </h1>
+            )}
           </div>
           <p className="text-muted-foreground mt-2 text-sm sm:text-base">
-            Gestiona tus contactos comerciales, condiciones de crédito y cuentas bancarias.
+            Contactos comerciales, crédito, cuentas bancarias e importación Excel.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

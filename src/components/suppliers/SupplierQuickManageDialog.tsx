@@ -84,7 +84,7 @@ export function SupplierQuickManageDialog({
     <>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Directorio de Proveedores</DialogTitle>
+          <DialogTitle>Gestionar proveedores</DialogTitle>
           <DialogDescription>
             Gestiona contactos comerciales, condiciones de crédito y cuentas bancarias.
           </DialogDescription>

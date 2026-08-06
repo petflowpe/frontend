@@ -142,7 +142,9 @@ export const API = {
     list: '/purchase-orders',
     byId: (id: string | number) => `/purchase-orders/${id}`,
     status: (id: string | number) => `/purchase-orders/${id}/status`,
+    receive: (id: string | number) => `/purchase-orders/${id}/receive`,
     complete: (id: string | number) => `/purchase-orders/${id}/complete`,
+    pay: (id: string | number) => `/purchase-orders/${id}/pay`,
   },
   cashSessions: {
     list: '/cash-sessions',
