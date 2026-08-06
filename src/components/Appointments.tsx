@@ -45,7 +45,7 @@ const weekDays = [
 ];
 
 export function Appointments() {
-  const { products, services, loading: loadingProducts, updateProductStock } = useProducts();
+  const { products, services, loading: loadingProducts } = useProducts();
   const { vehicles, loading: loadingVehicles } = useVehicles();
   const {
     appointments,
@@ -261,23 +261,8 @@ export function Appointments() {
 
     setCompletingAppointment(appointmentId);
     try {
-      // 1. Actualizar estado en servidor
+      // El backend descuenta stock (ítems producto + insumos del servicio) al pasar a Completada
       await updateAppointment(appointmentId, { status: 'completed' });
-      
-      // 2. Descontar stock de productos
-      if (appointment.items && appointment.items.length > 0) {
-        let stockUpdated = false;
-        for (const item of appointment.items) {
-          if (item.type === 'product') {
-            // Asumimos cantidad 1 por item en la lista
-            await updateProductStock(item.id, 1);
-            stockUpdated = true;
-          }
-        }
-        if (stockUpdated) {
-          toast.success('Stock de inventario actualizado');
-        }
-      }
 
       toast.success('Cita completada correctamente', {
         description: `La cita de ${appointment.pet || appointment.petName} ha sido marcada como completada`,

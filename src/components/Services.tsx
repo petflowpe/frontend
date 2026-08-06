@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
-import { Scissors, Plus, Edit2, Trash2, Clock, DollarSign, Settings, Tag, MapPin, Coins, Ruler, AlertCircle, Info, PawPrint } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Scissors, Plus, Edit2, Trash2, Clock, DollarSign, Settings, Tag, MapPin, Coins, Ruler, AlertCircle, Info, PawPrint, Loader2 } from 'lucide-react';
 import { useProducts } from '../hooks/useProducts';
 import { useCategories } from '../hooks/useCategories';
 import { useAreas } from '../hooks/useAreas';
+import { useAuth } from '../context/AuthContext';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -15,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
+import { apiClient } from '../utils/api/client';
 
 // Generar código de servicio automático
 const generateServiceCode = (name: string, area: string, existingCodes: string[]) => {
@@ -53,14 +55,109 @@ const specialBreeds = [
 ];
 
 export function Services() {
+  const { user } = useAuth();
+  const companyId = Number(user?.companyId) || 1;
   const [showNewService, setShowNewService] = useState(false);
   const [showCategoryConfig, setShowCategoryConfig] = useState(false);
   const [editingService, setEditingService] = useState<any>(null);
   const [activeServiceTab, setActiveServiceTab] = useState('basic');
+  const [saving, setSaving] = useState(false);
 
-  const { categories, loading: categoriesLoading, reload: reloadCategories } = useCategories(1);
-  const { areas, loading: areasLoading, reload: reloadAreas } = useAreas(1);
-  const { services: servicesFromApi, loading: servicesLoading, createProduct, fetchProducts, deleteProduct } = useProducts(1);
+  const emptyForm = () => ({
+    name: '',
+    description: '',
+    categoryId: '' as string,
+    areaId: '' as string,
+    pricingBySize: true,
+    pricing: {
+      toy: { price: 30, cost: 10, duration: 25 },
+      small: { price: 35, cost: 12, duration: 30 },
+      medium: { price: 45, cost: 15, duration: 45 },
+      large: { price: 65, cost: 22, duration: 75 },
+      xlarge: { price: 95, cost: 35, duration: 120 },
+    } as Record<string, { price: number; cost: number; duration: number }>,
+  });
+
+  const [form, setForm] = useState(emptyForm);
+
+  const { categories, loading: categoriesLoading, reload: reloadCategories } = useCategories(companyId);
+  const { areas, loading: areasLoading, reload: reloadAreas } = useAreas(companyId);
+  const { services: servicesFromApi, loading: servicesLoading, createProduct, fetchProducts, deleteProduct } = useProducts();
+
+  useEffect(() => {
+    if (!showNewService) {
+      setForm(emptyForm());
+      return;
+    }
+    if (editingService) {
+      setForm({
+        name: editingService.name || '',
+        description: editingService.description || '',
+        categoryId: String(
+          categories.find((c) => c.name === editingService.category)?.id || ''
+        ),
+        areaId: String(areas.find((a) => a.name === editingService.area)?.id || ''),
+        pricingBySize: editingService.pricingBySize !== false,
+        pricing: editingService.pricing || emptyForm().pricing,
+      });
+    } else {
+      setForm(emptyForm());
+    }
+  }, [showNewService, editingService, categories, areas]);
+
+  const handleSaveService = async () => {
+    if (!form.name.trim()) {
+      toast.error('El nombre del servicio es obligatorio');
+      return;
+    }
+    const medium = form.pricing.medium || { price: 0, cost: 0, duration: 45 };
+    setSaving(true);
+    try {
+      const payload = {
+        type: 'service' as const,
+        name: form.name.trim(),
+        description: form.description.trim(),
+        category: form.categoryId || undefined,
+        area: areas.find((a) => String(a.id) === form.areaId)?.name || '',
+        price: Number(medium.price) || 0,
+        cost: Number(medium.cost) || 0,
+        duration: Number(medium.duration) || 45,
+        pricingBySize: form.pricingBySize,
+        pricing: form.pricing,
+        active: true,
+      };
+
+      if (editingService?.id) {
+        await apiClient.put(`/products/${editingService.id}`, {
+          name: payload.name,
+          description: payload.description,
+          category_id: form.categoryId ? Number(form.categoryId) : null,
+          unit_price: payload.price,
+          cost_price: payload.cost,
+          item_type: 'SERVICIO',
+          metadata: {
+            pricing: payload.pricing,
+            pricingBySize: payload.pricingBySize,
+            duration: payload.duration,
+            area: payload.area,
+          },
+        });
+        toast.success('Servicio actualizado');
+        await fetchProducts();
+      } else {
+        await createProduct(payload);
+        await fetchProducts();
+      }
+
+      setShowNewService(false);
+      setEditingService(null);
+      setForm(emptyForm());
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo guardar el servicio');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const categoriesForUI = useMemo(() => categories.map(c => ({
     id: c.id,
@@ -271,25 +368,37 @@ export function Services() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Nombre del Servicio *</Label>
-                    <Input placeholder="Ej: Baño Completo" />
+                    <Input
+                      placeholder="Ej: Baño Completo"
+                      value={form.name}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Código (generado automáticamente)</Label>
-                    <Input placeholder="GR-BAÑ-001" disabled />
+                    <Input placeholder="GR-BAÑ-001" disabled value={editingService?.code || ''} />
                   </div>
                   <div className="col-span-2 space-y-2">
                     <Label>Descripción</Label>
-                    <Textarea placeholder="Describe el servicio..." rows={3} />
+                    <Textarea
+                      placeholder="Describe el servicio..."
+                      rows={3}
+                      value={form.description}
+                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Categoría</Label>
-                    <Select>
+                    <Select
+                      value={form.categoryId || undefined}
+                      onValueChange={(v) => setForm((f) => ({ ...f, categoryId: v }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar..." />
                       </SelectTrigger>
                       <SelectContent>
                         {categoriesForUI.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.name}>
+                          <SelectItem key={cat.id} value={String(cat.id)}>
                             {cat.name}
                           </SelectItem>
                         ))}
@@ -298,13 +407,16 @@ export function Services() {
                   </div>
                   <div className="space-y-2">
                     <Label>Área</Label>
-                    <Select>
+                    <Select
+                      value={form.areaId || undefined}
+                      onValueChange={(v) => setForm((f) => ({ ...f, areaId: v }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar..." />
                       </SelectTrigger>
                       <SelectContent>
                         {areasForUI.map((area) => (
-                          <SelectItem key={area.id} value={area.name}>
+                          <SelectItem key={area.id} value={String(area.id)}>
                             {area.name}
                           </SelectItem>
                         ))}
@@ -323,7 +435,10 @@ export function Services() {
                             </p>
                           </div>
                         </div>
-                        <Switch defaultChecked />
+                        <Switch
+                          checked={form.pricingBySize}
+                          onCheckedChange={(v) => setForm((f) => ({ ...f, pricingBySize: v }))}
+                        />
                       </div>
                     </Card>
                   </div>
@@ -353,15 +468,63 @@ export function Services() {
                       <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-2">
                           <Label className="text-xs">Precio (S/)</Label>
-                          <Input type="number" placeholder="0.00" />
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            value={form.pricing[size.id]?.price ?? ''}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                pricing: {
+                                  ...f.pricing,
+                                  [size.id]: {
+                                    ...f.pricing[size.id],
+                                    price: Number(e.target.value) || 0,
+                                  },
+                                },
+                              }))
+                            }
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-xs">Duración (min)</Label>
-                          <Input type="number" placeholder="0" />
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={form.pricing[size.id]?.duration ?? ''}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                pricing: {
+                                  ...f.pricing,
+                                  [size.id]: {
+                                    ...f.pricing[size.id],
+                                    duration: Number(e.target.value) || 0,
+                                  },
+                                },
+                              }))
+                            }
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-xs">Costo (S/)</Label>
-                          <Input type="number" placeholder="0.00" />
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            value={form.pricing[size.id]?.cost ?? ''}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                pricing: {
+                                  ...f.pricing,
+                                  [size.id]: {
+                                    ...f.pricing[size.id],
+                                    cost: Number(e.target.value) || 0,
+                                  },
+                                },
+                              }))
+                            }
+                          />
                         </div>
                       </div>
                     </Card>
@@ -437,13 +600,11 @@ export function Services() {
             </Tabs>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowNewService(false)}>
+              <Button variant="outline" onClick={() => setShowNewService(false)} disabled={saving}>
                 Cancelar
               </Button>
-              <Button onClick={() => {
-                setShowNewService(false);
-                toast.success('Servicio guardado exitosamente');
-              }}>
+              <Button onClick={handleSaveService} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                 Guardar Servicio
               </Button>
             </div>

@@ -253,15 +253,31 @@ export const useProducts = () => {
 
   // Convertir formato frontend a backend
   const toBackendFormat = (product: Partial<Product>): any => {
+    const categoryId =
+      product.category && /^\d+$/.test(String(product.category))
+        ? parseInt(String(product.category), 10)
+        : null;
+
     return {
+      company_id: companyId,
       name: product.name || '',
-      code: product.code || '',
+      code: product.code || undefined,
       item_type: product.type === 'service' ? 'SERVICIO' : 'PRODUCTO',
+      unit_price: product.price || 0,
       sale_price: product.price || 0,
       cost_price: product.cost || 0,
+      stock: product.type === 'service' ? 0 : (product.stock ?? 0),
       active: product.active !== false,
       description: product.description || '',
-      category_id: product.category ? parseInt(product.category) : null,
+      category_id: categoryId,
+      metadata: {
+        pricing: product.pricing,
+        pricingBySize: product.pricingBySize,
+        breedExceptions: product.breedExceptions,
+        includes: product.includes,
+        duration: product.duration,
+        area: product.area,
+      },
     };
   };
 
@@ -295,18 +311,23 @@ export const useProducts = () => {
     }
   };
 
-  const updateProductStock = async (id: number, quantityToDeduct: number) => {
+  const updateProductStock = async (
+    id: number,
+    quantityToDeduct: number,
+    options?: { areaId?: number; notes?: string }
+  ) => {
     try {
-      // Usar el endpoint específico del backend para ajustar stock
       await apiClient.post(`/products/${id}/adjust-stock`, {
-        quantity: -quantityToDeduct, // Negativo para restar
-        reason: 'Venta',
+        quantity: Math.abs(quantityToDeduct),
+        type: 'OUT',
+        area_id: options?.areaId,
+        notes: options?.notes ?? 'Salida de inventario',
       });
       
       // Actualizar estado local
       const product = [...products, ...services].find(p => p.id === id);
       if (product) {
-        const newStock = Math.max(0, product.stock - quantityToDeduct);
+        const newStock = Math.max(0, product.stock - Math.abs(quantityToDeduct));
         
         if (product.type === 'product') {
           setProducts(prev => prev.map(p => p.id === id ? { ...p, stock: newStock } : p));
@@ -315,7 +336,7 @@ export const useProducts = () => {
         }
       }
       
-      return product ? Math.max(0, product.stock - quantityToDeduct) : 0;
+      return product ? Math.max(0, product.stock - Math.abs(quantityToDeduct)) : 0;
     } catch (e: any) {
       console.error('Error updating stock:', e);
       toast.error(e.message || 'Error al actualizar stock');
