@@ -34,6 +34,8 @@ export interface PurchaseOrder {
   invoice_number?: string | null;
   invoice_date?: string | null;
   invoice_total?: number | null;
+  invoice_attachment_path?: string | null;
+  invoice_attachment_name?: string | null;
   kardex_registered: boolean;
   payment_status?: PaymentStatus;
   amount_paid?: number;
@@ -84,6 +86,8 @@ function fromBackendFormat(row: any): PurchaseOrder {
     invoice_number: row.invoice_number,
     invoice_date: row.invoice_date,
     invoice_total: row.invoice_total != null ? parseFloat(row.invoice_total) : null,
+    invoice_attachment_path: row.invoice_attachment_path ?? null,
+    invoice_attachment_name: row.invoice_attachment_name ?? null,
     kardex_registered: !!row.kardex_registered,
     payment_status: (row.payment_status || 'unpaid') as PaymentStatus,
     amount_paid: parseFloat(row.amount_paid ?? 0) || 0,
@@ -241,6 +245,36 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
     return order;
   };
 
+  const uploadInvoiceAttachment = async (id: number | string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await apiClient.post<{ data?: any }>(
+      API.purchaseOrders.invoiceAttachment(id),
+      form,
+      undefined,
+      true
+    );
+    const order = fromBackendFormat(res?.data ?? res);
+    upsertLocal(order);
+    toast.success('Factura adjunta');
+    return order;
+  };
+
+  const downloadInvoiceAttachment = async (id: number | string, filename?: string) => {
+    await apiClient.downloadFile(
+      API.purchaseOrders.invoiceAttachment(id),
+      filename || `factura_OC_${id}.pdf`
+    );
+  };
+
+  const deleteInvoiceAttachment = async (id: number | string) => {
+    const res = await apiClient.delete<{ data?: any }>(API.purchaseOrders.invoiceAttachment(id));
+    const order = fromBackendFormat(res?.data ?? res);
+    upsertLocal(order);
+    toast.success('Adjunto eliminado');
+    return order;
+  };
+
   const deletePurchase = async (id: number | string) => {
     await apiClient.delete(API.purchaseOrders.byId(id));
     setPurchases((prev) => prev.filter((p) => String(p.id) !== String(id)));
@@ -257,6 +291,9 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
     receivePurchase,
     completePurchase,
     payPurchase,
+    uploadInvoiceAttachment,
+    downloadInvoiceAttachment,
+    deleteInvoiceAttachment,
     deletePurchase,
   };
 }

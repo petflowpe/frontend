@@ -146,6 +146,7 @@ export const API = {
     complete: (id: string | number) => `/purchase-orders/${id}/complete`,
     pay: (id: string | number) => `/purchase-orders/${id}/pay`,
     downloadPdf: (id: string | number) => `/purchase-orders/${id}/download-pdf`,
+    invoiceAttachment: (id: string | number) => `/purchase-orders/${id}/invoice-attachment`,
   },
   cashSessions: {
     list: '/cash-sessions',

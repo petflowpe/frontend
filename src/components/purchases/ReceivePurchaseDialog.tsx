@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { PackageCheck } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { PackageCheck, Paperclip } from 'lucide-react';
 import { Button } from '../ui/button';
 import { DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -19,10 +19,18 @@ type Props = {
     invoice_date?: string;
     invoice_total?: number;
   }) => Promise<void>;
+  onUploadAttachment?: (file: File) => Promise<void>;
   onClose: () => void;
 };
 
-export function ReceivePurchaseDialog({ purchase, onReceive, onReceiveAll, onClose }: Props) {
+export function ReceivePurchaseDialog({
+  purchase,
+  onReceive,
+  onReceiveAll,
+  onUploadAttachment,
+  onClose,
+}: Props) {
+  const fileRef = useRef<HTMLInputElement>(null);
   const [invoiceNumber, setInvoiceNumber] = useState(purchase.invoice_number || '');
   const [invoiceDate, setInvoiceDate] = useState(
     purchase.invoice_date || new Date().toISOString().split('T')[0]
@@ -32,6 +40,7 @@ export function ReceivePurchaseDialog({ purchase, onReceive, onReceiveAll, onClo
   );
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [attachmentName, setAttachmentName] = useState(purchase.invoice_attachment_name || '');
 
   useEffect(() => {
     const init: Record<string, string> = {};
@@ -41,6 +50,7 @@ export function ReceivePurchaseDialog({ purchase, onReceive, onReceiveAll, onClo
       init[key] = pending > 0 ? String(pending) : '0';
     }
     setQtys(init);
+    setAttachmentName(purchase.invoice_attachment_name || '');
   }, [purchase]);
 
   const lines = useMemo(
@@ -94,6 +104,18 @@ export function ReceivePurchaseDialog({ purchase, onReceive, onReceiveAll, onClo
     }
   };
 
+  const handleFile = async (file?: File | null) => {
+    if (!file || !onUploadAttachment) return;
+    setBusy(true);
+    try {
+      await onUploadAttachment(file);
+      setAttachmentName(file.name);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
     <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
       <DialogHeader>
@@ -130,6 +152,36 @@ export function ReceivePurchaseDialog({ purchase, onReceive, onReceiveAll, onClo
             onChange={(e) => setInvoiceTotal(e.target.value)}
           />
         </div>
+
+        {onUploadAttachment && (
+          <div className="space-y-2">
+            <Label>Adjunto factura (PDF/imagen)</Label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Paperclip className="h-4 w-4 mr-1" />
+                {attachmentName ? 'Reemplazar archivo' : 'Subir factura'}
+              </Button>
+              {attachmentName && (
+                <span className="text-xs text-muted-foreground truncate max-w-[220px]">
+                  {attachmentName}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2 border rounded-lg p-3">
           <p className="text-sm font-semibold">Cantidades a recibir</p>

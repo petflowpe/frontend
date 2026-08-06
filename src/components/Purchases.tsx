@@ -17,6 +17,7 @@ import {
   Layers,
   BarChart3,
   FileText,
+  Paperclip,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePurchases, type PurchaseOrder, type PurchaseStatus } from '../hooks/usePurchases';
@@ -96,6 +97,9 @@ export function Purchases() {
     receivePurchase,
     completePurchase,
     payPurchase,
+    uploadInvoiceAttachment,
+    downloadInvoiceAttachment,
+    deleteInvoiceAttachment,
     deletePurchase,
     reload,
   } = usePurchases(companyId ?? 1);
@@ -597,6 +601,65 @@ export function Purchases() {
               {selectedPurchase.notes && (
                 <p className="text-sm text-muted-foreground mt-3">Notas: {selectedPurchase.notes}</p>
               )}
+              <div className="mt-4 pt-3 border-t space-y-2">
+                <p className="text-sm font-semibold flex items-center gap-2">
+                  <Paperclip className="h-4 w-4" />
+                  Factura del proveedor
+                </p>
+                {(
+                  purchases.find((p) => String(p.id) === String(selectedPurchase.id)) ||
+                  selectedPurchase
+                ).invoice_attachment_path ? (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-sm text-muted-foreground truncate max-w-[240px]">
+                      {(
+                        purchases.find((p) => String(p.id) === String(selectedPurchase.id)) ||
+                        selectedPurchase
+                      ).invoice_attachment_name || 'Archivo adjunto'}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        downloadInvoiceAttachment(
+                          selectedPurchase.id,
+                          (
+                            purchases.find((p) => String(p.id) === String(selectedPurchase.id)) ||
+                            selectedPurchase
+                          ).invoice_attachment_name || undefined
+                        )
+                      }
+                    >
+                      Descargar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600"
+                      onClick={async () => {
+                        if (!confirm('¿Eliminar adjunto?')) return;
+                        const updated = await deleteInvoiceAttachment(selectedPurchase.id);
+                        setSelectedPurchase(updated);
+                      }}
+                    >
+                      Quitar
+                    </Button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept=".pdf,image/jpeg,image/png,image/webp"
+                    className="text-sm"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const updated = await uploadInvoiceAttachment(selectedPurchase.id, file);
+                      setSelectedPurchase(updated);
+                      e.target.value = '';
+                    }}
+                  />
+                )}
+              </div>
             </Card>
           )}
         </TabsContent>
@@ -703,7 +766,9 @@ export function Purchases() {
       <Dialog open={!!receiveTarget} onOpenChange={(o) => !o && setReceiveTarget(null)}>
         {receiveTarget && (
           <ReceivePurchaseDialog
-            purchase={receiveTarget}
+            purchase={
+              purchases.find((p) => String(p.id) === String(receiveTarget.id)) || receiveTarget
+            }
             onReceive={async (payload) => {
               await receivePurchase(receiveTarget.id, payload);
               setReceiveTarget(null);
@@ -711,6 +776,9 @@ export function Purchases() {
             onReceiveAll={async (invoice) => {
               await completePurchase(receiveTarget.id, invoice);
               setReceiveTarget(null);
+            }}
+            onUploadAttachment={async (file) => {
+              await uploadInvoiceAttachment(receiveTarget.id, file);
             }}
             onClose={() => setReceiveTarget(null)}
           />
