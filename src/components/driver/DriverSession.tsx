@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { useApp } from '../../contexts/AppContext';
 import { apiClient } from '../../utils/api/client';
+import { API } from '../../utils/api/endpoints';
 
 // Tipos de datos para el flujo
 type ServiceStep = 'route' | 'arrived' | 'work' | 'signature' | 'payment' | 'completed';
@@ -47,98 +48,206 @@ interface ServiceItem {
   };
 }
 
+type ClientStopData = {
+  name: string;
+  pet: string;
+  breed: string;
+  address: string;
+  phone: string;
+  avatar: string;
+};
+
+type DriverDayStop = {
+  order: number;
+  appointment_id: number;
+  status?: string;
+  address?: string;
+  district?: string;
+  service_category?: string;
+  client?: { name?: string; phone?: string };
+  pet?: { name?: string; breed?: string; species?: string };
+};
+
+const DEMO_CLIENT: ClientStopData = {
+  name: 'María González',
+  pet: 'Thor',
+  breed: 'Golden Retriever',
+  address: 'Av. Larco 123, Miraflores',
+  phone: '999888777',
+  avatar: 'https://images.unsplash.com/photo-1633722715463-d30f4f325e27?w=150&h=150&fit=crop',
+};
+
+function mapStopToClient(stop: DriverDayStop): ClientStopData {
+  const addressParts = [stop.address, stop.district].filter(Boolean);
+  return {
+    name: stop.client?.name || 'Cliente',
+    pet: stop.pet?.name || 'Mascota',
+    breed: stop.pet?.breed || stop.pet?.species || '—',
+    address: addressParts.length ? addressParts.join(', ') : 'Sin dirección',
+    phone: stop.client?.phone || '',
+    avatar: DEMO_CLIENT.avatar,
+  };
+}
+
 export function DriverSession() {
   const [step, setStep] = useState<ServiceStep>('route');
   const [serviceType, setServiceType] = useState<ServiceType>('grooming');
+  const [assignedVehicleId, setAssignedVehicleId] = useState<number | null>(null);
+  const [currentAppointmentId, setCurrentAppointmentId] = useState<number | null>(null);
+  const [dayStops, setDayStops] = useState<DriverDayStop[]>([]);
+  const [usingDemoStop, setUsingDemoStop] = useState(true);
+  const [clientData, setClientData] = useState<ClientStopData>(DEMO_CLIENT);
+  const gpsErrorShown = useRef(false);
 
-  // --- GPS EN TIEMPO REAL (PRODUCCIÓN) ---
-  // Captura la ubicación real del dispositivo y la envía al servidor
+  // Cargar día de trabajo real (fallback a demo si no hay paradas)
   useEffect(() => {
-    let watchId: number;
+    let cancelled = false;
 
-    const startTracking = async () => {
-      // Obtener usuario del token
-      const token = localStorage.getItem('auth_token');
-      let driverId = 'demo-driver';
-      let driverName = 'Tu Unidad';
-      
-      if (token) {
-        try {
-          const userData = await apiClient.get<{ data: any }>('/auth/me');
-          const user = userData.data || userData;
-          driverId = user.id?.toString() || 'demo-driver';
-          driverName = user.name || 'Tu Unidad';
-        } catch (e) {
-          console.error('Error obteniendo usuario:', e);
-        }
-      }
-      const vehicleId = `vehicle-${driverId}`;
+    const loadDriverDay = async () => {
+      try {
+        const payload = await apiClient.get<{
+          date?: string;
+          vehicle?: { id?: number; name?: string } | null;
+          stops?: DriverDayStop[];
+          message?: string;
+        }>(API.driver.day);
 
-      if (!navigator.geolocation) {
-        toast.error("Tu dispositivo no soporta GPS");
-        return;
-      }
+        if (cancelled) return;
 
-      toast.info("📍 GPS Activo: Transmitiendo ubicación...");
+        const vehicleId = payload?.vehicle?.id ? Number(payload.vehicle.id) : null;
+        const stops = Array.isArray(payload?.stops) ? payload.stops : [];
+        setAssignedVehicleId(vehicleId);
+        setDayStops(stops);
 
-      watchId = navigator.geolocation.watchPosition(
-        async (position) => {
-          const { latitude, longitude, speed, heading } = position.coords;
-          
-          const status = step === 'route' ? 'active' : 'stopped';
+        const nextStop =
+          stops.find((s) => !['Completada', 'Cancelada', 'completed', 'cancelled'].includes(String(s.status || ''))) ||
+          stops[0];
 
-          const vehicleData = {
-            id: vehicleId,
-            name: `Móvil ${driverName}`,
-            driver: driverName,
-            location: { lat: latitude, lng: longitude },
-            status: status,
-            speed: speed,
-            heading: heading,
-            lastUpdate: new Date().toISOString(),
-            // Metadatos adicionales
-            battery: 85, // Idealmente usar Battery API
-            nextStop: 'Av. Larco 123, Miraflores',
-            eta: 'Calculando...'
-          };
-
-          try {
-            // 1. Enviar al Servidor (Persistencia KV Store)
-            await apiClient.post('/vehicles', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${publicAnonKey}`
-              },
-              body: JSON.stringify(vehicleData)
-            });
-
-            // 2. Guardar en localStorage como fallback para UI local
-            localStorage.setItem('driver_update', JSON.stringify(vehicleData));
-            
-          } catch (error) {
-            console.error("Error transmitiendo ubicación:", error);
+        if (nextStop) {
+          setClientData(mapStopToClient(nextStop));
+          setCurrentAppointmentId(Number(nextStop.appointment_id) || null);
+          setUsingDemoStop(false);
+          const cat = String(nextStop.service_category || '').toLowerCase();
+          if (cat.includes('vet') || cat.includes('medic') || cat.includes('consult')) {
+            setServiceType('vet');
+          } else if (cat.includes('groom') || cat.includes('baño') || cat.includes('estetic')) {
+            setServiceType('grooming');
           }
-        },
-        (error) => {
-          console.error("Error GPS:", error);
-          toast.error("Error de señal GPS");
-        },
-        { 
-          enableHighAccuracy: true, 
-          timeout: 20000, 
-          maximumAge: 1000 
+        } else {
+          setClientData(DEMO_CLIENT);
+          setCurrentAppointmentId(null);
+          setUsingDemoStop(true);
+          if (payload?.message) {
+            toast.info(payload.message);
+          } else if (!vehicleId) {
+            toast.info('Sin vehículo asignado: mostrando parada demo');
+          }
         }
-      );
+      } catch (e) {
+        console.error('Error cargando día del chofer:', e);
+        if (!cancelled) {
+          setUsingDemoStop(true);
+          setClientData(DEMO_CLIENT);
+        }
+      }
     };
 
-    startTracking();
+    void loadDriverDay();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // GPS → PUT /vehicles/{id} con lat/lng reales
+  useEffect(() => {
+    if (!assignedVehicleId) return;
+
+    let watchId: number | undefined;
+    let lastSentAt = 0;
+
+    if (!navigator.geolocation) {
+      toast.error('Tu dispositivo no soporta GPS');
+      return;
+    }
+
+    toast.info('GPS activo: transmitiendo ubicación…');
+
+    watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const now = Date.now();
+        if (now - lastSentAt < 8000) return;
+        lastSentAt = now;
+
+        const { latitude, longitude, speed, heading } = position.coords;
+        const vehicleData = {
+          id: assignedVehicleId,
+          location: { lat: latitude, lng: longitude },
+          status: step === 'route' ? 'active' : 'stopped',
+          speed,
+          heading,
+          lastUpdate: new Date().toISOString(),
+          nextStop: clientData.address,
+        };
+
+        try {
+          await apiClient.put(API.vehicles.byId(assignedVehicleId), {
+            current_latitude: latitude,
+            current_longitude: longitude,
+          });
+          localStorage.setItem('driver_update', JSON.stringify(vehicleData));
+        } catch (error) {
+          console.error('Error transmitiendo ubicación:', error);
+        }
+      },
+      (error) => {
+        console.error('Error GPS:', error);
+        if (!gpsErrorShown.current) {
+          gpsErrorShown.current = true;
+          toast.error('Error de señal GPS');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 5000,
+      }
+    );
 
     return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
     };
-  }, [step]);
-  // ---------------------------------------
+  }, [assignedVehicleId, step, clientData.address]);
+
+  const syncAppointmentStatus = async (status: string) => {
+    if (!currentAppointmentId || usingDemoStop) return;
+    try {
+      await apiClient.post(API.appointments.changeStatus(currentAppointmentId), { status });
+    } catch (e) {
+      console.error('No se pudo actualizar estado de cita:', e);
+    }
+  };
+
+  const advanceStep = (next: ServiceStep) => {
+    setStep(next);
+    if (next === 'arrived') void syncAppointmentStatus('En Proceso');
+    if (next === 'completed') {
+      void syncAppointmentStatus('Completada');
+      const remaining = dayStops.filter(
+        (s) =>
+          s.appointment_id !== currentAppointmentId &&
+          !['Completada', 'Cancelada', 'completed', 'cancelled'].includes(String(s.status || ''))
+      );
+      const nextStop = remaining[0];
+      if (nextStop) {
+        setTimeout(() => {
+          setClientData(mapStopToClient(nextStop));
+          setCurrentAppointmentId(Number(nextStop.appointment_id) || null);
+          setStep('route');
+          toast.success(`Siguiente parada: ${nextStop.client?.name || 'cliente'}`);
+        }, 1500);
+      }
+    }
+  };
 
   const [showHistory, setShowHistory] = useState(false);
   const [photoEvidence, setPhotoEvidence] = useState<string | null>(null);
@@ -329,15 +438,8 @@ export function DriverSession() {
     notes: ''
   });
 
-  // Datos del Cliente
-  const clientData = {
-    name: 'María González',
-    pet: 'Thor',
-    breed: 'Golden Retriever',
-    address: 'Av. Larco 123, Miraflores',
-    phone: '999888777',
-    avatar: 'https://images.unsplash.com/photo-1633722715463-d30f4f325e27?w=150&h=150&fit=crop'
-  };
+  // Datos del Cliente (demo o parada real del día)
+  // clientData viene de useState + loadDriverDay
 
   // Catálogos de Servicios (Simulados - Conectados a Módulo de Inventario)
   const groomingCatalog: ServiceItem[] = [
@@ -499,6 +601,13 @@ export function DriverSession() {
         
         {/* Switch de Modo para Demo */}
         <div className="absolute top-4 left-4 z-20 flex gap-2">
+           {usingDemoStop ? (
+             <Badge className="bg-amber-500/90 text-white border-0 shadow-lg">Demo</Badge>
+           ) : (
+             <Badge className="bg-emerald-600/90 text-white border-0 shadow-lg">
+               {dayStops.length} parada{dayStops.length === 1 ? '' : 's'}
+             </Badge>
+           )}
            <Button 
             size="sm" 
             variant={serviceType === 'grooming' ? 'default' : 'secondary'}
@@ -556,7 +665,7 @@ export function DriverSession() {
               className={`w-full h-14 text-lg font-bold shadow-lg transition-all active:scale-[0.98] rounded-xl ${
                 serviceType === 'grooming' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20'
               }`} 
-              onClick={() => setStep('arrived')}
+              onClick={() => advanceStep('arrived')}
             >
               <Navigation className="w-6 h-6 mr-2" />
               LLEGUÉ AL LUGAR
@@ -1339,7 +1448,7 @@ export function DriverSession() {
                   <QrCode className="w-40 h-40 text-slate-900" />
                 </div>
                 <p className="font-medium text-slate-600">Escanea para pagar</p>
-                <Button className="w-full h-14 text-lg bg-purple-600 hover:bg-purple-700" onClick={() => setStep('completed')}>
+                <Button className="w-full h-14 text-lg bg-purple-600 hover:bg-purple-700" onClick={() => advanceStep('completed')}>
                   Pago Confirmado
                 </Button>
               </TabsContent>
@@ -1350,7 +1459,7 @@ export function DriverSession() {
                     <p className="text-blue-900 font-medium">Usa el POS Izipay/Niubiz</p>
                     <p className="text-sm text-blue-700">Monto a cobrar: S/ {totalAmount.toFixed(2)}</p>
                  </Card>
-                 <Button className="w-full h-14 text-lg bg-blue-600" onClick={() => setStep('completed')}>
+                 <Button className="w-full h-14 text-lg bg-blue-600" onClick={() => advanceStep('completed')}>
                   Pago Aprobado
                 </Button>
               </TabsContent>
@@ -1364,7 +1473,7 @@ export function DriverSession() {
                    <span className="text-green-900 font-bold">Vuelto:</span>
                    <span className="text-green-700 font-bold">S/ 0.00</span>
                 </Card>
-                <Button className="w-full h-14 text-lg bg-green-600" onClick={() => setStep('completed')}>
+                <Button className="w-full h-14 text-lg bg-green-600" onClick={() => advanceStep('completed')}>
                   Efectivo Recibido
                 </Button>
               </TabsContent>

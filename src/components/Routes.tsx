@@ -24,11 +24,17 @@ import { AdvancedAnalyticsDashboard } from './routes/AdvancedAnalyticsDashboard'
 import type { Parada, Ruta } from '../lib/rutasOptimizacion';
 import { apiClient } from '../utils/api/client';
 
+function unwrapApiList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
 const api = {
   fetch: async (endpoint: string) => {
     try {
-      const data = await apiClient.get<any[]>(endpoint);
-      return Array.isArray(data) ? data : [];
+      const data = await apiClient.get<any>(endpoint);
+      return unwrapApiList(data);
     } catch (e) {
       console.error(`Error fetching ${endpoint}`, e);
       return null;
@@ -36,6 +42,10 @@ const api = {
   },
   save: async (endpoint: string, data: any) => {
     try {
+      if (endpoint === '/routes' || endpoint === '/vehicle-configs') {
+        console.info(`[Routes] Persistencia via ${endpoint} omitida (usar Planes de ruta / Flota)`);
+        return null;
+      }
       return await apiClient.post(endpoint, data);
     } catch (e) {
       console.error(`Error saving to ${endpoint}`, e);
@@ -596,17 +606,17 @@ export function Routes({ onNavigate }: { onNavigate?: (tab: string) => void }) {
     };
     loadVehicles();
 
-    // 2. Polling para actualizaciones (usa backend Laravel)
+    // 2. Polling de flota (mismo listado; GPS llega vía PUT del App Chofer)
     const pollInterval = setInterval(async () => {
       try {
-        const vehicles = await api.get('/vehicles/live-tracking');
+        const vehicles = await api.fetch('/vehicles');
         if (Array.isArray(vehicles) && vehicles.length > 0) {
           setLiveVehicles(vehicles);
         }
       } catch (e) {
         console.error('Error polling vehicle positions:', e);
       }
-    }, 5000); // Poll cada 5 segundos
+    }, 15000);
 
     return () => {
       clearInterval(pollInterval);
@@ -633,12 +643,8 @@ export function Routes({ onNavigate }: { onNavigate?: (tab: string) => void }) {
           });
           setZones(normalized);
         } else if (remoteZones && Array.isArray(remoteZones) && remoteZones.length === 0) {
-          // Initialize DB with current local data (Seed) SOLO si el endpoint existe y respondió OK.
-          console.log('Seeding Zones DB...');
-          for (const z of zones) {
-            // fire-and-forget, pero sin reventar la app si falla
-            void api.save('/zones', z);
-          }
+          // No sembrar demos automáticamente: evita contaminar zonas reales de la empresa.
+          console.info('[Routes] Sin zonas remotas; se mantienen las de sesión (no seed).');
         }
       } catch (e) { console.error('Sync error zones', e); }
 

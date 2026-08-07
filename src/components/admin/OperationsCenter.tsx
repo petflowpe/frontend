@@ -16,14 +16,48 @@ import { ScrollArea } from '../ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useAuth } from '../../context/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
+import { apiClient } from '../../utils/api/client';
+import { API } from '../../utils/api/endpoints';
 
 type LiveUnit = {
   id: string;
   name: string;
   driver: string;
   status: string;
+  statusLabel: string;
   nextStop: string;
+  hasCoords: boolean;
 };
+
+type VehicleAlert = {
+  id: string;
+  type?: string;
+  severity?: string;
+  vehicle_id?: number | string;
+  vehicle_name?: string;
+  title: string;
+  description?: string;
+  due_date?: string;
+};
+
+function statusLabelOf(status: string): string {
+  switch (status) {
+    case 'ready':
+      return 'Lista';
+    case 'maintenance':
+      return 'Mantenimiento';
+    case 'stopped':
+      return 'Fuera de servicio';
+    default:
+      return status;
+  }
+}
+
+function severityClass(severity?: string): string {
+  if (severity === 'critical') return 'border-red-300 bg-red-50 text-red-800';
+  if (severity === 'high') return 'border-amber-300 bg-amber-50 text-amber-900';
+  return 'border-slate-200 bg-slate-50 text-slate-700';
+}
 
 export function OperationsCenter() {
   const { user } = useAuth();
@@ -32,17 +66,98 @@ export function OperationsCenter() {
   const [activeTab, setActiveTab] = useState('units');
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [alerts, setAlerts] = useState<VehicleAlert[]>([]);
+  const [nextStopByVehicle, setNextStopByVehicle] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAlerts = async () => {
+      try {
+        const data = await apiClient.get<VehicleAlert[] | { items?: VehicleAlert[] }>(API.vehicles.alerts);
+        const list = Array.isArray(data) ? data : Array.isArray((data as any)?.items) ? (data as any).items : [];
+        if (!cancelled) setAlerts(list);
+      } catch (e) {
+        console.error('Error cargando alertas de flota:', e);
+        if (!cancelled) setAlerts([]);
+      }
+    };
+
+    void loadAlerts();
+    const t = setInterval(loadAlerts, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [companyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const loadSchedules = async () => {
+      const entries: Record<string, string> = {};
+      const activeVehicles = (vehicles || []).slice(0, 12);
+
+      await Promise.all(
+        activeVehicles.map(async (v) => {
+          try {
+            const payload = await apiClient.get<{
+              stops?: Array<{
+                status?: string;
+                address?: string;
+                district?: string;
+                client?: { name?: string };
+              }>;
+            }>(API.routePlans.dailySchedule, {
+              date: today,
+              vehicle_id: v.id,
+            });
+            const stops = Array.isArray(payload?.stops) ? payload.stops : [];
+            const next =
+              stops.find((s) => !['Completada', 'Cancelada'].includes(String(s.status || ''))) || stops[0];
+            if (next) {
+              const label = [next.client?.name, next.address || next.district].filter(Boolean).join(' · ');
+              entries[String(v.id)] = label || 'Ruta del día';
+            }
+          } catch {
+            // sin plan diario: se mantiene zona/ubicación del vehículo
+          }
+        })
+      );
+
+      if (!cancelled) setNextStopByVehicle(entries);
+    };
+
+    if ((vehicles || []).length > 0) void loadSchedules();
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicles]);
 
   const liveUnits: LiveUnit[] = useMemo(
     () =>
-      (vehicles || []).map((v) => ({
-        id: String(v.id),
-        name: v.name || `Unidad ${v.id}`,
-        driver: v.driver_name || v.driver || 'Sin conductor',
-        status: v.status === 'active' || v.activo !== false ? 'ready' : 'stopped',
-        nextStop: v.location || v.zona_operacion || 'Sin destino',
-      })),
-    [vehicles]
+      (vehicles || []).map((v) => {
+        const rawStatus = String(v.status || '');
+        let status = 'stopped';
+        if (rawStatus === 'maintenance') status = 'maintenance';
+        else if (rawStatus === 'active' || v.activo !== false) status = 'ready';
+
+        return {
+          id: String(v.id),
+          name: v.name || `Unidad ${v.id}`,
+          driver: v.driver_name || v.driver || 'Sin conductor',
+          status,
+          statusLabel: statusLabelOf(status),
+          nextStop:
+            nextStopByVehicle[String(v.id)] ||
+            v.location ||
+            v.zona_operacion ||
+            'Sin destino asignado',
+          hasCoords: Boolean(v.location && String(v.location).includes('ubicación')),
+        };
+      }),
+    [vehicles, nextStopByVehicle]
   );
 
   useEffect(() => {
@@ -50,6 +165,7 @@ export function OperationsCenter() {
   }, [liveUnits, selectedUnit]);
 
   const activeCount = liveUnits.filter((u) => u.status === 'ready').length;
+  const criticalAlerts = alerts.filter((a) => a.severity === 'critical' || a.severity === 'high');
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col bg-slate-50 dark:bg-slate-950">
@@ -65,7 +181,9 @@ export function OperationsCenter() {
                 BETA
               </Badge>
             </h1>
-            <p className="text-xs text-muted-foreground">Flota real de tu empresa · GPS en vivo pendiente</p>
+            <p className="text-xs text-muted-foreground">
+              Flota de tu empresa · GPS desde App Chofer · Alertas de documentos
+            </p>
           </div>
         </div>
 
@@ -82,7 +200,7 @@ export function OperationsCenter() {
           <div className="h-10 w-px self-center bg-slate-200" />
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <div className="text-2xl font-bold leading-none text-amber-600">0</div>
+              <div className="text-2xl font-bold leading-none text-amber-600">{alerts.length}</div>
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alertas</div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
@@ -114,11 +232,14 @@ export function OperationsCenter() {
             <div className="absolute inset-0 flex items-center justify-center p-4">
               <Card className="max-w-md bg-white/95 p-4 text-center shadow">
                 <Zap className="mx-auto mb-2 h-6 w-6 text-cyan-600" />
-                <p className="font-semibold">Mapa en vivo (próximamente)</p>
+                <p className="font-semibold">Mapa operativo</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {loading
                     ? 'Cargando unidades desde API…'
-                    : `${liveUnits.length} vehículo(s) cargados desde tu empresa`}
+                    : `${liveUnits.length} vehículo(s) · ${criticalAlerts.length} alerta(s) prioritarias`}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  El mapa en vivo con pins GPS reales se habilitará cuando haya más telemetría en flota.
                 </p>
               </Card>
             </div>
@@ -180,7 +301,7 @@ export function OperationsCenter() {
                           <Truck className="h-4 w-4 text-slate-500" />
                           <span className="text-sm font-medium">{unit.name}</span>
                         </div>
-                        <Badge variant="secondary">{unit.status}</Badge>
+                        <Badge variant="secondary">{unit.statusLabel}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">{unit.driver}</p>
                       <p className="text-xs text-muted-foreground">{unit.nextStop}</p>
@@ -189,10 +310,32 @@ export function OperationsCenter() {
                 )}
               </ScrollArea>
             </TabsContent>
-            <TabsContent value="alerts" className="flex-1">
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Sin alertas automáticas todavía. Se conectarán con telemetría y retrasos de ruta.
-              </div>
+            <TabsContent value="alerts" className="min-h-0 flex-1">
+              <ScrollArea className="h-full pr-2">
+                {alerts.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    Sin alertas de flota. Se revisan seguro, ITV, mantenimiento e inspecciones.
+                  </div>
+                ) : (
+                  alerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`mb-2 rounded-lg border p-3 text-sm ${severityClass(alert.severity)}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-medium">{alert.title}</p>
+                        <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+                          {alert.severity || 'info'}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs opacity-90">{alert.vehicle_name || 'Vehículo'}</p>
+                      {alert.description ? (
+                        <p className="mt-1 text-xs opacity-80">{alert.description}</p>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </ScrollArea>
             </TabsContent>
             <TabsContent value="chat" className="flex-1">
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
