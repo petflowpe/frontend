@@ -873,8 +873,6 @@ export function Purchases() {
           )}
         </TabsContent>
 
-        </TabsContent>
-
         <TabsContent value="alerts" className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-4">

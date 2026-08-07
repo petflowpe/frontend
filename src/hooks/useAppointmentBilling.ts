@@ -13,6 +13,10 @@ export interface BillingPreview {
   numero_existente?: string;
   client: { razon_social: string; numero_documento: string; tipo_documento: string };
   detalles: { descripcion: string; cantidad: number }[];
+  payment_status?: string;
+  suggested_forma_pago?: string;
+  supports_credito?: boolean;
+  default_credit_days?: number;
 }
 
 export interface IssueDocumentResult {
@@ -90,7 +94,13 @@ export function useAppointmentBilling() {
   const issueDocument = useCallback(
     async (
       appointmentId: string | number,
-      options?: { sendToSunat?: boolean; tipo?: 'auto' | '01' | '03' }
+      options?: {
+        sendToSunat?: boolean;
+        tipo?: 'auto' | '01' | '03';
+        formaPagoTipo?: 'Contado' | 'Credito';
+        creditDays?: number;
+        formaPagoCuotas?: Array<{ moneda?: string; monto: number; fecha_pago: string }>;
+      }
     ) => {
       setIssuing(true);
       try {
@@ -99,6 +109,9 @@ export function useAppointmentBilling() {
           {
             tipo: options?.tipo ?? 'auto',
             send_to_sunat: options?.sendToSunat ?? false,
+            forma_pago_tipo: options?.formaPagoTipo,
+            credit_days: options?.creditDays,
+            forma_pago_cuotas: options?.formaPagoCuotas,
           }
         );
         const data = unwrap(res);

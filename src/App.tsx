@@ -35,6 +35,7 @@ const PetsManagement = lazy(() => import('./components/PetsManagement').then(m =
 const Routes = lazy(() => import('./components/Routes').then(m => ({ default: m.Routes })));
 const Invoicing = lazy(() => import('./components/Invoicing').then(m => ({ default: m.Invoicing })));
 const Payments = lazy(() => import('./components/Payments').then(m => ({ default: m.Payments })));
+const Treasury = lazy(() => import('./components/Treasury').then(m => ({ default: m.Treasury })));
 const Staff = lazy(() => import('./components/Staff').then(m => ({ default: m.Staff })));
 const Reports = lazy(() => import('./components/Reports').then(m => ({ default: m.Reports })));
 const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
@@ -500,6 +501,7 @@ function AppContent() {
       case 'routes': return <Routes onNavigate={setActiveTab} />;
       case 'invoicing': return <Invoicing currentUser={currentUser} />;
       case 'payments': return <Payments />;
+      case 'treasury': return <Treasury />;
       case 'staff': return <Staff />;
       case 'reports': return <Reports />;
       case 'settings': return <Settings currentUser={currentUser} />;

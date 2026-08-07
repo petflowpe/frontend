@@ -64,6 +64,8 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
   const [invoiceOrigin, setInvoiceOrigin] = useState<'cita' | 'venta_directa' | 'manual'>('manual');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
+  const [formaPagoTipo, setFormaPagoTipo] = useState<'Contado' | 'Credito'>('Contado');
+  const [creditDays, setCreditDays] = useState('30');
   const [issueDocOpen, setIssueDocOpen] = useState(false);
   const [issueAppointmentId, setIssueAppointmentId] = useState<string | null>(null);
   const [issueAppointmentLabel, setIssueAppointmentLabel] = useState('');
@@ -249,9 +251,16 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
       descuento: 0,
       igv: getCartTax(getCartSubtotal()),
       total: getCartTotal(),
-      formaPago: paymentMethod,
-      estado: 'pagada' as const,
-      notas: invoiceNotes
+      formaPago: formaPagoTipo === 'Credito' ? `credito_${creditDays}d` : paymentMethod,
+      estado: (formaPagoTipo === 'Credito' ? 'pendiente' : 'pagada') as const,
+      notas: [
+        invoiceNotes,
+        formaPagoTipo === 'Credito'
+          ? `Forma pago: Crédito ${creditDays} días`
+          : `Forma pago: Contado · ${paymentMethod}`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
     };
 
     // Guardar factura (El servidor validará y descontará stock automáticamente)
@@ -510,20 +519,54 @@ export function Invoicing({ currentUser }: { currentUser?: any }) {
                         </div>
                       )}
                       <div>
-                        <Label>Forma de Pago</Label>
-                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                        <Label>Contado / Crédito</Label>
+                        <Select
+                          value={formaPagoTipo}
+                          onValueChange={(v) => setFormaPagoTipo(v as 'Contado' | 'Credito')}
+                        >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="efectivo">Efectivo</SelectItem>
-                            <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                            <SelectItem value="transferencia">Transferencia</SelectItem>
-                            <SelectItem value="yape">Yape</SelectItem>
-                            <SelectItem value="plin">Plin</SelectItem>
+                            <SelectItem value="Contado">Contado</SelectItem>
+                            <SelectItem value="Credito">Crédito</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+                      {formaPagoTipo === 'Credito' ? (
+                        <div>
+                          <Label>Días de crédito</Label>
+                          <Select value={creditDays} onValueChange={setCreditDays}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="7">7 días</SelectItem>
+                              <SelectItem value="15">15 días</SelectItem>
+                              <SelectItem value="30">30 días</SelectItem>
+                              <SelectItem value="45">45 días</SelectItem>
+                              <SelectItem value="60">60 días</SelectItem>
+                              <SelectItem value="90">90 días</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : (
+                        <div>
+                          <Label>Medio de pago</Label>
+                          <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="efectivo">Efectivo</SelectItem>
+                              <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                              <SelectItem value="transferencia">Transferencia</SelectItem>
+                              <SelectItem value="yape">Yape</SelectItem>
+                              <SelectItem value="plin">Plin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   </Card>
                 </div>

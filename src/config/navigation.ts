@@ -119,6 +119,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'invoicing', label: 'Facturación', icon: Receipt, color: 'text-yellow-500' },
       { id: 'payments', label: 'Pagos', icon: CreditCard, color: 'text-emerald-500' },
+      { id: 'treasury', label: 'Tesorería', icon: Wallet, color: 'text-emerald-600' },
       { id: 'cash-register', label: 'Cierre de Caja', icon: Calculator, color: 'text-green-500' },
       { id: 'financial', label: 'Gestión Financiera', icon: Wallet, color: 'text-emerald-600' },
       { id: 'accounting', label: 'Contabilidad', icon: FileSpreadsheet, color: 'text-emerald-500' },

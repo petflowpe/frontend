@@ -131,6 +131,7 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   // Finanzas
   invoicing: { permissions: ['invoices.view', 'invoices.*', 'boletas.view', 'boletas.*'] },
   payments: { roles: ['super_admin', 'company_admin', 'company_user'] },
+  treasury: { roles: ['super_admin', 'company_admin', 'company_user'] },
   'cash-register': { roles: ['super_admin', 'company_admin', 'company_user'] },
   accounting: { roles: ['super_admin', 'company_admin'] },
   financial: { roles: ['super_admin', 'company_admin'] },

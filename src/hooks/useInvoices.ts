@@ -116,8 +116,8 @@ export const useInvoices = () => {
       descuento: parseFloat(row.discount) || 0,
       igv: parseFloat(row.mto_igv) || parseFloat(row.tax_amount) || 0,
       total,
-      formaPago: row.payment_method || 'efectivo',
-      estado: mapDocumentStatus(row.status),
+      formaPago: row.forma_pago_tipo || row.payment_method || 'efectivo',
+      estado: mapDocumentStatus(row.status || (row.forma_pago_tipo === 'Credito' ? 'pendiente' : undefined)),
       estadoSunat: row.estado_sunat,
       notas: row.notes || '',
     };

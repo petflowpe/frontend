@@ -174,6 +174,9 @@ export const API = {
     create: '/payments',
     checkout: '/payments/checkout',
   },
+  treasury: {
+    receivables: '/treasury/receivables',
+  },
   paymentGateways: {
     get: (companyId: string | number) => `/companies/${companyId}/payment-gateways`,
     update: (companyId: string | number) => `/companies/${companyId}/payment-gateways`,
