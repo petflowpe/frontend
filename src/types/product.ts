@@ -135,5 +135,6 @@ export interface ProductMetadata {
   line?: string;
   subcategory?: string;
   status?: ProductStatus;
+  preferred_area_id?: number;
   extended?: ProductExtended;
 }

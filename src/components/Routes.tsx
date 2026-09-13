@@ -1237,6 +1237,21 @@ export function Routes({ onNavigate }: { onNavigate?: (tab: string) => void }) {
         </Card>
       </div>
 
+      <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="flex items-center gap-2">
+          Planificador en mejora
+          <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300">
+            BETA
+          </Badge>
+        </AlertTitle>
+        <AlertDescription>
+          La UI se mantiene completa. La flota y zonas se sincronizan con el API; la persistencia legacy
+          de <code>/routes</code> está desactivada a propósito. Para el día del chofer usa{' '}
+          <strong>App Chofer</strong> (citas reales vía <code>/driver/day</code>).
+        </AlertDescription>
+      </Alert>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="today">📍 Hoy</TabsTrigger>

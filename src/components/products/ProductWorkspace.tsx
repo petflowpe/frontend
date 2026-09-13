@@ -518,18 +518,13 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                     <IconField Icon={Rows3}>
                       <Input
                         value={draft.code}
-                        readOnly={!isNew}
-                        disabled={!isNew}
-                        placeholder={isNew ? 'Autogenerado si se deja vacío' : undefined}
-                        className={!isNew ? 'opacity-70' : undefined}
+                        placeholder={isNew ? 'Autogenerado si se deja vacío' : 'SKU del producto'}
                         onChange={(e) => patchDraft((p) => ({ ...p, code: e.target.value }))}
                       />
                     </IconField>
-                    {!isNew && (
-                      <p className="text-[11px] text-muted-foreground">
-                        El SKU no es editable desde el API.
-                      </p>
-                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      Único por empresa. Si lo dejas vacío al crear, el sistema lo genera.
+                    </p>
                   </div>
                 </div>
 
@@ -776,7 +771,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                       </SelectContent>
                     </Select>
                     <p className="text-[11px] text-muted-foreground">
-                      Almacén sugerido para los ajustes de stock.
+                      Almacén preferido para ajustes de stock (se guarda con el producto).
                     </p>
                   </div>
                 </div>

@@ -71,7 +71,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Inicio',
     defaultOpen: true,
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-blue-500' },
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-blue-500', badge: 'BETA' },
       { id: 'notifications', label: 'Notificaciones', icon: BellRing, color: 'text-amber-500' },
     ],
   },
@@ -95,7 +95,7 @@ export const NAV_SECTIONS: NavSection[] = [
     defaultOpen: true,
     items: [
       { id: 'operations-center', label: 'Centro de Control', icon: Zap, color: 'text-blue-600', badge: 'BETA' },
-      { id: 'routes', label: 'Planificador de Rutas', icon: MapPin, color: 'text-red-500' },
+      { id: 'routes', label: 'Planificador de Rutas', icon: MapPin, color: 'text-red-500', badge: 'BETA' },
       { id: 'driver-session', label: 'App Chofer', icon: Car, color: 'text-slate-300' },
       { id: 'public-tracking', label: 'Tracking Cliente', icon: Navigation, color: 'text-cyan-400' },
       { id: 'vehicles', label: 'Vehículos y Flota', icon: Truck, color: 'text-lime-500' },
@@ -121,8 +121,8 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'payments', label: 'Pagos', icon: CreditCard, color: 'text-emerald-500' },
       { id: 'treasury', label: 'Tesorería', icon: Wallet, color: 'text-emerald-600' },
       { id: 'cash-register', label: 'Cierre de Caja', icon: Calculator, color: 'text-green-500' },
-      { id: 'financial', label: 'Gestión Financiera', icon: Wallet, color: 'text-emerald-600' },
-      { id: 'accounting', label: 'Contabilidad', icon: FileSpreadsheet, color: 'text-emerald-500' },
+      { id: 'financial', label: 'Gestión Financiera', icon: Wallet, color: 'text-emerald-600', badge: 'BETA' },
+      { id: 'accounting', label: 'Contabilidad', icon: FileSpreadsheet, color: 'text-emerald-500', badge: 'BETA' },
       {
         label: 'SUNAT Perú',
         icon: Building2,
@@ -131,7 +131,7 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           { id: 'sunat-config', label: 'Configuración', icon: Building2, color: 'text-red-600' },
           { id: 'electronic-invoicing', label: 'Facturación Electrónica', icon: FileCheck, color: 'text-green-600' },
-          { id: 'electronic-books', label: 'Libros Electrónicos', icon: BookOpen, color: 'text-blue-600' },
+          { id: 'electronic-books', label: 'Libros Electrónicos', icon: BookOpen, color: 'text-blue-600', badge: 'BETA' },
           { id: 'sunat-reports', label: 'Reportes SUNAT', icon: FileText, color: 'text-purple-600' },
         ],
       },

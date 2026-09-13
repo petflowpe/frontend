@@ -54,6 +54,9 @@ function fromBackendFormat(backendProduct: any): Product {
     0;
 
   const firstArea = Array.isArray(stocks) ? stocks[0]?.area : null;
+  const metadata = parseMetadata(backendProduct.metadata);
+  const preferredAreaId =
+    metadata?.preferred_area_id != null ? Number(metadata.preferred_area_id) : undefined;
 
   return {
     id: String(backendProduct.id),
@@ -69,7 +72,7 @@ function fromBackendFormat(backendProduct: any): Product {
       backendProduct.supplierRelation?.name ||
       backendProduct.supplier?.name ||
       '',
-    areaId: backendProduct.area_id ?? firstArea?.id ?? stocks[0]?.area_id,
+    areaId: backendProduct.area_id ?? preferredAreaId ?? firstArea?.id ?? stocks[0]?.area_id,
     price: parseFloat(backendProduct.unit_price ?? backendProduct.sale_price ?? backendProduct.price) || 0,
     cost: parseFloat(backendProduct.cost_price ?? backendProduct.cost) || 0,
     stock: typeof stockQty === 'number' ? stockQty : parseFloat(String(stockQty)) || 0,
@@ -81,7 +84,7 @@ function fromBackendFormat(backendProduct: any): Product {
     barcode: backendProduct.barcode || undefined,
     description: backendProduct.description || undefined,
     maxStock: backendProduct.max_stock != null ? parseFloat(backendProduct.max_stock) || 0 : undefined,
-    metadata: parseMetadata(backendProduct.metadata),
+    metadata,
   };
 }
 
@@ -201,6 +204,16 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
       if ('description' in changes) payload.description = changes.description || null;
       if ('maxStock' in changes) payload.max_stock = changes.maxStock ?? null;
       if ('metadata' in changes) payload.metadata = changes.metadata ?? null;
+      if ('areaId' in changes) {
+        payload.area_id = changes.areaId ?? null;
+        // También refuerza metadata por si el backend fusiona preferencia de almacén
+        const meta = {
+          ...((payload.metadata as Record<string, unknown>) || changes.metadata || {}),
+          preferred_area_id: changes.areaId ?? undefined,
+        };
+        if (changes.areaId == null) delete meta.preferred_area_id;
+        payload.metadata = meta;
+      }
 
       await apiClient.put(API.products.byId(id), payload);
       await loadProducts();

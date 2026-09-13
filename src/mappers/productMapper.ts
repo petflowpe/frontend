@@ -93,7 +93,7 @@ export function toUiProduct(product: Product, suppliers: Supplier[] = []): UiPro
     unit: product.unit || 'NIU',
     supplierId: product.supplierId,
     supplierName: supplier?.name || product.supplierName || '',
-    areaId: product.areaId,
+    areaId: product.areaId ?? meta.preferred_area_id,
     location: product.location ?? '',
     salePrice,
     costPrice,
@@ -121,6 +121,7 @@ export function buildProductMetadata(ui: UiProduct): Record<string, unknown> {
     line: ui.line || undefined,
     subcategory: ui.subcategory?.trim() || undefined,
     status: ui.status,
+    preferred_area_id: ui.areaId,
     extended: ui.extended,
   };
   return metadata as unknown as Record<string, unknown>;

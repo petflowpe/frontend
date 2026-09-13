@@ -4,7 +4,8 @@ import {
   AlertTriangle, DollarSign, CreditCard, QrCode, 
   ChevronRight, ArrowLeft, LogOut, Stethoscope, 
   Thermometer, Activity, Syringe, Pill, ClipboardList, Scissors, FileText, X, Search, Package,
-  PenTool, CalendarCheck, Calendar as CalendarIcon, Microscope, FlaskConical, TestTube, UploadCloud, FileCheck
+  PenTool, CalendarCheck, Calendar as CalendarIcon, Microscope, FlaskConical, TestTube, UploadCloud, FileCheck,
+  RefreshCw
 } from 'lucide-react';
 import { PetMedicalProfile } from '../veterinary/PetMedicalProfile';
 import { Card } from '../ui/card';
@@ -61,8 +62,10 @@ type DriverDayStop = {
   order: number;
   appointment_id: number;
   status?: string;
+  time?: string;
   address?: string;
   district?: string;
+  service_name?: string;
   service_category?: string;
   client?: { name?: string; phone?: string };
   pet?: { name?: string; breed?: string; species?: string };
@@ -76,6 +79,33 @@ const DEMO_CLIENT: ClientStopData = {
   phone: '999888777',
   avatar: 'https://images.unsplash.com/photo-1633722715463-d30f4f325e27?w=150&h=150&fit=crop',
 };
+
+const DONE_STATUSES = ['Completada', 'Cancelada', 'completed', 'cancelled'];
+
+function isStopDone(status?: string) {
+  return DONE_STATUSES.includes(String(status || ''));
+}
+
+function resolveServiceType(category?: string, serviceName?: string): ServiceType {
+  const blob = `${category || ''} ${serviceName || ''}`.toLowerCase();
+  if (
+    blob.includes('movilvet') ||
+    blob.includes('vet') ||
+    blob.includes('medic') ||
+    blob.includes('consult')
+  ) {
+    return 'vet';
+  }
+  if (
+    blob.includes('peluq') ||
+    blob.includes('groom') ||
+    blob.includes('baño') ||
+    blob.includes('estetic')
+  ) {
+    return 'grooming';
+  }
+  return 'grooming';
+}
 
 function mapStopToClient(stop: DriverDayStop): ClientStopData {
   const addressParts = [stop.address, stop.district].filter(Boolean);
@@ -93,69 +123,77 @@ export function DriverSession() {
   const [step, setStep] = useState<ServiceStep>('route');
   const [serviceType, setServiceType] = useState<ServiceType>('grooming');
   const [assignedVehicleId, setAssignedVehicleId] = useState<number | null>(null);
+  const [vehicleName, setVehicleName] = useState<string>('');
   const [currentAppointmentId, setCurrentAppointmentId] = useState<number | null>(null);
+  const [currentServiceName, setCurrentServiceName] = useState<string>('');
   const [dayStops, setDayStops] = useState<DriverDayStop[]>([]);
   const [usingDemoStop, setUsingDemoStop] = useState(true);
+  const [dayLoading, setDayLoading] = useState(true);
+  const [dayMessage, setDayMessage] = useState<string>('');
   const [clientData, setClientData] = useState<ClientStopData>(DEMO_CLIENT);
   const gpsErrorShown = useRef(false);
 
+  const applyStop = (stop: DriverDayStop) => {
+    setClientData(mapStopToClient(stop));
+    setCurrentAppointmentId(Number(stop.appointment_id) || null);
+    setCurrentServiceName(stop.service_name || '');
+    setUsingDemoStop(false);
+    setServiceType(resolveServiceType(stop.service_category, stop.service_name));
+  };
+
+  const applyDemoStop = (reason?: string) => {
+    setClientData(DEMO_CLIENT);
+    setCurrentAppointmentId(null);
+    setCurrentServiceName('');
+    setUsingDemoStop(true);
+    if (reason) setDayMessage(reason);
+  };
+
+  const loadDriverDay = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setDayLoading(true);
+    try {
+      const payload = await apiClient.get<{
+        date?: string;
+        vehicle?: { id?: number; name?: string; placa?: string } | null;
+        stops?: DriverDayStop[];
+        message?: string;
+      }>(API.driver.day);
+
+      const vehicleId = payload?.vehicle?.id ? Number(payload.vehicle.id) : null;
+      const stops = Array.isArray(payload?.stops) ? payload.stops : [];
+      setAssignedVehicleId(vehicleId);
+      setVehicleName(
+        payload?.vehicle
+          ? [payload.vehicle.name, payload.vehicle.placa].filter(Boolean).join(' · ')
+          : ''
+      );
+      setDayStops(stops);
+      setDayMessage(payload?.message || '');
+
+      const nextStop =
+        stops.find((s) => !isStopDone(s.status)) || stops[0];
+
+      if (nextStop) {
+        applyStop(nextStop);
+      } else if (vehicleId) {
+        // Vehículo asignado pero sin citas: no fingir cliente real; demo solo como práctica
+        applyDemoStop(payload?.message || 'Sin citas para hoy. Puedes usar la parada demo para practicar.');
+      } else {
+        applyDemoStop(payload?.message || 'Sin vehículo asignado: mostrando parada demo de práctica.');
+        if (!opts?.silent) toast.info('Sin vehículo asignado: modo demo de práctica');
+      }
+    } catch (e) {
+      console.error('Error cargando día del chofer:', e);
+      applyDemoStop('No se pudo cargar el día. Mostrando demo de práctica.');
+      if (!opts?.silent) toast.error('No se pudo cargar el día del chofer');
+    } finally {
+      setDayLoading(false);
+    }
+  };
+
   // Cargar día de trabajo real (fallback a demo si no hay paradas)
   useEffect(() => {
-    let cancelled = false;
-
-    const loadDriverDay = async () => {
-      try {
-        const payload = await apiClient.get<{
-          date?: string;
-          vehicle?: { id?: number; name?: string } | null;
-          stops?: DriverDayStop[];
-          message?: string;
-        }>(API.driver.day);
-
-        if (cancelled) return;
-
-        const vehicleId = payload?.vehicle?.id ? Number(payload.vehicle.id) : null;
-        const stops = Array.isArray(payload?.stops) ? payload.stops : [];
-        setAssignedVehicleId(vehicleId);
-        setDayStops(stops);
-
-        const nextStop =
-          stops.find((s) => !['Completada', 'Cancelada', 'completed', 'cancelled'].includes(String(s.status || ''))) ||
-          stops[0];
-
-        if (nextStop) {
-          setClientData(mapStopToClient(nextStop));
-          setCurrentAppointmentId(Number(nextStop.appointment_id) || null);
-          setUsingDemoStop(false);
-          const cat = String(nextStop.service_category || '').toLowerCase();
-          if (cat.includes('vet') || cat.includes('medic') || cat.includes('consult')) {
-            setServiceType('vet');
-          } else if (cat.includes('groom') || cat.includes('baño') || cat.includes('estetic')) {
-            setServiceType('grooming');
-          }
-        } else {
-          setClientData(DEMO_CLIENT);
-          setCurrentAppointmentId(null);
-          setUsingDemoStop(true);
-          if (payload?.message) {
-            toast.info(payload.message);
-          } else if (!vehicleId) {
-            toast.info('Sin vehículo asignado: mostrando parada demo');
-          }
-        }
-      } catch (e) {
-        console.error('Error cargando día del chofer:', e);
-        if (!cancelled) {
-          setUsingDemoStop(true);
-          setClientData(DEMO_CLIENT);
-        }
-      }
-    };
-
     void loadDriverDay();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // GPS → PUT /vehicles/{id} con lat/lng reales
@@ -222,30 +260,51 @@ export function DriverSession() {
     if (!currentAppointmentId || usingDemoStop) return;
     try {
       await apiClient.post(API.appointments.changeStatus(currentAppointmentId), { status });
+      setDayStops((prev) =>
+        prev.map((s) =>
+          s.appointment_id === currentAppointmentId ? { ...s, status } : s
+        )
+      );
     } catch (e) {
       console.error('No se pudo actualizar estado de cita:', e);
+      toast.error('No se pudo actualizar el estado de la cita');
     }
+  };
+
+  const selectStop = (stop: DriverDayStop) => {
+    if (isStopDone(stop.status)) {
+      toast.info('Esta parada ya está cerrada');
+      return;
+    }
+    applyStop(stop);
+    setStep('route');
+    toast.success(`Parada: ${stop.client?.name || 'cliente'}`);
   };
 
   const advanceStep = (next: ServiceStep) => {
     setStep(next);
     if (next === 'arrived') void syncAppointmentStatus('En Proceso');
     if (next === 'completed') {
-      void syncAppointmentStatus('Completada');
-      const remaining = dayStops.filter(
-        (s) =>
-          s.appointment_id !== currentAppointmentId &&
-          !['Completada', 'Cancelada', 'completed', 'cancelled'].includes(String(s.status || ''))
-      );
-      const nextStop = remaining[0];
-      if (nextStop) {
-        setTimeout(() => {
-          setClientData(mapStopToClient(nextStop));
-          setCurrentAppointmentId(Number(nextStop.appointment_id) || null);
-          setStep('route');
-          toast.success(`Siguiente parada: ${nextStop.client?.name || 'cliente'}`);
-        }, 1500);
-      }
+      void (async () => {
+        await syncAppointmentStatus('Completada');
+        const remaining = dayStops.filter(
+          (s) => s.appointment_id !== currentAppointmentId && !isStopDone(s.status)
+        );
+        const nextStop = remaining[0];
+        if (nextStop) {
+          setTimeout(() => {
+            applyStop(nextStop);
+            setStep('route');
+            toast.success(`Siguiente parada: ${nextStop.client?.name || 'cliente'}`);
+          }, 1200);
+        } else {
+          setTimeout(() => {
+            void loadDriverDay({ silent: true });
+            setStep('route');
+            toast.success('Ruta del día completada');
+          }, 1200);
+        }
+      })();
     }
   };
 
@@ -594,20 +653,38 @@ export function DriverSession() {
 
   // 1. RUTA (Común para ambos)
   if (step === 'route') {
+    const pendingStops = dayStops.filter((s) => !isStopDone(s.status));
+    const phoneHref = clientData.phone ? `tel:${clientData.phone.replace(/\s+/g, '')}` : undefined;
+
     return (
       <div className="flex flex-col h-screen bg-slate-950 text-white relative overflow-hidden">
         {/* Mapa Background */}
         <div className="absolute inset-0 z-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1000&auto=format&fit=crop')] bg-cover bg-center" />
         
         {/* Switch de Modo para Demo */}
-        <div className="absolute top-4 left-4 z-20 flex gap-2">
+        <div className="absolute top-4 left-4 right-4 z-20 flex flex-wrap items-center gap-2">
            {usingDemoStop ? (
-             <Badge className="bg-amber-500/90 text-white border-0 shadow-lg">Demo</Badge>
+             <Badge className="bg-amber-500/90 text-white border-0 shadow-lg">Demo práctica</Badge>
            ) : (
              <Badge className="bg-emerald-600/90 text-white border-0 shadow-lg">
-               {dayStops.length} parada{dayStops.length === 1 ? '' : 's'}
+               {pendingStops.length}/{dayStops.length} pendientes
              </Badge>
            )}
+           {vehicleName ? (
+             <Badge variant="outline" className="border-slate-500 bg-slate-900/80 text-slate-200">
+               {vehicleName}
+             </Badge>
+           ) : null}
+           <Button
+             size="sm"
+             variant="secondary"
+             className="ml-auto shadow-lg bg-slate-900/80 border border-slate-700"
+             disabled={dayLoading}
+             onClick={() => void loadDriverDay()}
+           >
+             <RefreshCw className={`w-4 h-4 mr-1 ${dayLoading ? 'animate-spin' : ''}`} />
+             Actualizar
+           </Button>
            <Button 
             size="sm" 
             variant={serviceType === 'grooming' ? 'default' : 'secondary'}
@@ -628,13 +705,64 @@ export function DriverSession() {
           </Button>
         </div>
 
-        <div className="flex-1 relative z-10 flex flex-col justify-end p-4 pb-8 space-y-4">
+        <div className="flex-1 relative z-10 flex flex-col justify-end p-4 pb-8 space-y-3">
+          {dayMessage && usingDemoStop ? (
+            <Card className="bg-amber-950/80 border-amber-700/50 text-amber-50 p-3 backdrop-blur-xl rounded-xl text-sm">
+              {dayMessage}
+            </Card>
+          ) : null}
+
+          {!usingDemoStop && dayStops.length > 1 ? (
+            <Card className="bg-slate-900/90 border-slate-700 text-white p-3 backdrop-blur-xl rounded-xl max-h-40 overflow-y-auto">
+              <p className="text-[11px] uppercase tracking-wider text-slate-400 mb-2 font-semibold">
+                Paradas del día
+              </p>
+              <div className="space-y-1.5">
+                {dayStops.map((stop) => {
+                  const active = stop.appointment_id === currentAppointmentId;
+                  const done = isStopDone(stop.status);
+                  return (
+                    <button
+                      key={stop.appointment_id}
+                      type="button"
+                      disabled={done}
+                      onClick={() => selectStop(stop)}
+                      className={`w-full text-left rounded-lg px-3 py-2 text-sm border transition ${
+                        active
+                          ? 'border-emerald-500 bg-emerald-950/40'
+                          : done
+                            ? 'border-slate-800 bg-slate-950/40 text-slate-500'
+                            : 'border-slate-700 hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium truncate">
+                          {stop.time ? `${stop.time} · ` : ''}
+                          {stop.client?.name || 'Cliente'}
+                        </span>
+                        <span className="text-[10px] uppercase shrink-0">
+                          {done ? 'Hecha' : active ? 'Actual' : stop.status || 'Pendiente'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 truncate">
+                        {stop.service_name || stop.pet?.name || stop.address || '—'}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          ) : null}
+
           {/* Card Info Cliente */}
           <Card className="bg-slate-900/90 border-slate-700 text-white p-5 backdrop-blur-xl shadow-2xl rounded-2xl">
+            {dayLoading ? (
+              <p className="text-sm text-slate-300 mb-4">Cargando ruta del día…</p>
+            ) : null}
             <div className="flex items-center gap-4 mb-6">
               <Avatar className="w-16 h-16 border-2 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
                 <AvatarImage src={clientData.avatar} />
-                <AvatarFallback>MG</AvatarFallback>
+                <AvatarFallback>{(clientData.name || 'C').slice(0, 2).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <h2 className="text-2xl font-bold tracking-tight">{clientData.name}</h2>
@@ -642,21 +770,43 @@ export function DriverSession() {
                   <MapPin className="w-4 h-4 mr-1 text-green-400" />
                   <span className="truncate max-w-[200px]">{clientData.address}</span>
                 </div>
+                {clientData.pet ? (
+                  <p className="text-xs text-slate-400 mt-1">
+                    {clientData.pet}
+                    {clientData.breed ? ` · ${clientData.breed}` : ''}
+                  </p>
+                ) : null}
               </div>
-              <Button size="icon" className="bg-green-600 hover:bg-green-500 rounded-full w-12 h-12 shadow-lg shadow-green-900/50 transition-all hover:scale-105 active:scale-95">
-                <Phone className="w-6 h-6" />
-              </Button>
+              {phoneHref ? (
+                <Button
+                  asChild
+                  size="icon"
+                  className="bg-green-600 hover:bg-green-500 rounded-full w-12 h-12 shadow-lg shadow-green-900/50 transition-all hover:scale-105 active:scale-95"
+                >
+                  <a href={phoneHref} aria-label="Llamar al cliente">
+                    <Phone className="w-6 h-6" />
+                  </a>
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  disabled
+                  className="bg-slate-700 rounded-full w-12 h-12 opacity-50"
+                >
+                  <Phone className="w-6 h-6" />
+                </Button>
+              )}
             </div>
             
             <div className="grid grid-cols-2 gap-3 mb-5">
               <div className="bg-slate-800/50 p-3 rounded-xl flex flex-col items-center border border-slate-700/50 backdrop-blur-sm">
-                <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">ETA</span>
-                <span className="font-bold text-2xl text-white">8 min</span>
+                <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Mascota</span>
+                <span className="font-bold text-lg text-white truncate max-w-full px-1">{clientData.pet || '—'}</span>
               </div>
               <div className="bg-slate-800/50 p-3 rounded-xl flex flex-col items-center border border-slate-700/50 backdrop-blur-sm">
                 <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Servicio</span>
-                <span className="font-bold text-xl text-blue-400">
-                  {serviceType === 'grooming' ? 'Baño' : 'Consulta'}
+                <span className="font-bold text-sm text-blue-400 text-center px-1 line-clamp-2">
+                  {currentServiceName || (serviceType === 'grooming' ? 'Baño' : 'Consulta')}
                 </span>
               </div>
             </div>
@@ -666,6 +816,7 @@ export function DriverSession() {
                 serviceType === 'grooming' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20'
               }`} 
               onClick={() => advanceStep('arrived')}
+              disabled={dayLoading}
             >
               <Navigation className="w-6 h-6 mr-2" />
               LLEGUÉ AL LUGAR
