@@ -20,7 +20,9 @@ import { Supplier, SupplierType, useSuppliers } from '../hooks/useSuppliers';
 import { SupplierFormDialog } from './suppliers/SupplierFormDialog';
 import {
   EMPTY_SUPPLIER_FORM,
+  SUPPLIER_TYPES,
   formatSupplierMoney,
+  isExternalDoctorType,
   paymentLabel,
   supplierInitials,
 } from './suppliers/supplierUtils';
@@ -29,6 +31,13 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Input } from './ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 import {
   Table,
   TableBody,
@@ -63,6 +72,7 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
   } = useSuppliers(companyId);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | SupplierType>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [importing, setImporting] = useState(false);
@@ -70,6 +80,7 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
   const filtered = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();
     return suppliers.filter((s) => {
+      if (typeFilter !== 'all' && s.supplier_type !== typeFilter) return false;
       if (!needle) return true;
       return [
         s.name,
@@ -78,11 +89,14 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
         s.phone,
         s.email,
         s.billing_email,
+        s.specialty,
+        s.professional_license,
+        s.clinic_name,
       ]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(needle));
     });
-  }, [suppliers, searchTerm]);
+  }, [suppliers, searchTerm, typeFilter]);
 
   const openCreate = () => {
     setEditing(null);
@@ -182,7 +196,7 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
             )}
           </div>
           <p className="text-muted-foreground mt-2 text-sm sm:text-base">
-            Contactos comerciales, crédito, cuentas bancarias e importación Excel.
+            Contactos comerciales, médicos externos, crédito, cuentas bancarias e importación Excel.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -216,14 +230,30 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
 
       <Card>
         <CardContent className="pt-6">
-          <div className="relative mb-4">
-            <Search className="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
-            <Input
-              className="pl-9"
-              placeholder="Buscar por nombre, RUC o contacto..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por nombre, RUC, especialidad o CMP..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <Select
+              value={typeFilter}
+              onValueChange={(v) => setTypeFilter(v as 'all' | SupplierType)}
+            >
+              <SelectTrigger className="w-full sm:w-[220px]">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                {SUPPLIER_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="rounded-md border">
@@ -261,11 +291,31 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
                               <div className="font-medium">{supplier.name}</div>
                               {supplier.document_number && (
                                 <div className="text-muted-foreground text-xs">
-                                  RUC: {supplier.document_number}
+                                  {(supplier.document_type || 'DOC')}: {supplier.document_number}
                                 </div>
                               )}
-                              {supplier.supplier_type && (
-                                <div className="text-muted-foreground text-xs">{supplier.supplier_type}</div>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {supplier.supplier_type && (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    {supplier.supplier_type}
+                                  </Badge>
+                                )}
+                                {isExternalDoctorType(supplier.supplier_type) && supplier.specialty && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {supplier.specialty}
+                                  </Badge>
+                                )}
+                              </div>
+                              {isExternalDoctorType(supplier.supplier_type) && (
+                                <div className="text-muted-foreground mt-1 space-y-0.5 text-xs">
+                                  {supplier.professional_license && (
+                                    <div>CMP/Colegiatura: {supplier.professional_license}</div>
+                                  )}
+                                  {supplier.clinic_name && <div>Clínica: {supplier.clinic_name}</div>}
+                                  {supplier.fee_rate != null && (
+                                    <div>Honorario ref.: {formatSupplierMoney(Number(supplier.fee_rate))}</div>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </div>

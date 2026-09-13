@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
 
-export type SupplierType = 'Mercadería' | 'Servicios' | 'Honorarios' | 'Mixto';
+export type SupplierType = 'Mercadería' | 'Servicios' | 'Honorarios' | 'Mixto' | 'Médico Externo';
 
 export interface Supplier {
   id: number;
@@ -12,6 +12,10 @@ export interface Supplier {
   document_type?: string;
   document_number?: string;
   supplier_type?: SupplierType | string;
+  specialty?: string;
+  professional_license?: string;
+  clinic_name?: string;
+  fee_rate?: number;
   email?: string;
   phone?: string;
   contact_name?: string;
@@ -39,6 +43,10 @@ function fromBackendFormat(row: Record<string, unknown>): Supplier {
     document_type: row.document_type as string | undefined,
     document_number: row.document_number as string | undefined,
     supplier_type: row.supplier_type as string | undefined,
+    specialty: row.specialty as string | undefined,
+    professional_license: row.professional_license as string | undefined,
+    clinic_name: row.clinic_name as string | undefined,
+    fee_rate: row.fee_rate != null ? Number(row.fee_rate) : undefined,
     email: row.email as string | undefined,
     phone: row.phone as string | undefined,
     contact_name: row.contact_name as string | undefined,
@@ -69,6 +77,12 @@ function toBackendFormat(
     document_type: supplier.document_type || undefined,
     document_number: supplier.document_number?.replace(/\D/g, '') || undefined,
     supplier_type: supplier.supplier_type || undefined,
+    specialty: supplier.specialty?.trim() || undefined,
+    professional_license: supplier.professional_license?.trim() || undefined,
+    clinic_name: supplier.clinic_name?.trim() || undefined,
+    fee_rate: supplier.fee_rate != null && !Number.isNaN(Number(supplier.fee_rate))
+      ? Number(supplier.fee_rate)
+      : undefined,
     email: supplier.email?.trim() || supplier.billing_email?.trim() || undefined,
     phone: supplier.phone?.trim() || undefined,
     contact_name: supplier.contact_name?.trim() || undefined,

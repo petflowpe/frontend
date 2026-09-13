@@ -2,7 +2,30 @@ import { Supplier, SupplierType } from '../../hooks/useSuppliers';
 
 export type DocType = 'RUC' | 'DNI' | 'CE';
 
-export const SUPPLIER_TYPES: SupplierType[] = ['Mercadería', 'Servicios', 'Honorarios', 'Mixto'];
+export const SUPPLIER_TYPES: SupplierType[] = [
+  'Mercadería',
+  'Servicios',
+  'Honorarios',
+  'Mixto',
+  'Médico Externo',
+];
+
+/** Especialidades comunes para médicos externos (vet / referidos). */
+export const MEDICAL_SPECIALTIES = [
+  'Medicina general',
+  'Cirugía',
+  'Dermatología',
+  'Oftalmología',
+  'Cardiología',
+  'Traumatología',
+  'Odontología',
+  'Imagenología',
+  'Laboratorio clínico',
+  'Medicina interna',
+  'Oncología',
+  'Anestesiología',
+  'Otro',
+] as const;
 
 export const DOC_LABELS: Record<DocType, string> = {
   RUC: 'RUC (11 dígitos)',
@@ -15,6 +38,10 @@ export const EMPTY_SUPPLIER_FORM: Omit<Supplier, 'id'> = {
   document_type: 'RUC',
   document_number: '',
   supplier_type: 'Mercadería',
+  specialty: '',
+  professional_license: '',
+  clinic_name: '',
+  fee_rate: undefined,
   accounting_account_code: '',
   credit_days: 0,
   bank_name: '',
@@ -22,8 +49,14 @@ export const EMPTY_SUPPLIER_FORM: Omit<Supplier, 'id'> = {
   billing_email: '',
   phone: '',
   contact_name: '',
+  address: '',
+  notes: '',
   active: true,
 };
+
+export function isExternalDoctorType(type?: string | null): boolean {
+  return type === 'Médico Externo' || type === 'Honorarios';
+}
 
 export function validateDocument(type: string | undefined, digits: string): string | null {
   if (!digits) return 'El número de documento es obligatorio';
@@ -57,6 +90,10 @@ export function supplierToForm(supplier: Supplier): Omit<Supplier, 'id'> {
     document_type: (supplier.document_type as DocType) || 'RUC',
     document_number: supplier.document_number || '',
     supplier_type: (supplier.supplier_type as SupplierType) || 'Mercadería',
+    specialty: supplier.specialty || '',
+    professional_license: supplier.professional_license || '',
+    clinic_name: supplier.clinic_name || '',
+    fee_rate: supplier.fee_rate,
     accounting_account_code: supplier.accounting_account_code || '',
     credit_days: supplier.credit_days ?? 0,
     bank_name: supplier.bank_name || '',
@@ -64,6 +101,8 @@ export function supplierToForm(supplier: Supplier): Omit<Supplier, 'id'> {
     billing_email: supplier.billing_email || supplier.email || '',
     phone: supplier.phone || '',
     contact_name: supplier.contact_name || '',
+    address: supplier.address || '',
+    notes: supplier.notes || '',
     active: supplier.active,
   };
 }
