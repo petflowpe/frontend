@@ -23,6 +23,12 @@ export interface Product {
   location?: string;
   imagePath?: string;
   active?: boolean;
+  /** Campos opcionales ya soportados por Store/UpdateProductRequest. */
+  barcode?: string;
+  description?: string;
+  maxStock?: number;
+  /** JSON libre (`products.metadata`), usado por la ficha extendida. */
+  metadata?: Record<string, unknown>;
 }
 
 function extractList(response: unknown): any[] {
@@ -72,7 +78,27 @@ function fromBackendFormat(backendProduct: any): Product {
     location: firstArea?.name || backendProduct.area?.name || backendProduct.location || undefined,
     imagePath: backendProduct.images?.[0] || backendProduct.image_path || backendProduct.photo || undefined,
     active: backendProduct.active ?? true,
+    barcode: backendProduct.barcode || undefined,
+    description: backendProduct.description || undefined,
+    maxStock: backendProduct.max_stock != null ? parseFloat(backendProduct.max_stock) || 0 : undefined,
+    metadata: parseMetadata(backendProduct.metadata),
   };
+}
+
+function parseMetadata(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return undefined;
 }
 
 function toBackendFormat(
@@ -95,6 +121,10 @@ function toBackendFormat(
   if (product.categoryId) payload.category_id = product.categoryId;
   if (product.brandId) payload.brand_id = product.brandId;
   if (product.supplierId) payload.supplier_id = product.supplierId;
+  if (product.barcode) payload.barcode = product.barcode;
+  if (product.description) payload.description = product.description;
+  if (product.maxStock != null) payload.max_stock = product.maxStock;
+  if (product.metadata) payload.metadata = product.metadata;
 
   const areaId = product.areaId ?? defaultAreaId;
   if (areaId) payload.area_id = areaId;
@@ -165,6 +195,12 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
       if (changes.categoryId != null) payload.category_id = changes.categoryId;
       if (changes.brandId != null) payload.brand_id = changes.brandId;
       if (changes.active != null) payload.active = changes.active;
+      // Se usa `in` para poder limpiar valores (enviar null explícitamente).
+      if ('supplierId' in changes) payload.supplier_id = changes.supplierId ?? null;
+      if ('barcode' in changes) payload.barcode = changes.barcode || null;
+      if ('description' in changes) payload.description = changes.description || null;
+      if ('maxStock' in changes) payload.max_stock = changes.maxStock ?? null;
+      if ('metadata' in changes) payload.metadata = changes.metadata ?? null;
 
       await apiClient.put(API.products.byId(id), payload);
       await loadProducts();
@@ -186,21 +222,35 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
     }
   };
 
-  const adjustStock = async (id: string, quantity: number, type: 'add' | 'subtract', areaId?: number) => {
+  const adjustStock = async (
+    id: string,
+    quantity: number,
+    type: 'add' | 'subtract' | 'set',
+    areaId?: number,
+    notes?: string
+  ) => {
     const product = products.find(p => p.id === id);
     if (!product) return;
     const resolvedAreaId = areaId ?? product.areaId ?? defaultAreaId ?? 1;
-    const newStock = type === 'add' ? product.stock + quantity : product.stock - quantity;
+    const newStock =
+      type === 'add'
+        ? product.stock + quantity
+        : type === 'subtract'
+          ? product.stock - quantity
+          : quantity;
     if (newStock < 0) {
       toast.error('No hay suficiente stock para realizar esta operación');
       return;
     }
+    const backendType = type === 'add' ? 'IN' : type === 'subtract' ? 'OUT' : 'ADJUST';
+    const defaultNotes =
+      type === 'add' ? 'Ajuste positivo' : type === 'subtract' ? 'Salida / ajuste' : 'Inventario físico';
     try {
       await apiClient.post(API.products.adjustStock(id), {
         area_id: resolvedAreaId,
         quantity,
-        type: type === 'add' ? 'IN' : 'OUT',
-        notes: type === 'add' ? 'Ajuste positivo' : 'Salida / ajuste',
+        type: backendType,
+        notes: notes || defaultNotes,
       });
       setProducts(prev =>
         prev.map(p => (p.id === id ? { ...p, stock: newStock } : p))
@@ -209,6 +259,25 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
     } catch (e: any) {
       toast.error(e.message || 'Error al ajustar stock');
       throw e;
+    }
+  };
+
+  /**
+   * Activa / desactiva un producto sin quitarlo del listado local.
+   * `DELETE /products/{id}` en este backend equivale a `active = false`.
+   */
+  const setProductActive = async (id: string, active: boolean) => {
+    try {
+      if (active) {
+        await apiClient.post(API.products.activate(id));
+      } else {
+        await apiClient.delete(API.products.byId(id));
+      }
+      setProducts(prev => prev.map(p => (p.id === id ? { ...p, active } : p)));
+      return true;
+    } catch (e: any) {
+      toast.error(e.message || 'Error al cambiar el estado del producto');
+      return false;
     }
   };
 
@@ -279,6 +348,7 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
     addProduct,
     updateProduct,
     deleteProduct,
+    setProductActive,
     adjustStock,
     getInventoryMetrics,
     fetchLowStock,
