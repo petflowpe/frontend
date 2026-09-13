@@ -108,9 +108,16 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
 
   // Operaciones
   services: null,
-  products: { permissions: ['products.view', 'products.*', 'inventory.view', 'inventory.*'] },
+  // Catálogo GrooFlow: roles de empresa + permisos (por si el API no manda la lista completa).
+  products: {
+    roles: ['super_admin', 'company_admin', 'company_user', 'admin'],
+    permissions: ['products.view', 'products.*', 'inventory.view', 'inventory.*'],
+  },
   suppliers: null,
-  inventory: { permissions: ['inventory.view', 'inventory.*', 'products.view', 'products.*'] },
+  inventory: {
+    roles: ['super_admin', 'company_admin', 'company_user', 'admin'],
+    permissions: ['inventory.view', 'inventory.*', 'products.view', 'products.*'],
+  },
   purchases: { roles: ['super_admin', 'company_admin', 'company_user'], permissions: ['purchases.view', 'purchases.*'] },
   vehicles: {
     roles: ['super_admin', 'company_admin'],

@@ -105,6 +105,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: 'catalog',
     label: 'Catálogo e Inventario',
+    defaultOpen: true,
     items: [
       { id: 'services', label: 'Servicios', icon: Scissors, color: 'text-pink-500' },
       { id: 'products', label: 'Productos e inventario', icon: Boxes, color: 'text-amber-500' },
