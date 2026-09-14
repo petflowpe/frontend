@@ -84,6 +84,20 @@ export function getStoredCompanyId(): number | null {
   }
 }
 
+/**
+ * Empresa efectiva para módulos staff (productos, proveedores, etc.).
+ * Misma convención que Servicios/Compras: usuario → storage → empresa 1.
+ */
+export function resolveStaffCompanyId(
+  user?: { companyId?: number | null; company_id?: number | null } | null,
+): number {
+  const fromUser = Number(user?.companyId ?? user?.company_id);
+  if (Number.isInteger(fromUser) && fromUser > 0) return fromUser;
+  const stored = getStoredCompanyId();
+  if (stored) return stored;
+  return 1;
+}
+
 export function inferServiceCategory(serviceName: string, hint?: string): 'MovilVet' | 'Peluquería' {
   const text = `${serviceName} ${hint || ''}`.toLowerCase();
   if (

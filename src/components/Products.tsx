@@ -27,6 +27,7 @@ import {
   toUiProducts,
 } from '../mappers/productMapper';
 import type { UiProduct } from '../types/product';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 import { buildProductCatalog } from '../utils/productCatalog';
 import { ProductKpiRow, ProductModule } from './products/ProductModule';
 import { Button } from './ui/button';
@@ -45,17 +46,7 @@ interface ProductsProps {
 
 export function Products({ initialTab = 'catalog' }: ProductsProps) {
   const { user } = useAuth();
-  const companyId = user?.companyId;
-
-  if (!companyId) {
-    return (
-      <div className="p-6">
-        <p className="text-muted-foreground">
-          No hay empresa asociada a su usuario. Contacte al administrador.
-        </p>
-      </div>
-    );
-  }
+  const companyId = resolveStaffCompanyId(user);
 
   return <ProductsModule companyId={companyId} initialTab={initialTab} />;
 }

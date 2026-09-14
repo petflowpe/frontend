@@ -205,9 +205,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => apiClient.setOnUnauthorized(null);
   }, []);
 
+  // Solo persiste cuando hay usuario. No borrar smartpet_user en el mount
+  // (user empieza en null y eso borraba companyId de la sesión staff).
   useEffect(() => {
     if (user) localStorage.setItem('smartpet_user', JSON.stringify(user));
-    else localStorage.removeItem('smartpet_user');
   }, [user]);
 
   const login = async (documentType: string, documentNumber: string, password: string, email?: string): Promise<User | null> => {

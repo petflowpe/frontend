@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Supplier, SupplierType, useSuppliers } from '../hooks/useSuppliers';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 import { SupplierFormDialog } from './suppliers/SupplierFormDialog';
 import {
   EMPTY_SUPPLIER_FORM,
@@ -50,16 +51,8 @@ import { toast } from 'sonner';
 
 export function SuppliersManagement({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
-  const companyId = user?.companyId;
+  const companyId = resolveStaffCompanyId(user);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!companyId) {
-    return (
-      <div className={embedded ? 'py-2' : 'p-6'}>
-        <p className="text-muted-foreground">No hay empresa asociada a su usuario. Contacte al administrador.</p>
-      </div>
-    );
-  }
 
   const {
     suppliers,
