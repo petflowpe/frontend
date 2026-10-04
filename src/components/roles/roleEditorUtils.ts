@@ -15,6 +15,11 @@ export const CATEGORY_LABELS: Record<string, string> = {
   config: 'Configuración',
   pets: 'Mascotas',
   medical_records: 'Historial médico',
+  products: 'Productos e inventario',
+  services: 'Servicios',
+  suppliers: 'Proveedores',
+  purchases: 'Compras',
+  vehicles: 'Vehículos',
   general: 'General',
 };
 

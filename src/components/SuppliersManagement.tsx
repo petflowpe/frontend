@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Supplier, SupplierType, useSuppliers } from '../hooks/useSuppliers';
 import { resolveStaffCompanyId } from '../utils/appointmentMappers';
+import { CompanyRequiredState } from './common/CompanyRequiredState';
 import { SupplierFormDialog } from './suppliers/SupplierFormDialog';
 import {
   EMPTY_SUPPLIER_FORM,
@@ -69,6 +70,10 @@ export function SuppliersManagement({ embedded = false }: { embedded?: boolean }
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [importing, setImporting] = useState(false);
+
+  if (!companyId) {
+    return <CompanyRequiredState title="Directorio de proveedores" className={embedded ? 'py-2' : 'p-6'} />;
+  }
 
   const filtered = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();

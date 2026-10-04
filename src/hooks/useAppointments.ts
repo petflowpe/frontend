@@ -104,14 +104,20 @@ export const useAppointments = () => {
     // Mapear items si existen en el backend
     let items: any[] = [];
     if (backendAppointment.items && Array.isArray(backendAppointment.items)) {
-      items = backendAppointment.items.map((item: any) => ({
-        id: item.item_id || item.id,
-        type: item.item_type === 'SERVICIO' ? 'service' : 'product',
-        name: item.name || item.item_name || '',
-        price: parseFloat(item.price) || 0,
-        duration: item.duration || null,
-        quantity: item.quantity || 1,
-      }));
+      items = backendAppointment.items.map((item: any) => {
+        const isService = item.item_type === 'SERVICIO' || item.item_type === 'service';
+        const catalogId = isService
+          ? (item.product?.service_id || backendAppointment.service_id || item.product_id || item.item_id || item.id)
+          : (item.product_id || item.item_id || item.id);
+        return {
+          id: catalogId,
+          type: isService ? 'service' : 'product',
+          name: item.name || item.item_name || '',
+          price: parseFloat(item.price) || 0,
+          duration: item.duration || null,
+          quantity: item.quantity || 1,
+        };
+      });
     } else if (backendAppointment.service_type) {
       // Fallback: crear item desde service_type si no hay items
       items = [{

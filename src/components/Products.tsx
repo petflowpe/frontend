@@ -29,6 +29,7 @@ import {
 import type { UiProduct } from '../types/product';
 import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 import { buildProductCatalog } from '../utils/productCatalog';
+import { CompanyRequiredState } from './common/CompanyRequiredState';
 import { ProductKpiRow, ProductModule } from './products/ProductModule';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -47,6 +48,10 @@ interface ProductsProps {
 export function Products({ initialTab = 'catalog' }: ProductsProps) {
   const { user } = useAuth();
   const companyId = resolveStaffCompanyId(user);
+
+  if (!companyId) {
+    return <CompanyRequiredState title="Productos e inventario" />;
+  }
 
   return <ProductsModule companyId={companyId} initialTab={initialTab} />;
 }

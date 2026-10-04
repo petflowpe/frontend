@@ -17,6 +17,7 @@ import { setPendingAction, getPendingAction, clearPendingAction, goToCashCollect
 import { useAppointments } from '../hooks/useAppointments';
 import { useClients } from '../hooks/useClients';
 import { useProducts } from '../hooks/useProducts';
+import { useServices } from '../hooks/useServices';
 import { useVehicles } from '../hooks/useVehicles';
 import { NewAppointmentDialog } from './appointments/NewAppointmentDialog';
 import { RescheduleDialog } from './appointments/RescheduleDialog';
@@ -45,7 +46,8 @@ const weekDays = [
 ];
 
 export function Appointments() {
-  const { products, services, loading: loadingProducts } = useProducts();
+  const { products } = useProducts();
+  const { services } = useServices();
   const { vehicles, loading: loadingVehicles } = useVehicles();
   const {
     appointments,

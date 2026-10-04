@@ -146,8 +146,9 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = {
-        per_page: 500,
+      const params: Record<string, string | number | boolean> = {
+        per_page: 200,
+        item_type: 'PRODUCTO',
       };
       if (companyId != null && companyId > 0) params.company_id = companyId;
 

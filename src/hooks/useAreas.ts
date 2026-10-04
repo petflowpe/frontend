@@ -10,8 +10,6 @@ export interface Area {
   active?: boolean;
 }
 
-const DEFAULT_COMPANY_ID = 1;
-
 function fromBackendFormat(row: any): Area {
   return {
     id: row.id,
@@ -21,11 +19,16 @@ function fromBackendFormat(row: any): Area {
   };
 }
 
-export function useAreas(companyId: number = DEFAULT_COMPANY_ID) {
+export function useAreas(companyId?: number | null) {
   const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadAreas = useCallback(async () => {
+    if (!companyId || companyId <= 0) {
+      setAreas([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await apiClient.get<{ success?: boolean; data?: any[] }>(

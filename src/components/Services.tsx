@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Scissors, Plus, Edit2, Trash2, Clock, DollarSign, Settings, Tag, MapPin, Coins, Ruler, AlertCircle, Info, PawPrint, Loader2 } from 'lucide-react';
 import { useProducts } from '../hooks/useProducts';
+import { useServices } from '../hooks/useServices';
 import { useCategories } from '../hooks/useCategories';
 import { useAreas } from '../hooks/useAreas';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
-import { apiClient } from '../utils/api/client';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
+import { CompanyRequiredState } from './common/CompanyRequiredState';
 
 // Generar código de servicio automático
 const generateServiceCode = (name: string, area: string, existingCodes: string[]) => {
@@ -56,7 +58,7 @@ const specialBreeds = [
 
 export function Services() {
   const { user } = useAuth();
-  const companyId = Number(user?.companyId) || 1;
+  const companyId = resolveStaffCompanyId(user);
   const [showNewService, setShowNewService] = useState(false);
   const [showCategoryConfig, setShowCategoryConfig] = useState(false);
   const [editingService, setEditingService] = useState<any>(null);
@@ -85,14 +87,14 @@ export function Services() {
 
   const { categories, loading: categoriesLoading, reload: reloadCategories } = useCategories(companyId);
   const { areas, loading: areasLoading, reload: reloadAreas } = useAreas(companyId);
+  const { products: catalogProducts } = useProducts();
   const {
-    products: catalogProducts,
     services: servicesFromApi,
     loading: servicesLoading,
-    createProduct,
-    fetchProducts,
-    deleteProduct,
-  } = useProducts();
+    createService,
+    updateService,
+    deleteService,
+  } = useServices();
 
   useEffect(() => {
     if (!showNewService) {
@@ -115,6 +117,10 @@ export function Services() {
       setForm(emptyForm());
     }
   }, [showNewService, editingService, categories, areas]);
+
+  if (!companyId) {
+    return <CompanyRequiredState title="Servicios" />;
+  }
 
   const addInsumo = () => {
     const pid = Number(insumoProductId);
@@ -144,45 +150,30 @@ export function Services() {
       toast.error('El nombre del servicio es obligatorio');
       return;
     }
-    const medium = form.pricing.medium || { price: 0, cost: 0, duration: 45 };
     setSaving(true);
     try {
+      const categoryName =
+        categories.find((c) => String(c.id) === form.categoryId)?.name || '';
+      const areaName = areas.find((a) => String(a.id) === form.areaId)?.name || '';
       const payload = {
-        type: 'service' as const,
         name: form.name.trim(),
         description: form.description.trim(),
-        category: form.categoryId || undefined,
-        area: areas.find((a) => String(a.id) === form.areaId)?.name || '',
-        price: Number(medium.price) || 0,
-        cost: Number(medium.cost) || 0,
-        duration: Number(medium.duration) || 45,
+        category: categoryName || undefined,
+        area: areaName || undefined,
         pricingBySize: form.pricingBySize,
         pricing: form.pricing,
         requiredProducts: form.requiredProducts,
         active: true,
+        breedExceptions: editingService?.breedExceptions || [],
       };
 
       if (editingService?.id) {
-        await apiClient.put(`/products/${editingService.id}`, {
-          name: payload.name,
-          description: payload.description,
-          category_id: form.categoryId ? Number(form.categoryId) : null,
-          unit_price: payload.price,
-          cost_price: payload.cost,
-          item_type: 'SERVICIO',
-          metadata: {
-            pricing: payload.pricing,
-            pricingBySize: payload.pricingBySize,
-            duration: payload.duration,
-            area: payload.area,
-            required_products: payload.requiredProducts,
-          },
+        await updateService(editingService.id, {
+          ...payload,
+          code: editingService.code,
         });
-        toast.success('Servicio actualizado');
-        await fetchProducts();
       } else {
-        await createProduct(payload);
-        await fetchProducts();
+        await createService(payload);
       }
 
       setShowNewService(false);
@@ -341,8 +332,7 @@ export function Services() {
             className="text-red-600"
             onClick={async () => {
               try {
-                await deleteProduct(service.id);
-                fetchProducts();
+                await deleteService(service.id);
               } catch (_e) {}
             }}
           >

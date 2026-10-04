@@ -11,7 +11,7 @@ import { Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { useAppointments } from '../../hooks/useAppointments';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useAvailableVehiclesForAppointment } from '../../hooks/useVehicleCoverage';
-import { useProducts } from '../../hooks/useProducts';
+import { useServices } from '../../hooks/useServices';
 import { createAvailabilityValidator } from '../../services/availabilityValidator';
 import { apiClient } from '../../utils/api/client';
 import { Badge } from '../ui/badge';
@@ -39,7 +39,7 @@ export function RescheduleDialog({ open, onOpenChange, appointment, onSuccess }:
   
   const { appointments, updateAppointment } = useAppointments();
   const { vehicles } = useVehicles();
-  const { services } = useProducts();
+  const { services } = useServices();
 
   const form = useForm<RescheduleFormValues>({
     resolver: zodResolver(rescheduleSchema),

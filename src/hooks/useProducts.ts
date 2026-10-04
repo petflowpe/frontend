@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { useAuth } from '../context/AuthContext';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 
 export interface Product {
   id: number;
@@ -226,29 +227,44 @@ const DEFAULT_PRODUCTS: Product[] = [
 
 export const useProducts = () => {
   const { user } = useAuth();
-  const companyId = user?.companyId ?? 1;
+  const companyId = resolveStaffCompanyId(user);
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchProducts = useCallback(async () => {
+    if (!companyId || companyId <= 0) {
+      setProducts([]);
+      setServices([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const response = await apiClient.get<{ data: any[]; meta?: any } | any[]>('/products', {
-        company_id: companyId,
-        only_active: false,
-        per_page: 500,
-      });
-      
-      const productsArray = Array.isArray(response) ? response : (response.data || []);
-      const mappedProducts = productsArray.map(fromBackendFormat);
-      
-      // Separar productos y servicios
-      const loadedProducts = mappedProducts.filter(item => item.type === 'product');
-      const loadedServices = mappedProducts.filter(item => item.type === 'service');
-      
-      setProducts(loadedProducts);
-      setServices(loadedServices);
+      const [productsRes, servicesRes] = await Promise.all([
+        apiClient.get<{ data: any[]; meta?: any } | any[]>('/products', {
+          company_id: companyId,
+          only_active: false,
+          item_type: 'PRODUCTO',
+          per_page: 200,
+        }),
+        apiClient.get<{ data: any[]; meta?: any } | any[]>('/products', {
+          company_id: companyId,
+          only_active: false,
+          item_type: 'SERVICIO',
+          per_page: 200,
+        }),
+      ]);
+
+      const toList = (response: unknown) => {
+        const productsArray = Array.isArray(response)
+          ? response
+          : ((response as { data?: any[] })?.data || []);
+        return productsArray.map(fromBackendFormat);
+      };
+
+      setProducts(toList(productsRes).filter((item) => item.type === 'product'));
+      setServices(toList(servicesRes).filter((item) => item.type === 'service'));
     } catch (err: any) {
       console.error('Error in fetchProducts:', err);
       toast.error(err.message || 'Error cargando productos');
@@ -292,6 +308,9 @@ export const useProducts = () => {
 
   const createProduct = async (productData: Partial<Product> | Product, isInitial = false) => {
     try {
+      if (!companyId || companyId <= 0) {
+        throw new Error('company_id es requerido');
+      }
       const backendData = toBackendFormat(productData);
       const response = await apiClient.post<{ data: any }>('/products', backendData);
       

@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Calendar, Clock, Plus, Search, Trash2, AlertCircle, ChevronRight, User, PawPrint, Car, ShoppingBag, ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
 import { useClients } from '../../hooks/useClients';
 import { useProducts } from '../../hooks/useProducts';
+import { useServices } from '../../hooks/useServices';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useAvailableVehiclesForAppointment } from '../../hooks/useVehicleCoverage';
 import { useAppointments } from '../../hooks/useAppointments';
@@ -102,7 +103,8 @@ export function NewAppointmentDialog({ open, onOpenChange, onSuccess, onNewClien
   const [showNewClientDialog, setShowNewClientDialog] = useState(false);
   
   const { clients, refreshClients, loading: loadingClients, loadClientPets } = useClients();
-  const { products, services } = useProducts();
+  const { products } = useProducts();
+  const { services } = useServices();
   const { vehicles } = useVehicles();
   const { appointments, createAppointment } = useAppointments();
 

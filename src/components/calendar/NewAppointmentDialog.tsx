@@ -12,7 +12,7 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { validateAppointmentConflicts, suggestNextAvailableSlot } from '../../utils/conflictValidator';
 import { useClients } from '../../hooks/useClients';
-import { useProducts } from '../../hooks/useProducts';
+import { useServices } from '../../hooks/useServices';
 import { apiClient } from '../../utils/api/client';
 import { API } from '../../utils/api/endpoints';
 import { useAvailableVehiclesForAppointment } from '../../hooks/useVehicleCoverage';
@@ -88,7 +88,7 @@ export function NewAppointmentDialog({
   const [petsForClient, setPetsForClient] = useState<Pet[]>([]);
 
   const { clients } = useClients();
-  const { services: servicesFromApi } = useProducts();
+  const { services: servicesFromApi } = useServices();
 
   const clientsForUI: Client[] = useMemo(() => clients.map((c: any) => ({
     id: c.id,
@@ -99,10 +99,10 @@ export function NewAppointmentDialog({
     district: c.district || '',
   })), [clients]);
 
-  const availableServices: Service[] = useMemo(() => servicesFromApi.map((s: any) => ({
+  const availableServices: Service[] = useMemo(() => servicesFromApi.map((s) => ({
     id: String(s.id),
     name: s.name,
-    duration: (s as any).duration ?? 45,
+    duration: s.duration ?? 45,
     price: s.price ?? 0,
   })), [servicesFromApi]);
 

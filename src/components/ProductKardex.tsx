@@ -36,6 +36,9 @@ import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
 import { useInventory, Product as InventoryProduct } from '../hooks/useInventory';
 import { useKardex, KardexEntry as ApiKardexEntry } from '../hooks/useKardex';
+import { useAuth } from '../context/AuthContext';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
+import { CompanyRequiredState } from './common/CompanyRequiredState';
 
 interface KardexEntry {
   id: string;
@@ -93,7 +96,9 @@ function mapApiEntryToUi(e: ApiKardexEntry): KardexEntry {
 }
 
 export function ProductKardex() {
-  const { products: inventoryProducts, loading: loadingProducts, refreshInventory } = useInventory();
+  const { user } = useAuth();
+  const companyId = resolveStaffCompanyId(user);
+  const { products: inventoryProducts, loading: loadingProducts, refreshInventory } = useInventory(companyId);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -140,6 +145,10 @@ export function ProductKardex() {
       return matchSearch;
     });
   }, [products, searchTerm]);
+
+  if (!companyId) {
+    return <CompanyRequiredState title="Kardex" />;
+  }
 
   const getTypeIcon = (type: string) => {
     switch (type) {

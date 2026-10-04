@@ -107,18 +107,27 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
   'vet-clinic-portal': null,
 
   // Operaciones
-  services: null,
+  services: {
+    roles: ['super_admin', 'company_admin', 'company_user', 'admin'],
+    permissions: ['services.view', 'services.*', 'products.manage', 'products.*'],
+  },
   // Catálogo GrooFlow: roles de empresa + permisos (por si el API no manda la lista completa).
   products: {
     roles: ['super_admin', 'company_admin', 'company_user', 'admin'],
     permissions: ['products.view', 'products.*', 'inventory.view', 'inventory.*'],
   },
-  suppliers: null,
+  suppliers: {
+    roles: ['super_admin', 'company_admin', 'company_user', 'admin'],
+    permissions: ['suppliers.view', 'suppliers.*', 'purchases.view', 'purchases.*', 'products.manage', 'products.*'],
+  },
   inventory: {
     roles: ['super_admin', 'company_admin', 'company_user', 'admin'],
     permissions: ['inventory.view', 'inventory.*', 'products.view', 'products.*'],
   },
-  purchases: { roles: ['super_admin', 'company_admin', 'company_user'], permissions: ['purchases.view', 'purchases.*'] },
+  purchases: {
+    roles: ['super_admin', 'company_admin', 'company_user'],
+    permissions: ['purchases.view', 'purchases.*', 'products.manage', 'products.*'],
+  },
   vehicles: {
     roles: ['super_admin', 'company_admin'],
     permissions: ['vehicles.view', 'vehicles.manage', 'vehicles.*', 'vehicles.coverage.view', 'vehicles.coverage.manage'],
@@ -133,7 +142,10 @@ export const MODULE_ACCESS: Record<string, ModuleRule | null> = {
     permissions: ['vehicles.view', 'vehicles.manage', 'vehicles.*'],
   },
   'public-tracking': null,
-  kardex: { roles: ['super_admin', 'company_admin', 'company_user'] },
+  kardex: {
+    roles: ['super_admin', 'company_admin', 'company_user'],
+    permissions: ['kardex.view', 'products.view', 'products.*'],
+  },
 
   // Finanzas
   invoicing: { permissions: ['invoices.view', 'invoices.*', 'boletas.view', 'boletas.*'] },

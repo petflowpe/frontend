@@ -128,6 +128,11 @@ export const API = {
     deleteImage: (id: string | number) => `/products/${id}/image`,
     kardex: (id: string | number) => `/products/${id}/kardex`,
   },
+  services: {
+    list: '/services',
+    byId: (id: string | number) => `/services/${id}`,
+    activate: (id: string | number) => `/services/${id}/activate`,
+  },
   categories: { list: '/categories', byId: (id: string | number) => `/categories/${id}` },
   units: { list: '/units', byId: (id: string | number) => `/units/${id}` },
   areas: { list: '/areas', byId: (id: string | number) => `/areas/${id}` },

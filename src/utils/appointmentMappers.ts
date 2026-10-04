@@ -86,16 +86,14 @@ export function getStoredCompanyId(): number | null {
 
 /**
  * Empresa efectiva para módulos staff (productos, proveedores, etc.).
- * Misma convención que Servicios/Compras: usuario → storage → empresa 1.
+ * Usuario → storage. Sin fallback silencioso a empresa 1.
  */
 export function resolveStaffCompanyId(
   user?: { companyId?: number | null; company_id?: number | null } | null,
-): number {
+): number | null {
   const fromUser = Number(user?.companyId ?? user?.company_id);
   if (Number.isInteger(fromUser) && fromUser > 0) return fromUser;
-  const stored = getStoredCompanyId();
-  if (stored) return stored;
-  return 1;
+  return getStoredCompanyId();
 }
 
 export function inferServiceCategory(serviceName: string, hint?: string): 'MovilVet' | 'Peluquería' {

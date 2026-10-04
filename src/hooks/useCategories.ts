@@ -12,8 +12,6 @@ export interface Category {
   active?: boolean;
 }
 
-const DEFAULT_COMPANY_ID = 1;
-
 function fromBackendFormat(row: any): Category {
   return {
     id: row.id,
@@ -25,11 +23,16 @@ function fromBackendFormat(row: any): Category {
   };
 }
 
-export function useCategories(companyId: number = DEFAULT_COMPANY_ID) {
+export function useCategories(companyId?: number | null) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadCategories = useCallback(async () => {
+    if (!companyId || companyId <= 0) {
+      setCategories([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await apiClient.get<{ success?: boolean; data?: any[] }>(

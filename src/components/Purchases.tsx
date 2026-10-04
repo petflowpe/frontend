@@ -30,6 +30,8 @@ import { useSuppliers } from '../hooks/useSuppliers';
 import { useInventory } from '../hooks/useInventory';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
+import { CompanyRequiredState } from './common/CompanyRequiredState';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
@@ -79,7 +81,7 @@ function statusBadgeClass(status: PurchaseStatus) {
 
 export function Purchases() {
   const { user } = useAuth();
-  const companyId = user?.companyId ?? null;
+  const companyId = resolveStaffCompanyId(user);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -127,8 +129,8 @@ export function Purchases() {
     deleteInvoiceAttachment,
     deletePurchase,
     reload,
-  } = usePurchases(companyId ?? 1);
-  const { products: inventoryProducts } = useInventory();
+  } = usePurchases(companyId);
+  const { products: inventoryProducts } = useInventory(companyId);
 
   useEffect(() => {
     if (!companyId) return;
@@ -189,6 +191,9 @@ export function Purchases() {
     });
   }, [purchases, searchTerm, statusFilter, paymentFilter, dateFrom, dateTo]);
 
+  if (!companyId) {
+    return <CompanyRequiredState title="Compras" />;
+  }
   const kpis = useMemo(() => {
     const open = purchases.filter((p) => !['delivered', 'cancelled'].includes(p.status));
     const unpaid = purchases.filter((p) => (p.payment_status || 'unpaid') !== 'paid');

@@ -58,8 +58,6 @@ export interface PurchaseOrder {
   invoice?: { number?: string; date?: string; amount?: number; tax?: number; total?: number };
 }
 
-const DEFAULT_COMPANY_ID = 1;
-
 function normalizeStatus(raw: string): PurchaseStatus {
   if (raw === 'in-transit') return 'in_transit';
   if (['pending', 'in_transit', 'partial', 'delivered', 'cancelled'].includes(raw)) {
@@ -129,11 +127,16 @@ export function fromBackendFormat(row: any): PurchaseOrder {
   };
 }
 
-export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
+export function usePurchases(companyId?: number | null) {
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadPurchases = useCallback(async (filters?: Record<string, string | number | undefined>) => {
+    if (!companyId || companyId <= 0) {
+      setPurchases([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await apiClient.get<{ success?: boolean; data?: any[] }>(
@@ -170,6 +173,9 @@ export function usePurchases(companyId: number = DEFAULT_COMPANY_ID) {
     notes?: string;
     items: { product_id: number; quantity: number; unit_cost: number }[];
   }) => {
+    if (!companyId || companyId <= 0) {
+      throw new Error('company_id es requerido');
+    }
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.list, {
       company_id: companyId,
       ...data,
