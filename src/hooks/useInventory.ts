@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { fetchAllPages } from '../utils/api/fetchAllPages';
 import { publicStorageUrl } from '../utils/api/config';
 
 export interface Product {
@@ -147,13 +148,11 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
     setLoading(true);
     try {
       const params: Record<string, string | number | boolean> = {
-        per_page: 200,
         item_type: 'PRODUCTO',
       };
       if (companyId != null && companyId > 0) params.company_id = companyId;
 
-      const response = await apiClient.get(API.products.list, params);
-      const list = extractList(response);
+      const list = await fetchAllPages(API.products.list, params);
       setProducts(list.map(fromBackendFormat));
     } catch (e: any) {
       console.error('Error cargando inventario', e);

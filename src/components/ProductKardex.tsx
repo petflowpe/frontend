@@ -35,7 +35,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
 import { useInventory, Product as InventoryProduct } from '../hooks/useInventory';
-import { useKardex, KardexEntry as ApiKardexEntry } from '../hooks/useKardex';
+import { useKardex, useKardexSummary, downloadKardexCsv, KardexEntry as ApiKardexEntry } from '../hooks/useKardex';
 import { useAuth } from '../context/AuthContext';
 import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 import { CompanyRequiredState } from './common/CompanyRequiredState';
@@ -52,9 +52,29 @@ interface KardexEntry {
   balanceValue: number;
   reference: string;
   module: 'compra' | 'venta' | 'servicio' | 'ajuste' | 'inicial' | 'devolucion';
+  area: string;
   details: string;
   user: string;
 }
+
+const KARDEX_MODULES: KardexEntry['module'][] = ['compra', 'venta', 'servicio', 'ajuste', 'inicial', 'devolucion'];
+
+const SOURCE_LABELS: Record<string, string> = {
+  purchase: 'OC',
+  purchase_cancel: 'Anulación OC',
+  invoice: 'Factura',
+  boleta: 'Boleta',
+  sale: 'Venta',
+  appointment: 'Cita',
+  appointment_item: 'Cita',
+  initial: 'Stock inicial',
+  return: 'Devolución',
+  credit_note: 'Nota de crédito',
+  voided_invoice: 'Baja factura',
+  voided_boleta: 'Baja boleta',
+  adjustment: 'Ajuste',
+  reconciliation: 'Conciliación',
+};
 
 interface Product {
   id: string;
@@ -73,23 +93,24 @@ function mapApiEntryToUi(e: ApiKardexEntry): KardexEntry {
   const d = e.movement_date ? new Date(e.movement_date) : new Date();
   const typeMap = { IN: 'entrada' as const, OUT: 'salida' as const, ADJUST: 'ajuste' as const };
   const type = typeMap[e.type] || 'ajuste';
-  const moduleMap: Record<string, KardexEntry['module']> = {
-    PURCHASE: 'compra', SALE: 'venta', ADJUST: 'ajuste', ADJUSTMENT: 'ajuste',
-    INITIAL: 'inicial', SERVICE: 'servicio', RETURN: 'devolucion',
-  };
-  const module = (e.source_type && moduleMap[e.source_type.toUpperCase()]) || 'ajuste';
+  const module = KARDEX_MODULES.includes(e.source_module as KardexEntry['module'])
+    ? (e.source_module as KardexEntry['module'])
+    : 'ajuste';
+  const sourceLabel = e.source_type ? (SOURCE_LABELS[e.source_type.toLowerCase()] ?? e.source_type) : '';
+  const quantity = type === 'ajuste' ? Number(e.signed_quantity ?? e.quantity) : Math.abs(Number(e.quantity));
   return {
     id: String(e.id),
     date: d.toISOString().split('T')[0],
     time: d.toTimeString().slice(0, 5),
     type,
-    quantity: Number(e.quantity),
+    quantity,
     unitCost: Number(e.unit_cost),
     totalCost: Number(e.total_cost),
     balance: Number(e.balance),
     balanceValue: Number(e.balance_value),
-    reference: e.source_id ? String(e.source_id) : (e.source_type || '-'),
+    reference: [sourceLabel, e.source_id ? `#${e.source_id}` : ''].filter(Boolean).join(' ') || '-',
     module,
+    area: e.area || '',
     details: e.notes || '-',
     user: e.created_by || 'Sistema',
   };
@@ -116,10 +137,17 @@ export function ProductKardex() {
     { date_from: dateRange.start, date_to: dateRange.end }
   );
 
+  const { summary, refresh: refreshSummary } = useKardexSummary(companyId);
+  const [exporting, setExporting] = useState(false);
+
   const kardexEntriesUi = useMemo(() => {
     if (!kardexData?.entries) return [];
-    return kardexData.entries.map(mapApiEntryToUi);
-  }, [kardexData]);
+    return kardexData.entries
+      .map(mapApiEntryToUi)
+      .filter(e => (filterType === 'all' || e.type === filterType) && (filterModule === 'all' || e.module === filterModule));
+  }, [kardexData, filterType, filterModule]);
+
+  const kardexDifference = Number(kardexData?.difference ?? 0);
 
   const products: Product[] = useMemo(() => inventoryProducts.map((p: InventoryProduct) => ({
     id: p.id,
@@ -204,9 +232,21 @@ export function ProductKardex() {
     return { status: 'normal', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900' };
   };
 
-  const handleExportKardex = (product: Product) => {
-    toast.success(`Exportando Kardex de ${product.name}...`);
-    // Aquí iría la lógica para exportar a Excel/PDF
+  const handleExportKardex = async (product?: Product, range?: { start: string; end: string }) => {
+    setExporting(true);
+    try {
+      await downloadKardexCsv({
+        company_id: companyId,
+        product_id: product?.id,
+        date_from: range?.start,
+        date_to: range?.end,
+      });
+      toast.success(product ? `Kardex de ${product.name} exportado` : 'Kardex exportado');
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo exportar el kardex');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const calculateMovementStats = (entries: KardexEntry[]) => {
@@ -249,11 +289,25 @@ export function ProductKardex() {
             Control completo de movimientos de inventario
           </p>
         </div>
-        <Button className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700">
-          <Download className="mr-2 h-4 w-4" />
+        <Button
+          className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
+          onClick={() => handleExportKardex()}
+          disabled={exporting}
+        >
+          {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
           Exportar Todo
         </Button>
       </div>
+
+      {summary && summary.products_out_of_sync > 0 && (
+        <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+          <AlertCircle className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="text-orange-800 dark:text-orange-200">
+            <strong>{summary.products_out_of_sync} producto(s)</strong> tienen un stock que no coincide con la suma de su kardex.
+            Un administrador debe ejecutar la conciliación de inventario.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Resumen General */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -261,7 +315,7 @@ export function ProductKardex() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Total Productos</p>
-              <p className="text-2xl mt-1">{products.length}</p>
+              <p className="text-2xl mt-1">{summary?.total_products ?? products.length}</p>
             </div>
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center">
               <Package className="h-6 w-6 text-blue-600 dark:text-blue-400" />
@@ -273,7 +327,9 @@ export function ProductKardex() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Valor Total Stock</p>
-              <p className="text-2xl mt-1">{formatCurrency(products.reduce((sum, p) => sum + p.stockValue, 0))}</p>
+              <p className="text-2xl mt-1">
+                {formatCurrency(summary?.stock_value ?? products.reduce((sum, p) => sum + p.stockValue, 0))}
+              </p>
             </div>
             <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-xl flex items-center justify-center">
               <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
@@ -299,7 +355,12 @@ export function ProductKardex() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Movimientos Hoy</p>
-              <p className="text-2xl mt-1">24</p>
+              <p className="text-2xl mt-1">{summary?.movements_today ?? 0}</p>
+              {summary && (
+                <p className="text-xs text-muted-foreground">
+                  +{summary.in_today} / -{summary.out_today} · {summary.adjustments_today} ajustes
+                </p>
+              )}
             </div>
             <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center">
               <BarChart3 className="h-6 w-6 text-purple-600 dark:text-purple-400" />
@@ -340,6 +401,8 @@ export function ProductKardex() {
               <SelectItem value="venta">Ventas</SelectItem>
               <SelectItem value="servicio">Servicios</SelectItem>
               <SelectItem value="ajuste">Ajustes</SelectItem>
+              <SelectItem value="inicial">Stock inicial</SelectItem>
+              <SelectItem value="devolucion">Devoluciones</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -406,6 +469,8 @@ export function ProductKardex() {
                     variant="outline" 
                     size="sm"
                     onClick={() => handleExportKardex(product)}
+                    disabled={exporting}
+                    title="Exportar kardex (CSV)"
                   >
                     <Download className="h-4 w-4" />
                   </Button>
@@ -476,7 +541,7 @@ export function ProductKardex() {
                       </div>
                       <div className="text-right">
                         <p className={`font-medium ${entry.type === 'entrada' ? 'text-green-600' : entry.type === 'salida' ? 'text-red-600' : 'text-orange-600'}`}>
-                          {entry.type === 'entrada' ? '+' : entry.type === 'salida' ? '-' : ''}{entry.quantity} und.
+                          {entry.type === 'entrada' ? '+' : entry.type === 'salida' ? '-' : entry.quantity > 0 ? '+' : ''}{entry.quantity} und.
                         </p>
                         <p className="text-sm text-muted-foreground">
                           Saldo: {entry.balance}
@@ -553,18 +618,36 @@ export function ProductKardex() {
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button variant="outline" onClick={() => refreshKardex()} disabled={loadingKardex}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      refreshKardex();
+                      refreshSummary();
+                      refreshInventory();
+                    }}
+                    disabled={loadingKardex}
+                  >
                     <RefreshCw className={`mr-2 h-4 w-4 ${loadingKardex ? 'animate-spin' : ''}`} />
                     Actualizar
                   </Button>
                 </div>
                 <div className="flex items-end ml-auto">
-                  <Button onClick={() => handleExportKardex(selectedProduct)}>
-                    <Download className="mr-2 h-4 w-4" />
+                  <Button onClick={() => handleExportKardex(selectedProduct, dateRange)} disabled={exporting}>
+                    {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                     Exportar
                   </Button>
                 </div>
               </div>
+
+              {kardexData && Math.abs(kardexDifference) > 0.0005 && (
+                <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+                  <AlertCircle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-800 dark:text-orange-200">
+                    El stock registrado ({kardexData.current_stock}) no coincide con el saldo del kardex
+                    ({kardexData.kardex_balance}). Diferencia: {kardexDifference > 0 ? '+' : ''}{kardexDifference} und.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Tabla de Kardex */}
               <div className="border rounded-lg overflow-hidden">
@@ -584,6 +667,25 @@ export function ProductKardex() {
                     </tr>
                   </thead>
                   <tbody>
+                    {kardexData && (
+                      <tr className="bg-purple-50 dark:bg-purple-950/20">
+                        <td className="p-3 text-sm" colSpan={5}>
+                          <span className="font-medium">Saldo inicial</span>
+                          <span className="text-xs text-muted-foreground ml-2">al {formatDate(dateRange.start)}</span>
+                        </td>
+                        <td className="p-3 text-right text-sm font-medium">{kardexData.opening_balance ?? 0}</td>
+                        <td className="p-3" />
+                        <td className="p-3 text-right text-sm font-medium">{formatCurrency(kardexData.opening_value ?? 0)}</td>
+                        <td className="p-3" colSpan={2} />
+                      </tr>
+                    )}
+                    {!loadingKardex && (kardexEntries[selectedProduct.id] ?? []).length === 0 && (
+                      <tr>
+                        <td className="p-6 text-center text-sm text-muted-foreground" colSpan={10}>
+                          Sin movimientos en el período o con los filtros seleccionados.
+                        </td>
+                      </tr>
+                    )}
                     {(kardexEntries[selectedProduct.id] ?? []).map((entry, idx) => (
                       <tr key={entry.id} className={idx % 2 === 0 ? 'bg-muted/30' : ''}>
                         <td className="p-3 text-sm">
@@ -607,12 +709,15 @@ export function ProductKardex() {
                           {entry.type === 'entrada' && (
                             <span className="text-green-600 font-medium">+{entry.quantity}</span>
                           )}
+                          {entry.type === 'ajuste' && entry.quantity > 0 && (
+                            <span className="text-orange-600 font-medium">+{entry.quantity}</span>
+                          )}
                         </td>
                         <td className="p-3 text-right text-sm">
                           {entry.type === 'salida' && (
                             <span className="text-red-600 font-medium">-{entry.quantity}</span>
                           )}
-                          {entry.type === 'ajuste' && (
+                          {entry.type === 'ajuste' && entry.quantity < 0 && (
                             <span className="text-orange-600 font-medium">{entry.quantity}</span>
                           )}
                         </td>
@@ -625,7 +730,9 @@ export function ProductKardex() {
                         <td className="p-3 text-sm">
                           <div>
                             <p>{entry.details}</p>
-                            <p className="text-xs text-muted-foreground">Por: {entry.user}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Por: {entry.user}{entry.area ? ` • ${entry.area}` : ''}
+                            </p>
                           </div>
                         </td>
                       </tr>

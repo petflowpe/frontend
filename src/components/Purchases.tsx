@@ -129,7 +129,8 @@ export function Purchases() {
     deleteInvoiceAttachment,
     deletePurchase,
     reload,
-  } = usePurchases(companyId);
+    summary,
+  } = usePurchases(companyId, { autoLoad: false });
   const { products: inventoryProducts } = useInventory(companyId);
 
   useEffect(() => {
@@ -191,40 +192,32 @@ export function Purchases() {
     });
   }, [purchases, searchTerm, statusFilter, paymentFilter, dateFrom, dateTo]);
 
-  if (!companyId) {
-    return <CompanyRequiredState title="Compras" />;
-  }
-  const kpis = useMemo(() => {
-    const open = purchases.filter((p) => !['delivered', 'cancelled'].includes(p.status));
-    const unpaid = purchases.filter((p) => (p.payment_status || 'unpaid') !== 'paid');
-    const invested = purchases
-      .filter((p) => p.status === 'delivered' || p.status === 'partial')
-      .reduce((s, p) => s + p.total, 0);
-    const payable = unpaid.reduce(
-      (s, p) => s + Math.max(0, (p.invoice_total ?? p.total) - (p.amount_paid || 0)),
-      0
-    );
-    return {
-      openCount: open.length,
-      lowStock: lowStockProducts.length,
-      invested,
-      payable,
-    };
-  }, [purchases, lowStockProducts.length]);
+  useEffect(() => {
+    if (!companyId) return;
+    const handle = setTimeout(() => {
+      reload({
+        status: statusFilter,
+        payment_status: paymentFilter,
+        from: dateFrom || undefined,
+        to: dateTo || undefined,
+        search: searchTerm.trim() || undefined,
+      });
+    }, searchTerm ? 350 : 0);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, statusFilter, paymentFilter, dateFrom, dateTo, searchTerm]);
 
-  const analyticsBySupplier = useMemo(() => {
-    const map = new Map<number, { name: string; total: number; orders: number }>();
-    for (const p of purchases) {
-      if (p.status === 'cancelled') continue;
-      const name =
-        typeof p.supplier === 'string' ? p.supplier : p.supplierData?.name || 'Proveedor';
-      const cur = map.get(p.supplier_id) || { name, total: 0, orders: 0 };
-      cur.total += p.total;
-      cur.orders += 1;
-      map.set(p.supplier_id, cur);
-    }
-    return [...map.values()].sort((a, b) => b.total - a.total);
-  }, [purchases]);
+  const kpis = useMemo(() => ({
+    openCount: summary?.open_count ?? purchases.filter((p) => !['delivered', 'cancelled'].includes(p.status)).length,
+    lowStock: lowStockProducts.length,
+    invested: summary?.invested ?? 0,
+    payable: summary?.payable ?? 0,
+  }), [summary, purchases, lowStockProducts.length]);
+
+  const analyticsBySupplier = useMemo(
+    () => (summary?.by_supplier ?? []).map((r) => ({ name: r.name, total: r.total, orders: r.orders })),
+    [summary]
+  );
 
   const priceComparison = useMemo(() => {
     // Comparar cost_price del catálogo agrupando productos con mismo nombre y distinto supplier
@@ -251,6 +244,10 @@ export function Purchases() {
       })
       .slice(0, 30);
   }, [inventoryProducts]);
+
+  if (!companyId) {
+    return <CompanyRequiredState title="Compras" />;
+  }
 
   const handleSavePurchase = async (purchaseData: any) => {
     const items = (purchaseData.items || [])
@@ -946,9 +943,12 @@ export function Purchases() {
 
         <TabsContent value="payables" className="space-y-4">
           <Card className="p-4">
-            <h3 className="font-bold mb-3">Cuentas por pagar (CxP)</h3>
+            <h3 className="font-bold mb-1">Cuentas por pagar pendientes</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Vista rápida. El control completo de vencimientos y pagos está en Tesorería.
+            </p>
             {payables.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin CxP registradas</p>
+              <p className="text-sm text-muted-foreground">Sin cuentas por pagar pendientes</p>
             ) : (
               <div className="space-y-2">
                 {payables.map((row: any) => (

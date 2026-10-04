@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { fetchAllPages } from '../utils/api/fetchAllPages';
 
 export type SupplierType = 'Mercadería' | 'Servicios' | 'Honorarios' | 'Mixto' | 'Médico Externo';
 
@@ -109,13 +110,11 @@ export function useSuppliers(companyId?: number | null) {
     }
     setLoading(true);
     try {
-      const response = await apiClient.get<{ data?: Record<string, unknown>[] }>(
-        API.suppliers.list,
-        { company_id: companyId, only_active: false, per_page: 500 },
-      );
-      const list = (response as { data?: Record<string, unknown>[] })?.data ?? response ?? [];
-      const rows = Array.isArray(list) ? list : [];
-      setSuppliers(rows.map((row) => fromBackendFormat(row as Record<string, unknown>)));
+      const rows = await fetchAllPages<Record<string, unknown>>(API.suppliers.list, {
+        company_id: companyId,
+        only_active: false,
+      });
+      setSuppliers(rows.map((row) => fromBackendFormat(row)));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Error cargando proveedores';
       if (import.meta.env.DEV) console.error('Error cargando proveedores', e);

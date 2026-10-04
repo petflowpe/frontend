@@ -47,6 +47,7 @@ import { CHART_OF_ACCOUNTS } from '../config/defaults';
 import { useVehicles } from '../hooks/useVehicles';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { fetchAllPages } from '../utils/api/fetchAllPages';
 
 // Configuración de vehículos (persistida en BD).
 // IMPORTANTE: no inyectar defaults "demo" automáticamente. Si el backend devuelve vacío,
@@ -308,9 +309,8 @@ export function VehicleManagement({ currentUser }: VehicleManagementProps = {}) 
 
   const fetchMaintenances = useCallback(async () => {
     try {
-      const res = await apiClient.get(API.vehicles.maintenances.list, { per_page: 500 });
-      const raw = Array.isArray(res) ? res : res?.data;
-      setMaintenanceHistory((Array.isArray(raw) ? raw : []).map(maintenanceFromBackend));
+      const rows = await fetchAllPages(API.vehicles.maintenances.list);
+      setMaintenanceHistory(rows.map(maintenanceFromBackend));
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo cargar el historial de mantenimiento');
       setMaintenanceHistory([]);
@@ -319,9 +319,8 @@ export function VehicleManagement({ currentUser }: VehicleManagementProps = {}) 
 
   const fetchExpenses = useCallback(async () => {
     try {
-      const res = await apiClient.get(API.vehicles.expenses.list, { per_page: 500 });
-      const raw = Array.isArray(res) ? res : res?.data;
-      setExpenses((Array.isArray(raw) ? raw : []).map(expenseFromBackend));
+      const rows = await fetchAllPages(API.vehicles.expenses.list);
+      setExpenses(rows.map(expenseFromBackend));
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo cargar el historial de gastos');
       setExpenses([]);
@@ -330,9 +329,8 @@ export function VehicleManagement({ currentUser }: VehicleManagementProps = {}) 
 
   const fetchServices = useCallback(async () => {
     try {
-      const res = await apiClient.get(API.vehicles.services.list, { per_page: 500, status: 'pending' });
-      const raw = Array.isArray(res) ? res : res?.data;
-      setUpcomingServices((Array.isArray(raw) ? raw : []).map(serviceFromBackend));
+      const rows = await fetchAllPages(API.vehicles.services.list, { status: 'pending' });
+      setUpcomingServices(rows.map(serviceFromBackend));
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo cargar los próximos servicios');
       setUpcomingServices([]);

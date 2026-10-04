@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
+import { fetchAllPages } from '../utils/api/fetchAllPages';
 import { useAuth } from '../context/AuthContext';
 import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 
@@ -241,30 +242,13 @@ export const useProducts = () => {
     }
     setLoading(true);
     try {
-      const [productsRes, servicesRes] = await Promise.all([
-        apiClient.get<{ data: any[]; meta?: any } | any[]>('/products', {
-          company_id: companyId,
-          only_active: false,
-          item_type: 'PRODUCTO',
-          per_page: 200,
-        }),
-        apiClient.get<{ data: any[]; meta?: any } | any[]>('/products', {
-          company_id: companyId,
-          only_active: false,
-          item_type: 'SERVICIO',
-          per_page: 200,
-        }),
+      const [productRows, serviceRows] = await Promise.all([
+        fetchAllPages('/products', { company_id: companyId, only_active: false, item_type: 'PRODUCTO' }),
+        fetchAllPages('/products', { company_id: companyId, only_active: false, item_type: 'SERVICIO' }),
       ]);
 
-      const toList = (response: unknown) => {
-        const productsArray = Array.isArray(response)
-          ? response
-          : ((response as { data?: any[] })?.data || []);
-        return productsArray.map(fromBackendFormat);
-      };
-
-      setProducts(toList(productsRes).filter((item) => item.type === 'product'));
-      setServices(toList(servicesRes).filter((item) => item.type === 'service'));
+      setProducts(productRows.map(fromBackendFormat).filter((item) => item.type === 'product'));
+      setServices(serviceRows.map(fromBackendFormat).filter((item) => item.type === 'service'));
     } catch (err: any) {
       console.error('Error in fetchProducts:', err);
       toast.error(err.message || 'Error cargando productos');

@@ -8,12 +8,15 @@ export interface KardexEntry {
   movement_date: string;
   type: 'IN' | 'OUT' | 'ADJUST';
   quantity: number;
+  signed_quantity?: number;
   unit_cost: number;
   total_cost: number;
   balance: number;
   balance_value: number;
   source_type?: string;
+  source_module?: string;
   source_id?: string | number;
+  area?: string | null;
   notes?: string;
   created_by?: string;
 }
@@ -21,8 +24,64 @@ export interface KardexEntry {
 export interface KardexResponse {
   product: { id: number; name?: string; code?: string };
   entries: KardexEntry[];
+  opening_balance?: number;
+  opening_value?: number;
+  closing_balance?: number;
   current_stock: number;
   current_value: number;
+  kardex_balance?: number;
+  difference?: number;
+}
+
+export interface KardexSummary {
+  movements_today: number;
+  in_today: number;
+  out_today: number;
+  adjustments_today: number;
+  total_products: number;
+  stock_value: number;
+  products_out_of_sync: number;
+}
+
+export function useKardexSummary(companyId?: number | null) {
+  const [summary, setSummary] = useState<KardexSummary | null>(null);
+
+  const fetchSummary = useCallback(async () => {
+    if (!companyId) {
+      setSummary(null);
+      return;
+    }
+    try {
+      const res = await apiClient.get<KardexSummary | { data?: KardexSummary }>(API.kardex.summary, {
+        company_id: companyId,
+      });
+      const raw = (res as any)?.data ?? res;
+      setSummary(raw && typeof raw === 'object' && 'movements_today' in raw ? (raw as KardexSummary) : null);
+    } catch {
+      setSummary(null);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
+
+  return { summary, refresh: fetchSummary };
+}
+
+export async function downloadKardexCsv(params: {
+  company_id?: number | null;
+  product_id?: string | number | null;
+  date_from?: string;
+  date_to?: string;
+}): Promise<void> {
+  const query = new URLSearchParams();
+  if (params.company_id) query.set('company_id', String(params.company_id));
+  if (params.product_id) query.set('product_id', String(params.product_id));
+  if (params.date_from) query.set('date_from', params.date_from);
+  if (params.date_to) query.set('date_to', params.date_to);
+  const qs = query.toString();
+  await apiClient.downloadFile(`${API.kardex.export}${qs ? `?${qs}` : ''}`, 'kardex.csv');
 }
 
 export function useKardex(

@@ -3,6 +3,7 @@ import { DollarSign, Receipt, CreditCard, RefreshCw, AlertTriangle } from 'lucid
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { fetchAllPages } from '../utils/api/fetchAllPages';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -13,6 +14,8 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { formatCurrency } from '../utils/helpers';
 import { useAuth } from '../context/AuthContext';
+import { resolveStaffCompanyId } from '../utils/appointmentMappers';
+import { CompanyRequiredState } from './common/CompanyRequiredState';
 import { PayPurchaseDialog } from './purchases/PayPurchaseDialog';
 import type { PurchaseOrder } from '../hooks/usePurchases';
 
@@ -46,6 +49,13 @@ type PayableRow = {
   metadata?: any;
 };
 
+type PayableSummary = {
+  balance: number;
+  overdue: number;
+  due_7_days: number;
+  open_count: number;
+};
+
 function statusBadge(status: string, overdue?: boolean) {
   if (status === 'paid' || status === 'closed') return { label: 'Pagado', cls: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' };
   if (overdue) return { label: 'Vencido', cls: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200' };
@@ -53,14 +63,20 @@ function statusBadge(status: string, overdue?: boolean) {
   return { label: 'Pendiente', cls: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200' };
 }
 
+function isPastDate(date: string): boolean {
+  return date < new Date().toISOString().slice(0, 10);
+}
+
 export function Treasury() {
   const { user } = useAuth();
-  const companyId = user?.companyId ?? null;
+  const companyId = resolveStaffCompanyId(user);
 
   const [activeTab, setActiveTab] = useState<'receivables' | 'payables'>('receivables');
   const [loading, setLoading] = useState(false);
   const [receivables, setReceivables] = useState<ReceivableRow[]>([]);
   const [payables, setPayables] = useState<PayableRow[]>([]);
+  const [payableStatus, setPayableStatus] = useState<'pending' | 'closed' | 'all'>('pending');
+  const [payableSummary, setPayableSummary] = useState<PayableSummary | null>(null);
   const [search, setSearch] = useState('');
 
   // Cobro (crear payment) sobre factura
@@ -78,12 +94,8 @@ export function Treasury() {
     if (!companyId) return;
     setLoading(true);
     try {
-      const res = await apiClient.get<{ data?: ReceivableRow[] } | ReceivableRow[]>(
-        API.treasury.receivables,
-        { company_id: companyId, per_page: 200 }
-      );
-      const rows = Array.isArray(res) ? res : (res as any)?.data;
-      setReceivables(Array.isArray(rows) ? rows : []);
+      const rows = await fetchAllPages<ReceivableRow>(API.treasury.receivables, { company_id: companyId });
+      setReceivables(rows);
     } catch (e: any) {
       console.error(e);
       toast.error(e?.message || 'No se pudieron cargar las cuentas por cobrar');
@@ -93,15 +105,22 @@ export function Treasury() {
     }
   };
 
-  const loadPayables = async () => {
+  const loadPayables = async (status = payableStatus) => {
     if (!companyId) return;
     try {
-      const res = await apiClient.get<{ data?: any[] }>(API.purchaseOrders.payables, { company_id: companyId });
-      setPayables((res as any)?.data ?? []);
+      const params: Record<string, string | number> = { company_id: companyId };
+      if (status !== 'all') params.status = status;
+      const [rows, first] = await Promise.all([
+        fetchAllPages<PayableRow>(API.treasury.payables, params),
+        apiClient.get<any>(API.treasury.payables, { company_id: companyId, per_page: 1 }),
+      ]);
+      setPayables(rows);
+      setPayableSummary((first as any)?.meta?.summary ?? null);
     } catch (e: any) {
       console.error(e);
       toast.error(e?.message || 'No se pudieron cargar las cuentas por pagar');
       setPayables([]);
+      setPayableSummary(null);
     }
   };
 
@@ -137,12 +156,12 @@ export function Treasury() {
   const kpis = useMemo(() => {
     const cxc = receivables.reduce((s, r) => s + (Number(r.balance) || 0), 0);
     const cxcOverdue = receivables.filter((r) => r.overdue).reduce((s, r) => s + (Number(r.balance) || 0), 0);
-    const cxp = payables.reduce((s, p) => s + (Number(p.balance) || 0), 0);
-    const cxpOverdue = payables
-      .filter((p) => p.status !== 'closed' && p.due_date && new Date(p.due_date) < new Date())
+    const cxp = payableSummary?.balance ?? payables.reduce((s, p) => s + (Number(p.balance) || 0), 0);
+    const cxpOverdue = payableSummary?.overdue ?? payables
+      .filter((p) => p.status !== 'closed' && p.due_date && isPastDate(p.due_date))
       .reduce((s, p) => s + (Number(p.balance) || 0), 0);
-    return { cxc, cxcOverdue, cxp, cxpOverdue };
-  }, [receivables, payables]);
+    return { cxc, cxcOverdue, cxp, cxpOverdue, cxpDueSoon: payableSummary?.due_7_days ?? 0 };
+  }, [receivables, payables, payableSummary]);
 
   const openCollect = (row: ReceivableRow) => {
     setCollectTarget(row);
@@ -188,7 +207,12 @@ export function Treasury() {
     }
   };
 
-  const submitPaySupplier = async (payload: { amount: number; payment_method?: string; post_to_cash?: boolean }) => {
+  const submitPaySupplier = async (payload: {
+    amount: number;
+    payment_method?: string;
+    post_to_cash?: boolean;
+    reference?: string;
+  }) => {
     if (!payPurchase) return;
     await apiClient.post(API.purchaseOrders.pay(payPurchase.id), payload);
     toast.success('Pago registrado · CxP actualizada');
@@ -196,6 +220,10 @@ export function Treasury() {
     setPayPurchase(null);
     await loadPayables();
   };
+
+  if (!companyId) {
+    return <CompanyRequiredState title="Tesorería" />;
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -247,6 +275,11 @@ export function Treasury() {
             <div>
               <p className="text-sm text-muted-foreground">CxP Vencido</p>
               <p className="text-xl font-semibold">{formatCurrency(kpis.cxpOverdue, 'PEN')}</p>
+              {kpis.cxpDueSoon > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Vence en 7 días: {formatCurrency(kpis.cxpDueSoon, 'PEN')}
+                </p>
+              )}
             </div>
             <AlertTriangle className="h-5 w-5 text-red-600" />
           </div>
@@ -334,6 +367,27 @@ export function Treasury() {
 
         <TabsContent value="payables" className="mt-4">
           <Card className="p-4">
+            <div className="flex items-center justify-between mb-3 gap-3">
+              <p className="text-sm text-muted-foreground">
+                {payables.length} cuenta(s) {payableStatus === 'pending' ? 'pendientes' : payableStatus === 'closed' ? 'pagadas' : ''}
+              </p>
+              <Select
+                value={payableStatus}
+                onValueChange={(v: any) => {
+                  setPayableStatus(v);
+                  loadPayables(v);
+                }}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pendientes</SelectItem>
+                  <SelectItem value="closed">Pagadas</SelectItem>
+                  <SelectItem value="all">Todas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -350,7 +404,7 @@ export function Treasury() {
                 </thead>
                 <tbody>
                   {filteredPayables.map((p) => {
-                    const overdue = p.status !== 'closed' && p.due_date ? new Date(p.due_date) < new Date() : false;
+                    const overdue = p.status !== 'closed' && p.due_date ? isPastDate(p.due_date) : false;
                     const badge = statusBadge(p.status, overdue);
                     return (
                       <tr key={p.id} className="border-b hover:bg-muted/30">

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../utils/api/client';
 import { API } from '../utils/api/endpoints';
+import { fetchAllPages } from '../utils/api/fetchAllPages';
 
 export interface PurchaseOrderItem {
   id?: number;
@@ -52,11 +53,39 @@ export interface PurchaseOrder {
   email_sent_at?: string | null;
   cancelled_at?: string | null;
   cancellation_reason?: string | null;
+  payments?: PurchasePayment[];
   items: PurchaseOrderItem[];
   date?: string;
   deliveryDate?: string;
   invoice?: { number?: string; date?: string; amount?: number; tax?: number; total?: number };
 }
+
+export interface PurchasePayment {
+  id: number;
+  amount: number;
+  payment_method: string;
+  reference?: string | null;
+  notes?: string | null;
+  paid_at: string;
+  cash_movement_id?: number | null;
+  user?: { id: number; name: string } | null;
+}
+
+export interface PurchaseSummary {
+  open_count: number;
+  invested: number;
+  payable: number;
+  pending_approval: number;
+  by_supplier: { supplier_id: number; name: string; orders: number; total: number }[];
+}
+
+export type PurchaseFilters = {
+  status?: string;
+  payment_status?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+};
 
 function normalizeStatus(raw: string): PurchaseStatus {
   if (raw === 'in-transit') return 'in_transit';
@@ -112,6 +141,9 @@ export function fromBackendFormat(row: any): PurchaseOrder {
     email_sent_at: row.email_sent_at ?? null,
     cancelled_at: row.cancelled_at ?? null,
     cancellation_reason: row.cancellation_reason ?? null,
+    payments: Array.isArray(row.payments)
+      ? row.payments.map((p: any) => ({ ...p, amount: parseFloat(p.amount) || 0 }))
+      : undefined,
     items,
     date: row.order_date,
     deliveryDate: row.delivery_date,
@@ -127,34 +159,59 @@ export function fromBackendFormat(row: any): PurchaseOrder {
   };
 }
 
-export function usePurchases(companyId?: number | null) {
+export function usePurchases(companyId?: number | null, options: { autoLoad?: boolean } = {}) {
+  const autoLoad = options.autoLoad !== false;
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadPurchases = useCallback(async (filters?: Record<string, string | number | undefined>) => {
+  const [summary, setSummary] = useState<PurchaseSummary | null>(null);
+  const filtersRef = useRef<PurchaseFilters>({});
+  const requestRef = useRef(0);
+
+  const loadSummary = useCallback(async () => {
+    if (!companyId || companyId <= 0) {
+      setSummary(null);
+      return;
+    }
+    try {
+      const res = await apiClient.get<any>(API.purchaseOrders.summary, { company_id: companyId });
+      const raw = res?.data ?? res;
+      setSummary(raw && typeof raw === 'object' && 'open_count' in raw ? (raw as PurchaseSummary) : null);
+    } catch {
+      setSummary(null);
+    }
+  }, [companyId]);
+
+  const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
+    if (filters) filtersRef.current = filters;
     if (!companyId || companyId <= 0) {
       setPurchases([]);
       setLoading(false);
       return;
     }
+    const requestId = ++requestRef.current;
     setLoading(true);
     try {
-      const response = await apiClient.get<{ success?: boolean; data?: any[] }>(
-        API.purchaseOrders.list,
-        { company_id: companyId, per_page: 100, ...filters }
-      );
-      setPurchases((response?.data ?? []).map(fromBackendFormat));
+      const params: Record<string, string | number> = { company_id: companyId };
+      Object.entries(filtersRef.current).forEach(([k, v]) => {
+        if (v && v !== 'all') params[k] = v;
+      });
+      const rows = await fetchAllPages(API.purchaseOrders.list, params);
+      if (requestId === requestRef.current) setPurchases(rows.map(fromBackendFormat));
     } catch (e: any) {
-      toast.error(e.message || 'Error cargando órdenes de compra');
-      setPurchases([]);
+      if (requestId === requestRef.current) {
+        toast.error(e.message || 'Error cargando órdenes de compra');
+        setPurchases([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) setLoading(false);
     }
-  }, [companyId]);
+    loadSummary();
+  }, [companyId, loadSummary]);
 
   useEffect(() => {
-    loadPurchases();
-  }, [loadPurchases]);
+    if (autoLoad) loadPurchases();
+  }, [loadPurchases, autoLoad]);
 
   const upsertLocal = (order: PurchaseOrder) => {
     setPurchases((prev) => {
@@ -232,6 +289,7 @@ export function usePurchases(companyId?: number | null) {
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.receive(id), payload);
     const order = fromBackendFormat(res?.data ?? res);
     upsertLocal(order);
+    loadSummary();
     toast.success('Recepción registrada · stock actualizado');
     return order;
   };
@@ -248,6 +306,7 @@ export function usePurchases(companyId?: number | null) {
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.complete(id), invoice || {});
     const order = fromBackendFormat(res?.data ?? res);
     upsertLocal(order);
+    loadSummary();
     toast.success('Orden completada y stock actualizado');
     return order;
   };
@@ -259,11 +318,14 @@ export function usePurchases(companyId?: number | null) {
       payment_method?: string;
       post_to_cash?: boolean;
       cash_session_id?: number;
+      reference?: string;
+      notes?: string;
     }
   ) => {
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.pay(id), payload);
     const order = fromBackendFormat(res?.data ?? res);
     upsertLocal(order);
+    loadSummary();
     toast.success('Pago registrado · CxP actualizada');
     return order;
   };
@@ -272,6 +334,7 @@ export function usePurchases(companyId?: number | null) {
     const res = await apiClient.post<{ data?: any }>(API.purchaseOrders.cancel(id), { reason });
     const order = fromBackendFormat(res?.data ?? res);
     upsertLocal(order);
+    loadSummary();
     toast.success('Orden anulada · kardex revertido');
     return order;
   };
@@ -334,10 +397,7 @@ export function usePurchases(companyId?: number | null) {
   };
 
   const loadPayables = async () => {
-    const res = await apiClient.get<{ data?: any[] }>(API.purchaseOrders.payables, {
-      company_id: companyId,
-    });
-    return res?.data ?? [];
+    return fetchAllPages(API.purchaseOrders.payables, { company_id: companyId, status: 'pending' });
   };
 
   const loadSettings = async () => {
@@ -403,7 +463,9 @@ export function usePurchases(companyId?: number | null) {
   return {
     purchases,
     loading,
+    summary,
     reload: loadPurchases,
+    reloadSummary: loadSummary,
     createPurchase,
     updatePurchase,
     changeStatus,

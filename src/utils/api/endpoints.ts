@@ -128,6 +128,10 @@ export const API = {
     deleteImage: (id: string | number) => `/products/${id}/image`,
     kardex: (id: string | number) => `/products/${id}/kardex`,
   },
+  kardex: {
+    summary: '/kardex/summary',
+    export: '/kardex/export',
+  },
   services: {
     list: '/services',
     byId: (id: string | number) => `/services/${id}`,
@@ -161,6 +165,7 @@ export const API = {
     deliveryAlerts: '/purchase-orders/delivery-alerts',
     priceHistory: '/purchase-orders/price-history',
     payables: '/purchase-orders/payables',
+    summary: '/purchase-orders/summary',
     settings: '/purchase-orders/settings',
     lookupBarcode: '/purchase-orders/lookup-barcode',
   },
@@ -181,6 +186,7 @@ export const API = {
   },
   treasury: {
     receivables: '/treasury/receivables',
+    payables: '/treasury/payables',
   },
   paymentGateways: {
     get: (companyId: string | number) => `/companies/${companyId}/payment-gateways`,

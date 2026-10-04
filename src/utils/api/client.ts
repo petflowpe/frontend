@@ -154,7 +154,7 @@ export class ApiClient {
     const token = this.getToken();
     const url = `${API_URL}${endpoint}`;
     const headers: HeadersInit = {
-      'Accept': 'application/octet-stream, application/pdf, application/xml, text/xml',
+      'Accept': 'application/octet-stream, application/pdf, application/xml, text/xml, text/csv',
     };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
