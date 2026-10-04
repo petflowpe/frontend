@@ -52,6 +52,7 @@ export function createDraftProduct(defaults: DraftDefaults = {}): UiProduct {
     stockAccounting: 0,
     minStock: 5,
     maxStock: undefined,
+    trackBatches: false,
     status: 'active',
     description: '',
     imagePath: undefined,
@@ -111,6 +112,7 @@ export function summarizeDiff(prev: UiProduct, next: UiProduct): string {
   pick('Precio compra', prev.costPrice, next.costPrice);
   pick('Stock mínimo', prev.minStock, next.minStock);
   pick('Stock máximo', prev.maxStock ?? '', next.maxStock ?? '');
+  pick('Control de lotes', prev.trackBatches ? 'Sí' : 'No', next.trackBatches ? 'Sí' : 'No');
   pick('Línea', prev.line, next.line);
   pick('Categoría', prev.category, next.category);
   pick('Proveedor', prev.supplierName ?? '', next.supplierName ?? '');

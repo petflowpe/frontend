@@ -113,6 +113,8 @@ export interface UiProduct {
   stockAccounting: number;
   minStock: number;
   maxStock?: number;
+  /** Controla lotes y fechas de vencimiento (FEFO). */
+  trackBatches?: boolean;
   status: ProductStatus;
   description?: string;
   imagePath?: string;

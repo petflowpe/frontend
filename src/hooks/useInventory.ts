@@ -28,6 +28,9 @@ export interface Product {
   barcode?: string;
   description?: string;
   maxStock?: number;
+  trackBatches?: boolean;
+  /** Reservado por citas abiertas (Σ product_stocks.reserved_quantity). */
+  reserved?: number;
   /** JSON libre (`products.metadata`), usado por la ficha extendida. */
   metadata?: Record<string, unknown>;
 }
@@ -85,6 +88,10 @@ function fromBackendFormat(backendProduct: any): Product {
     barcode: backendProduct.barcode || undefined,
     description: backendProduct.description || undefined,
     maxStock: backendProduct.max_stock != null ? parseFloat(backendProduct.max_stock) || 0 : undefined,
+    trackBatches: Boolean(backendProduct.track_batches),
+    reserved: Array.isArray(stocks)
+      ? stocks.reduce((sum: number, s: any) => sum + (parseFloat(s.reserved_quantity) || 0), 0)
+      : 0,
     metadata,
   };
 }
@@ -128,6 +135,7 @@ function toBackendFormat(
   if (product.barcode) payload.barcode = product.barcode;
   if (product.description) payload.description = product.description;
   if (product.maxStock != null) payload.max_stock = product.maxStock;
+  if (product.trackBatches != null) payload.track_batches = product.trackBatches;
   if (product.metadata) payload.metadata = product.metadata;
 
   const areaId = product.areaId ?? defaultAreaId;
@@ -203,6 +211,7 @@ export const useInventory = (companyId?: number | null, defaultAreaId?: number) 
       if ('barcode' in changes) payload.barcode = changes.barcode || null;
       if ('description' in changes) payload.description = changes.description || null;
       if ('maxStock' in changes) payload.max_stock = changes.maxStock ?? null;
+      if (changes.trackBatches != null) payload.track_batches = changes.trackBatches;
       if ('metadata' in changes) payload.metadata = changes.metadata ?? null;
       if ('areaId' in changes) {
         payload.area_id = changes.areaId ?? null;

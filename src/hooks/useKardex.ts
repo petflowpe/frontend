@@ -31,6 +31,17 @@ export interface KardexResponse {
   current_value: number;
   kardex_balance?: number;
   difference?: number;
+  area_id?: number | null;
+  by_area?: KardexAreaBalance[];
+}
+
+export interface KardexAreaBalance {
+  area_id: number | null;
+  area: string | null;
+  stock: number;
+  reserved: number;
+  kardex: number;
+  difference: number;
 }
 
 export interface KardexSummary {
@@ -72,12 +83,14 @@ export function useKardexSummary(companyId?: number | null) {
 export async function downloadKardexCsv(params: {
   company_id?: number | null;
   product_id?: string | number | null;
+  area_id?: number | null;
   date_from?: string;
   date_to?: string;
 }): Promise<void> {
   const query = new URLSearchParams();
   if (params.company_id) query.set('company_id', String(params.company_id));
   if (params.product_id) query.set('product_id', String(params.product_id));
+  if (params.area_id) query.set('area_id', String(params.area_id));
   if (params.date_from) query.set('date_from', params.date_from);
   if (params.date_to) query.set('date_to', params.date_to);
   const qs = query.toString();
@@ -86,7 +99,7 @@ export async function downloadKardexCsv(params: {
 
 export function useKardex(
   productId: string | number | null,
-  options?: { company_id?: number; branch_id?: number; date_from?: string; date_to?: string }
+  options?: { company_id?: number; branch_id?: number; area_id?: number | null; date_from?: string; date_to?: string }
 ) {
   const [data, setData] = useState<KardexResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,6 +114,7 @@ export function useKardex(
       const params: Record<string, string | number> = {};
       if (options?.company_id) params.company_id = options.company_id;
       if (options?.branch_id) params.branch_id = options.branch_id;
+      if (options?.area_id) params.area_id = options.area_id;
       if (options?.date_from) params.date_from = options.date_from;
       if (options?.date_to) params.date_to = options.date_to;
 
@@ -117,7 +131,7 @@ export function useKardex(
     } finally {
       setLoading(false);
     }
-  }, [productId, options?.company_id, options?.branch_id, options?.date_from, options?.date_to]);
+  }, [productId, options?.company_id, options?.branch_id, options?.area_id, options?.date_from, options?.date_to]);
 
   useEffect(() => {
     fetchKardex();

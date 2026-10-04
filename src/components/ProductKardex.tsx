@@ -39,6 +39,9 @@ import { useKardex, useKardexSummary, downloadKardexCsv, KardexEntry as ApiKarde
 import { useAuth } from '../context/AuthContext';
 import { resolveStaffCompanyId } from '../utils/appointmentMappers';
 import { CompanyRequiredState } from './common/CompanyRequiredState';
+import { ExpiringBatchesPanel, ProductBatchesTable } from './inventory/BatchPanels';
+import { InventoryReportsPanel } from './inventory/InventoryReportsPanel';
+import { useAreas } from '../hooks/useAreas';
 
 interface KardexEntry {
   id: string;
@@ -51,13 +54,13 @@ interface KardexEntry {
   balance: number;
   balanceValue: number;
   reference: string;
-  module: 'compra' | 'venta' | 'servicio' | 'ajuste' | 'inicial' | 'devolucion';
+  module: 'compra' | 'venta' | 'servicio' | 'ajuste' | 'inicial' | 'devolucion' | 'merma';
   area: string;
   details: string;
   user: string;
 }
 
-const KARDEX_MODULES: KardexEntry['module'][] = ['compra', 'venta', 'servicio', 'ajuste', 'inicial', 'devolucion'];
+const KARDEX_MODULES: KardexEntry['module'][] = ['compra', 'venta', 'servicio', 'ajuste', 'inicial', 'devolucion', 'merma'];
 
 const SOURCE_LABELS: Record<string, string> = {
   purchase: 'OC',
@@ -67,6 +70,8 @@ const SOURCE_LABELS: Record<string, string> = {
   sale: 'Venta',
   appointment: 'Cita',
   appointment_item: 'Cita',
+  invoice_supply: 'Insumos factura',
+  boleta_supply: 'Insumos boleta',
   initial: 'Stock inicial',
   return: 'Devolución',
   credit_note: 'Nota de crédito',
@@ -74,6 +79,8 @@ const SOURCE_LABELS: Record<string, string> = {
   voided_boleta: 'Baja boleta',
   adjustment: 'Ajuste',
   reconciliation: 'Conciliación',
+  expiry: 'Baja vencimiento',
+  shrinkage: 'Merma',
 };
 
 interface Product {
@@ -87,6 +94,8 @@ interface Product {
   unitCost: number;
   salePrice: number;
   stockValue: number;
+  trackBatches: boolean;
+  reserved: number;
 }
 
 function mapApiEntryToUi(e: ApiKardexEntry): KardexEntry {
@@ -122,6 +131,7 @@ export function ProductKardex() {
   const { products: inventoryProducts, loading: loadingProducts, refreshInventory } = useInventory(companyId);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showReports, setShowReports] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterModule, setFilterModule] = useState<string>('all');
@@ -132,9 +142,13 @@ export function ProductKardex() {
     return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
   });
 
+  const { areas } = useAreas(companyId);
+  const [areaFilter, setAreaFilter] = useState<string>('all');
+  const areaId = areaFilter === 'all' ? null : Number(areaFilter);
+
   const { data: kardexData, loading: loadingKardex, refresh: refreshKardex } = useKardex(
     selectedProduct?.id ?? null,
-    { date_from: dateRange.start, date_to: dateRange.end }
+    { area_id: areaId, date_from: dateRange.start, date_to: dateRange.end }
   );
 
   const { summary, refresh: refreshSummary } = useKardexSummary(companyId);
@@ -160,6 +174,8 @@ export function ProductKardex() {
     unitCost: p.cost,
     salePrice: p.price,
     stockValue: p.cost * p.stock,
+    trackBatches: !!p.trackBatches,
+    reserved: p.reserved ?? 0,
   })), [inventoryProducts]);
 
   const kardexEntries: Record<string, KardexEntry[]> = useMemo(() => {
@@ -195,6 +211,7 @@ export function ProductKardex() {
       case 'inicial': return <Layers className="h-4 w-4" />;
       case 'devolucion': return <RefreshCw className="h-4 w-4" />;
       case 'ajuste': return <AlertCircle className="h-4 w-4" />;
+      case 'merma': return <TrendingDown className="h-4 w-4" />;
       default: return <FileText className="h-4 w-4" />;
     }
   };
@@ -207,6 +224,7 @@ export function ProductKardex() {
       case 'inicial': return 'Inicial';
       case 'devolucion': return 'Devolución';
       case 'ajuste': return 'Ajuste';
+      case 'merma': return 'Merma';
       default: return module;
     }
   };
@@ -238,6 +256,7 @@ export function ProductKardex() {
       await downloadKardexCsv({
         company_id: companyId,
         product_id: product?.id,
+        area_id: areaId,
         date_from: range?.start,
         date_to: range?.end,
       });
@@ -289,15 +308,23 @@ export function ProductKardex() {
             Control completo de movimientos de inventario
           </p>
         </div>
-        <Button
-          className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
-          onClick={() => handleExportKardex()}
-          disabled={exporting}
-        >
-          {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-          Exportar Todo
-        </Button>
+        <div className="flex gap-2">
+          <Button variant={showReports ? 'secondary' : 'outline'} onClick={() => setShowReports((v) => !v)}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Mermas y márgenes
+          </Button>
+          <Button
+            className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
+            onClick={() => handleExportKardex()}
+            disabled={exporting}
+          >
+            {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Exportar Todo
+          </Button>
+        </div>
       </div>
+
+      {showReports && <InventoryReportsPanel companyId={companyId} areaId={areaId} />}
 
       {summary && summary.products_out_of_sync > 0 && (
         <Alert className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
@@ -403,10 +430,35 @@ export function ProductKardex() {
               <SelectItem value="ajuste">Ajustes</SelectItem>
               <SelectItem value="inicial">Stock inicial</SelectItem>
               <SelectItem value="devolucion">Devoluciones</SelectItem>
+              <SelectItem value="merma">Mermas / vencimientos</SelectItem>
             </SelectContent>
           </Select>
+          {areas.length > 0 && (
+            <Select value={areaFilter} onValueChange={setAreaFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Almacén" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los almacenes</SelectItem>
+                {areas.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </Card>
+
+      <ExpiringBatchesPanel
+        companyId={companyId}
+        onChanged={() => {
+          refreshInventory();
+          refreshSummary();
+          refreshKardex();
+        }}
+      />
 
       {/* Lista de Productos con Kardex */}
       {loadingProducts && (
@@ -436,6 +488,12 @@ export function ProductKardex() {
                       <Badge className={stockStatus.bgColor + ' ' + stockStatus.color}>
                         Stock: {product.currentStock}
                       </Badge>
+                      {product.reserved > 0 && (
+                        <Badge variant="outline" title="Reservado por citas abiertas">
+                          Reservado {product.reserved} · Libre {Math.max(0, product.currentStock - product.reserved)}
+                        </Badge>
+                      )}
+                      {product.trackBatches && <Badge variant="secondary">Lotes</Badge>}
                     </div>
                     <p className="text-sm text-muted-foreground mb-2">
                       {product.category} • Costo: {formatCurrency(product.unitCost)} • 
@@ -647,6 +705,53 @@ export function ProductKardex() {
                     ({kardexData.kardex_balance}). Diferencia: {kardexDifference > 0 ? '+' : ''}{kardexDifference} und.
                   </AlertDescription>
                 </Alert>
+              )}
+
+              {kardexData?.by_area && kardexData.by_area.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Saldo por almacén</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {kardexData.by_area.map((row) => {
+                      const active = areaId != null && row.area_id === areaId;
+                      const mismatch = Math.abs(row.difference) > 0.0005;
+                      return (
+                        <button
+                          key={row.area_id ?? 'none'}
+                          type="button"
+                          onClick={() =>
+                            row.area_id != null && setAreaFilter(active ? 'all' : String(row.area_id))
+                          }
+                          className={`text-left rounded-lg border p-3 transition-colors ${
+                            active ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/20' : 'hover:bg-muted/50'
+                          }`}
+                        >
+                          <p className="text-sm font-medium">{row.area || 'Sin almacén'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Stock {row.stock}
+                            {row.reserved > 0 ? ` · reservado ${row.reserved}` : ''} · kardex {row.kardex}
+                          </p>
+                          {mismatch && (
+                            <p className="text-xs text-orange-600">
+                              Descuadre {row.difference > 0 ? '+' : ''}
+                              {row.difference}
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {selectedProduct.trackBatches && (
+                <ProductBatchesTable
+                  productId={selectedProduct.id}
+                  onChanged={() => {
+                    refreshKardex();
+                    refreshSummary();
+                    refreshInventory();
+                  }}
+                />
               )}
 
               {/* Tabla de Kardex */}

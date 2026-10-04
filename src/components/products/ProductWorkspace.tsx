@@ -746,6 +746,19 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label>Lotes y vencimientos</Label>
+                    <label className="flex h-9 items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={!!draft.trackBatches}
+                        onCheckedChange={(c) => patchDraft((p) => ({ ...p, trackBatches: c === true }))}
+                      />
+                      Controlar lotes (FEFO)
+                    </label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Las salidas consumen primero el lote que vence antes.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <Label>Área / almacén</Label>
                     <Select
                       value={draft.areaId ? String(draft.areaId) : 'none'}

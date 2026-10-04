@@ -12,15 +12,16 @@ import {
   SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
-import type { PurchaseOrder } from '../../hooks/usePurchases';
+import type { PurchaseOrder, ReceiveItemPayload } from '../../hooks/usePurchases';
 
 type AreaOpt = { id: number; name: string };
+type BatchInput = { batch_number: string; expiry_date: string };
 
 type Props = {
   purchase: PurchaseOrder;
   areas?: AreaOpt[];
   onReceive: (payload: {
-    items: { item_id?: number; product_id?: number; quantity: number; area_id?: number }[];
+    items: ReceiveItemPayload[];
     area_id?: number;
     invoice_number?: string;
     invoice_date?: string;
@@ -59,6 +60,7 @@ export function ReceivePurchaseDialog({
   );
   const [barcode, setBarcode] = useState('');
   const [qtys, setQtys] = useState<Record<string, string>>({});
+  const [batches, setBatches] = useState<Record<string, BatchInput>>({});
   const [busy, setBusy] = useState(false);
   const [attachmentName, setAttachmentName] = useState(purchase.invoice_attachment_name || '');
 
@@ -79,27 +81,52 @@ export function ReceivePurchaseDialog({
       purchase.items.map((it) => {
         const key = String(it.id ?? it.product_id);
         const pending = Math.max(0, it.quantity - (it.quantity_received || 0));
-        return { it, key, pending };
+        return { it, key, pending, tracksBatches: !!it.product?.track_batches };
       }),
     [purchase.items]
   );
 
   const areaNum = areaId ? Number(areaId) : undefined;
+  const hasBatchLines = lines.some((l) => l.tracksBatches && l.pending > 0);
 
-  const submitPartial = async () => {
-    const items = lines
-      .map(({ it, key, pending }) => {
-        const q = Math.min(pending, parseFloat(qtys[key] || '0') || 0);
+  const patchBatch = (key: string, patch: Partial<BatchInput>) =>
+    setBatches((prev) => ({
+      ...prev,
+      [key]: { batch_number: '', expiry_date: '', ...prev[key], ...patch },
+    }));
+
+  const buildItems = (useAllPending: boolean): ReceiveItemPayload[] =>
+    lines
+      .map(({ it, key, pending, tracksBatches }) => {
+        const q = useAllPending ? pending : Math.min(pending, parseFloat(qtys[key] || '0') || 0);
+        const batch = batches[key];
         return {
           item_id: it.id,
           product_id: it.product_id,
           quantity: q,
           area_id: areaNum,
+          batch_number: tracksBatches ? batch?.batch_number.trim() || undefined : undefined,
+          expiry_date: tracksBatches ? batch?.expiry_date || undefined : undefined,
         };
       })
       .filter((r) => r.quantity > 0);
 
+  const confirmMissingBatches = (items: ReceiveItemPayload[]): boolean => {
+    const missing = items.filter((item) => {
+      const line = lines.find((l) => l.it.id === item.item_id && l.it.product_id === item.product_id);
+      return line?.tracksBatches && !item.expiry_date;
+    });
+    if (missing.length === 0) return true;
+    return window.confirm(
+      `${missing.length} producto(s) controlan lotes y no tienen fecha de vencimiento. Se registrarán como "SIN-LOTE". ¿Continuar?`
+    );
+  };
+
+  const submitPartial = async () => {
+    const items = buildItems(false);
+
     if (items.length === 0) return;
+    if (!confirmMissingBatches(items)) return;
     setBusy(true);
     try {
       await onReceive({
@@ -116,6 +143,26 @@ export function ReceivePurchaseDialog({
   };
 
   const submitAll = async () => {
+    if (hasBatchLines) {
+      const items = buildItems(true);
+      if (items.length === 0) return;
+      if (!confirmMissingBatches(items)) return;
+      setBusy(true);
+      try {
+        await onReceive({
+          items,
+          area_id: areaNum,
+          invoice_number: invoiceNumber || undefined,
+          invoice_date: invoiceDate || undefined,
+          invoice_total: invoiceTotal ? parseFloat(invoiceTotal) : undefined,
+        });
+        onClose();
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     setBusy(true);
     try {
       await onReceiveAll({
@@ -285,24 +332,44 @@ export function ReceivePurchaseDialog({
 
         <div className="space-y-2 border rounded-lg p-3">
           <p className="text-sm font-semibold">Cantidades a recibir</p>
-          {lines.map(({ it, key, pending }) => (
-            <div key={key} className="flex items-center gap-2 text-sm">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{it.name || it.productName}</p>
-                <p className="text-xs text-muted-foreground">
-                  Pedido {it.quantity} · Recibido {it.quantity_received || 0} · Pendiente {pending}
-                </p>
+          {lines.map(({ it, key, pending, tracksBatches }) => (
+            <div key={key} className="space-y-1.5 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{it.name || it.productName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Pedido {it.quantity} · Recibido {it.quantity_received || 0} · Pendiente {pending}
+                  </p>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={pending}
+                  step="any"
+                  className="w-24 h-8"
+                  disabled={pending <= 0}
+                  value={qtys[key] ?? '0'}
+                  onChange={(e) => setQtys((prev) => ({ ...prev, [key]: e.target.value }))}
+                />
               </div>
-              <Input
-                type="number"
-                min={0}
-                max={pending}
-                step="any"
-                className="w-24 h-8"
-                disabled={pending <= 0}
-                value={qtys[key] ?? '0'}
-                onChange={(e) => setQtys((prev) => ({ ...prev, [key]: e.target.value }))}
-              />
+              {tracksBatches && pending > 0 && (
+                <div className="grid grid-cols-2 gap-2 pl-2 border-l-2 border-cyan-200">
+                  <Input
+                    className="h-8"
+                    placeholder="Nº de lote"
+                    maxLength={60}
+                    value={batches[key]?.batch_number ?? ''}
+                    onChange={(e) => patchBatch(key, { batch_number: e.target.value })}
+                  />
+                  <Input
+                    type="date"
+                    className="h-8"
+                    title="Fecha de vencimiento"
+                    value={batches[key]?.expiry_date ?? ''}
+                    onChange={(e) => patchBatch(key, { expiry_date: e.target.value })}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

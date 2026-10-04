@@ -127,10 +127,19 @@ export const API = {
     uploadImage: (id: string | number) => `/products/${id}/image`,
     deleteImage: (id: string | number) => `/products/${id}/image`,
     kardex: (id: string | number) => `/products/${id}/kardex`,
+    batches: (id: string | number) => `/products/${id}/batches`,
   },
   kardex: {
     summary: '/kardex/summary',
     export: '/kardex/export',
+  },
+  inventoryReports: {
+    shrinkage: '/inventory/reports/shrinkage',
+    margin: '/inventory/reports/margin',
+  },
+  batches: {
+    expiring: '/inventory/batches/expiring',
+    writeOff: (id: string | number) => `/inventory/batches/${id}/write-off`,
   },
   services: {
     list: '/services',

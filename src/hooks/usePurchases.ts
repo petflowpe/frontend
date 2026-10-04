@@ -7,7 +7,7 @@ import { fetchAllPages } from '../utils/api/fetchAllPages';
 export interface PurchaseOrderItem {
   id?: number;
   product_id: number;
-  product?: { id: number; name: string; code?: string; stock?: number };
+  product?: { id: number; name: string; code?: string; stock?: number; track_batches?: boolean };
   name?: string;
   productName?: string;
   quantity: number;
@@ -58,6 +58,15 @@ export interface PurchaseOrder {
   date?: string;
   deliveryDate?: string;
   invoice?: { number?: string; date?: string; amount?: number; tax?: number; total?: number };
+}
+
+export interface ReceiveItemPayload {
+  item_id?: number;
+  product_id?: number;
+  quantity: number;
+  area_id?: number;
+  batch_number?: string;
+  expiry_date?: string;
 }
 
 export interface PurchasePayment {
@@ -279,7 +288,7 @@ export function usePurchases(companyId?: number | null, options: { autoLoad?: bo
   const receivePurchase = async (
     id: number | string,
     payload: {
-      items: { item_id?: number; product_id?: number; quantity: number; area_id?: number }[];
+      items: ReceiveItemPayload[];
       area_id?: number;
       invoice_number?: string;
       invoice_date?: string;
