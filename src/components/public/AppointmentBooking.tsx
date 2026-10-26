@@ -28,12 +28,14 @@ import { toast } from 'sonner';
 import {
   fetchPublicBookingServices,
   fetchPublicAvailability,
+  fetchPortalBookingConfig,
   submitPublicBooking,
   mapPetTypeToSpecies,
   formatDateForApi,
   type PublicBookingService,
   type PublicTimeSlot,
 } from '../../utils/api/publicBooking';
+import { TurnstileWidget } from './TurnstileWidget';
 
 interface AppointmentBookingProps {
   isOpen: boolean;
@@ -71,16 +73,29 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [coverageNote, setCoverageNote] = useState<string | null>(null);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileRequired, setTurnstileRequired] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const selectedServiceData = services.find((s) => s.id === selectedService);
 
   useEffect(() => {
     if (!isOpen) return;
     setLoadingServices(true);
+    setTurnstileToken(null);
     fetchPublicBookingServices()
       .then(setServices)
       .catch(() => toast.error('No se pudo cargar el catálogo de servicios'))
       .finally(() => setLoadingServices(false));
+    fetchPortalBookingConfig()
+      .then((cfg) => {
+        setTurnstileSiteKey(cfg.turnstile_site_key ?? null);
+        setTurnstileRequired(!!cfg.turnstile_required);
+      })
+      .catch(() => {
+        setTurnstileSiteKey(null);
+        setTurnstileRequired(false);
+      });
   }, [isOpen]);
 
   const loadAvailability = useCallback(async () => {
@@ -194,6 +209,10 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
       toast.error('Por favor selecciona un método de pago');
       return;
     }
+    if (turnstileRequired && !turnstileToken) {
+      toast.error('Completa la verificación anti-bot');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -232,6 +251,8 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
           payment_method: paymentMethodLabel(appointmentData.paymentMethod),
           notes: appointmentData.observations.trim() || undefined,
         },
+        turnstile_token: turnstileToken || undefined,
+        cf_turnstile_response: turnstileToken || undefined,
       });
 
       setTrackingCode(result.tracking_code);
@@ -815,6 +836,13 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                     </div>
                   </div>
 
+                  {turnstileSiteKey && (
+                    <TurnstileWidget
+                      siteKey={turnstileSiteKey}
+                      onToken={setTurnstileToken}
+                    />
+                  )}
+
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setStep(3)} className="flex-1">
                       <ChevronLeft className="w-4 h-4 mr-2" />
@@ -822,7 +850,11 @@ export function AppointmentBooking({ isOpen, onClose, currentUser }: Appointment
                     </Button>
                     <Button
                       onClick={handleSubmit}
-                      disabled={!appointmentData.paymentMethod || submitting}
+                      disabled={
+                        !appointmentData.paymentMethod ||
+                        submitting ||
+                        (turnstileRequired && !turnstileToken)
+                      }
                       className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                     >
                       <Check className="w-4 h-4 mr-2" />
