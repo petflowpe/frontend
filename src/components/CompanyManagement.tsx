@@ -56,6 +56,7 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
   const [formData, setFormData] = useState<Partial<Company>>({
     razon_social: '',
     nombre_comercial: '',
+    booking_slug: '',
     ruc: '',
     direccion: '',
     ubigeo: '150101',
@@ -80,6 +81,7 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
     setFormData({
       razon_social: c.razon_social,
       nombre_comercial: c.nombre_comercial ?? '',
+      booking_slug: c.booking_slug ?? '',
       ruc: c.ruc,
       direccion: c.direccion ?? '',
       ubigeo: (c as any).ubigeo ?? '150101',
@@ -203,6 +205,9 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
                 <div>
                   <p className="font-semibold">{c.razon_social}</p>
                   <p className="text-sm text-muted-foreground">{c.ruc}</p>
+                  {c.booking_slug && (
+                    <p className="text-xs text-cyan-700 mt-1 font-mono">/{c.booking_slug}</p>
+                  )}
                   {c.distrito && (
                     <p className="text-xs text-muted-foreground mt-1">{c.distrito}, {c.provincia}</p>
                   )}
@@ -283,6 +288,28 @@ export function CompanyManagement({ currentUser = null }: CompanyManagementProps
                 onChange={(e) => setFormData({ ...formData, nombre_comercial: e.target.value })}
                 placeholder="Marca o nombre comercial"
               />
+            </div>
+            <div>
+              <Label>Slug portal de reservas</Label>
+              <Input
+                value={formData.booking_slug ?? ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    booking_slug: e.target.value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9-]/g, '')
+                      .replace(/--+/g, '-'),
+                  })
+                }
+                placeholder="mi-clinica"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                URL pública:{' '}
+                <span className="font-mono">
+                  /public/booking/{formData.booking_slug || 'tu-slug'}
+                </span>
+              </p>
             </div>
             <div>
               <Label>Dirección *</Label>

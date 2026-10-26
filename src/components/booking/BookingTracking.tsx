@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Separator } from '../ui/separator';
 import {
   fetchPublicTracking,
+  requestTrackingOtp,
   type PublicTrackingData,
 } from '../../utils/api/publicBooking';
 
@@ -39,15 +40,19 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
   const initialCode = (bookingCode || readCodeFromUrl() || '').toUpperCase();
   const [codeInput, setCodeInput] = useState(initialCode);
   const [phoneInput, setPhoneInput] = useState(readPhoneFromUrl());
+  const [otpInput, setOtpInput] = useState('');
   const [activeCode, setActiveCode] = useState(initialCode);
   const [activePhone, setActivePhone] = useState(readPhoneFromUrl());
+  const [activeOtp, setActiveOtp] = useState('');
   const [data, setData] = useState<PublicTrackingData | null>(null);
   const [loading, setLoading] = useState(Boolean(initialCode));
+  const [otpSending, setOtpSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async (code: string, phone?: string) => {
+  const load = async (code: string, phone?: string, otp?: string) => {
     const normalized = code.trim().toUpperCase();
     const phoneDigits = (phone ?? phoneInput).trim();
+    const otpDigits = (otp ?? otpInput).trim();
     if (!normalized) {
       setError('Ingresa un código de seguimiento (ej. SPT-XXXXXX)');
       setData(null);
@@ -58,10 +63,12 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
     try {
       const tracking = await fetchPublicTracking(normalized, {
         phone: phoneDigits || undefined,
+        otp: otpDigits || undefined,
       });
       setData(tracking);
       setActiveCode(normalized);
       setActivePhone(phoneDigits);
+      setActiveOtp(otpDigits);
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.set('tab', 'public-tracking');
@@ -78,6 +85,27 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
     }
   };
 
+  const sendOtp = async () => {
+    const normalized = codeInput.trim().toUpperCase();
+    if (!normalized) {
+      toast.error('Ingresa el código de seguimiento primero');
+      return;
+    }
+    setOtpSending(true);
+    try {
+      const res = await requestTrackingOtp(normalized);
+      toast.success(
+        res.hint
+          ? `Código enviado (${res.hint})`
+          : 'Si la reserva existe, enviamos un código de verificación'
+      );
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo enviar el OTP');
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
   useEffect(() => {
     if (activeCode) {
       void load(activeCode);
@@ -88,11 +116,11 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
   useEffect(() => {
     if (!activeCode) return;
     const timer = setInterval(() => {
-      void load(activeCode, activePhone);
+      void load(activeCode, activePhone, activeOtp);
     }, 30000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCode, activePhone]);
+  }, [activeCode, activePhone, activeOtp]);
 
   const statusInfo = useMemo(() => {
     const status = data?.status || 'confirmed';
@@ -175,7 +203,7 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void load(codeInput, phoneInput);
+                if (e.key === 'Enter') void load(codeInput, phoneInput, otpInput);
               }}
             />
             <input
@@ -186,10 +214,20 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
               value={phoneInput}
               onChange={(e) => setPhoneInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void load(codeInput, phoneInput);
+                if (e.key === 'Enter') void load(codeInput, phoneInput, otpInput);
               }}
             />
-            <Button onClick={() => void load(codeInput, phoneInput)} disabled={loading}>
+            <input
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none ring-cyan-500 focus:ring-2 sm:max-w-[8rem]"
+              placeholder="OTP"
+              inputMode="numeric"
+              value={otpInput}
+              onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void load(codeInput, phoneInput, otpInput);
+              }}
+            />
+            <Button onClick={() => void load(codeInput, phoneInput, otpInput)} disabled={loading}>
               {loading ? (
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -199,15 +237,22 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
             </Button>
             <Button
               variant="outline"
+              disabled={!codeInput || otpSending}
+              onClick={() => void sendOtp()}
+            >
+              {otpSending ? 'Enviando…' : 'Enviar OTP'}
+            </Button>
+            <Button
+              variant="outline"
               disabled={!activeCode || loading}
-              onClick={() => void load(activeCode, activePhone)}
+              onClick={() => void load(activeCode, activePhone, activeOtp)}
               aria-label="Actualizar"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Con el teléfono (o últimos 4 dígitos) verás dirección y detalle completo.
+            Teléfono (últ. 4) u OTP por correo desbloquean la dirección completa.
           </p>
           {error && (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-red-600">

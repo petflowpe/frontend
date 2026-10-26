@@ -98,6 +98,9 @@ export interface PublicBookingPayload {
   };
   /** Honeypot anti-bot: siempre vacío */
   website?: string;
+  /** Token Cloudflare Turnstile (si está habilitado en backend) */
+  turnstile_token?: string;
+  cf_turnstile_response?: string;
 }
 
 export interface PortalSettings {
@@ -117,6 +120,8 @@ export interface PortalBookingConfig {
   company_name?: string | null;
   working_hours?: Record<string, { open: boolean; start: string; end: string }> | null;
   portal_settings: PortalSettings;
+  turnstile_site_key?: string | null;
+  turnstile_required?: boolean;
 }
 
 export interface PublicTrackingData {
@@ -167,6 +172,8 @@ export async function fetchPortalBookingConfig(): Promise<PortalBookingConfig> {
     company_id: data?.company_id ?? 1,
     booking_slug: data?.booking_slug ?? null,
     company_name: data?.company_name ?? null,
+    turnstile_site_key: data?.turnstile_site_key ?? null,
+    turnstile_required: !!data?.turnstile_required,
     working_hours: data?.working_hours ?? null,
     portal_settings: {
       guest_booking_enabled: false,
@@ -297,20 +304,32 @@ export async function submitPublicBooking(
 
 export async function fetchPublicTracking(
   code: string,
-  options?: { phone?: string }
+  options?: { phone?: string; otp?: string }
 ): Promise<PublicTrackingData> {
   const normalized = encodeURIComponent(code.trim().toUpperCase());
   const phone = options?.phone?.trim();
-  const query = phone ? { phone } : undefined;
+  const otp = options?.otp?.trim();
+  const query: Record<string, string> = {};
+  if (phone) query.phone = phone;
+  if (otp) query.otp = otp;
   const res = await apiClient.getPublic<{ success?: boolean; data?: PublicTrackingData }>(
     `${publicBookingBasePath()}/track/${normalized}`,
-    query
+    Object.keys(query).length ? query : undefined
   );
   const data = unwrapData(res);
   if (!data?.code) {
     throw new Error('Reserva no encontrada');
   }
   return data;
+}
+
+export async function requestTrackingOtp(code: string): Promise<{ sent?: boolean; hint?: string; channel?: string }> {
+  const normalized = encodeURIComponent(code.trim().toUpperCase());
+  const res = await apiClient.postPublic<{
+    success?: boolean;
+    data?: { sent?: boolean; hint?: string; channel?: string };
+  }>(`${publicBookingBasePath()}/track/${normalized}/otp`, {});
+  return unwrapData(res) ?? { sent: true };
 }
 
 export function mapPetTypeToSpecies(petType: string): 'Perro' | 'Gato' | 'Otro' {

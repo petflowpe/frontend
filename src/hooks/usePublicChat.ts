@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient } from '../utils/api/client';
+import { getPublicBookingSlug } from '../utils/api/publicBooking';
 
 const GUEST_TOKEN_KEY = 'smartpet_chat_guest_token';
+
+function publicChatBase(): string {
+  const slug = getPublicBookingSlug();
+  return slug ? `/public/chat/${encodeURIComponent(slug)}` : '/public/chat';
+}
 
 export interface ChatMessageDto {
   id: string;
@@ -50,7 +56,8 @@ export function usePublicChat(isOpen: boolean) {
   const init = useCallback(async () => {
     setLoading(true);
     try {
-      const cfgRes = await apiClient.getPublic<{ data: ChatConfig }>('/public/chat/config');
+      const base = publicChatBase();
+      const cfgRes = await apiClient.getPublic<{ data: ChatConfig }>(`${base}/config`);
       const cfg = unwrap(cfgRes);
       setConfig(cfg);
       if (!cfg.enabled) {
@@ -63,7 +70,7 @@ export function usePublicChat(isOpen: boolean) {
 
       const startRes = await apiClient.postPublic<{
         data: { guest_token: string; messages: ChatMessageDto[] };
-      }>('/public/chat/start', { guest_token: stored || undefined });
+      }>(`${base}/start`, { guest_token: stored || undefined });
 
       const data = unwrap(startRes);
       const token = data.guest_token;

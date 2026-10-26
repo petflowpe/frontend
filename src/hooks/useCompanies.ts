@@ -8,6 +8,8 @@ export interface Company {
   ruc: string;
   razon_social: string;
   nombre_comercial?: string;
+  /** Slug público del portal: /public/booking/{slug} */
+  booking_slug?: string | null;
   direccion?: string;
   ubigeo?: string;
   distrito?: string;
