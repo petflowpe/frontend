@@ -30,16 +30,24 @@ function readCodeFromUrl(): string {
   return new URLSearchParams(window.location.search).get('code')?.trim() || '';
 }
 
+function readPhoneFromUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('phone')?.trim() || '';
+}
+
 export function BookingTracking({ bookingCode }: BookingTrackingProps) {
   const initialCode = (bookingCode || readCodeFromUrl() || '').toUpperCase();
   const [codeInput, setCodeInput] = useState(initialCode);
+  const [phoneInput, setPhoneInput] = useState(readPhoneFromUrl());
   const [activeCode, setActiveCode] = useState(initialCode);
+  const [activePhone, setActivePhone] = useState(readPhoneFromUrl());
   const [data, setData] = useState<PublicTrackingData | null>(null);
   const [loading, setLoading] = useState(Boolean(initialCode));
   const [error, setError] = useState<string | null>(null);
 
-  const load = async (code: string) => {
+  const load = async (code: string, phone?: string) => {
     const normalized = code.trim().toUpperCase();
+    const phoneDigits = (phone ?? phoneInput).trim();
     if (!normalized) {
       setError('Ingresa un código de seguimiento (ej. SPT-XXXXXX)');
       setData(null);
@@ -48,13 +56,18 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
     setLoading(true);
     setError(null);
     try {
-      const tracking = await fetchPublicTracking(normalized);
+      const tracking = await fetchPublicTracking(normalized, {
+        phone: phoneDigits || undefined,
+      });
       setData(tracking);
       setActiveCode(normalized);
+      setActivePhone(phoneDigits);
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.set('tab', 'public-tracking');
         url.searchParams.set('code', normalized);
+        if (phoneDigits) url.searchParams.set('phone', phoneDigits);
+        else url.searchParams.delete('phone');
         window.history.replaceState({}, '', url.toString());
       }
     } catch (e: any) {
@@ -75,11 +88,11 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
   useEffect(() => {
     if (!activeCode) return;
     const timer = setInterval(() => {
-      void load(activeCode);
+      void load(activeCode, activePhone);
     }, 30000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCode]);
+  }, [activeCode, activePhone]);
 
   const statusInfo = useMemo(() => {
     const status = data?.status || 'confirmed';
@@ -162,10 +175,21 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void load(codeInput);
+                if (e.key === 'Enter') void load(codeInput, phoneInput);
               }}
             />
-            <Button onClick={() => void load(codeInput)} disabled={loading}>
+            <input
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none ring-cyan-500 focus:ring-2 sm:max-w-[10rem]"
+              placeholder="Tel. (últ. 4)"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void load(codeInput, phoneInput);
+              }}
+            />
+            <Button onClick={() => void load(codeInput, phoneInput)} disabled={loading}>
               {loading ? (
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -176,16 +200,25 @@ export function BookingTracking({ bookingCode }: BookingTrackingProps) {
             <Button
               variant="outline"
               disabled={!activeCode || loading}
-              onClick={() => void load(activeCode)}
+              onClick={() => void load(activeCode, activePhone)}
               aria-label="Actualizar"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Con el teléfono (o últimos 4 dígitos) verás dirección y detalle completo.
+          </p>
           {error && (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-red-600">
               <AlertCircle className="h-4 w-4" />
               {error}
+            </p>
+          )}
+          {data && data.verified === false && (
+            <p className="mt-2 flex items-center gap-1.5 text-sm text-amber-700">
+              <ShieldCheck className="h-4 w-4" />
+              Vista limitada. Ingresa el teléfono de la reserva para ver la dirección.
             </p>
           )}
         </div>

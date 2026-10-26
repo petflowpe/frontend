@@ -244,6 +244,17 @@ export const API = {
     availability: '/public/booking/availability',
     store: '/public/booking',
     track: (code: string) => `/public/booking/track/${encodeURIComponent(code)}`,
+    /** Multi-tenant: /public/booking/{slug}/... */
+    forSlug: (slug: string) => {
+      const s = encodeURIComponent(slug.trim().toLowerCase());
+      return {
+        config: `/public/booking/${s}/config`,
+        services: `/public/booking/${s}/services`,
+        availability: `/public/booking/${s}/availability`,
+        store: `/public/booking/${s}`,
+        track: (code: string) => `/public/booking/${s}/track/${encodeURIComponent(code)}`,
+      };
+    },
   },
   booking: {
     availability: '/booking/availability',

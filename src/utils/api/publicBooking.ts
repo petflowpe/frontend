@@ -3,6 +3,22 @@ import { getStoredCompanyId } from '../appointmentMappers';
 
 let cachedPortalCompanyId: number | null = null;
 
+/** Slug multi-tenant del portal (VITE_PUBLIC_BOOKING_SLUG o ?company=). */
+export function getPublicBookingSlug(): string {
+  const fromEnv = String(import.meta.env.VITE_PUBLIC_BOOKING_SLUG || '').trim().toLowerCase();
+  if (fromEnv) return fromEnv;
+  if (typeof window !== 'undefined') {
+    const q = new URLSearchParams(window.location.search).get('company')?.trim().toLowerCase();
+    if (q) return q;
+  }
+  return '';
+}
+
+function publicBookingBasePath(): string {
+  const slug = getPublicBookingSlug();
+  return slug ? `/public/booking/${encodeURIComponent(slug)}` : '/public/booking';
+}
+
 export interface PublicBookingService {
   id: string;
   code: string;
@@ -80,6 +96,8 @@ export interface PublicBookingPayload {
     payment_method?: string;
     notes?: string;
   };
+  /** Honeypot anti-bot: siempre vacío */
+  website?: string;
 }
 
 export interface PortalSettings {
@@ -95,6 +113,8 @@ export interface PortalSettings {
 
 export interface PortalBookingConfig {
   company_id: number;
+  booking_slug?: string | null;
+  company_name?: string | null;
   working_hours?: Record<string, { open: boolean; start: string; end: string }> | null;
   portal_settings: PortalSettings;
 }
@@ -103,9 +123,10 @@ export interface PublicTrackingData {
   code: string;
   status: string;
   status_label: string;
-  service: { name: string; price: number };
+  verified?: boolean;
+  service: { name: string; price: number | null };
   pet: { name?: string; breed?: string; species?: string };
-  schedule: { date?: string; time?: string; address?: string; district?: string };
+  schedule: { date?: string; time?: string; address?: string | null; district?: string };
   driver?: { name: string; vehicle?: string; phone?: string | null } | null;
 }
 
@@ -124,7 +145,7 @@ export async function getPortalCompanyId(hint?: number | null): Promise<number> 
   if (cachedPortalCompanyId) return cachedPortalCompanyId;
   try {
     const res = await apiClient.getPublic<{ data?: { company_id?: number }; company_id?: number }>(
-      '/public/booking/config'
+      `${publicBookingBasePath()}/config`
     );
     const id = res?.data?.company_id ?? res?.company_id;
     if (id != null && Number.isInteger(id) && id > 0) {
@@ -138,10 +159,14 @@ export async function getPortalCompanyId(hint?: number | null): Promise<number> 
 }
 
 export async function fetchPortalBookingConfig(): Promise<PortalBookingConfig> {
-  const res = await apiClient.getPublic<{ data?: PortalBookingConfig }>('/public/booking/config');
+  const res = await apiClient.getPublic<{ data?: PortalBookingConfig }>(
+    `${publicBookingBasePath()}/config`
+  );
   const data = unwrapData(res);
   return {
     company_id: data?.company_id ?? 1,
+    booking_slug: data?.booking_slug ?? null,
+    company_name: data?.company_name ?? null,
     working_hours: data?.working_hours ?? null,
     portal_settings: {
       guest_booking_enabled: false,
@@ -185,7 +210,7 @@ export async function payAppointmentAdvance(
 
 export async function fetchPublicBookingServices(): Promise<PublicBookingService[]> {
   const res = await apiClient.getPublic<{ success?: boolean; data?: PublicBookingService[] }>(
-    '/public/booking/services'
+    `${publicBookingBasePath()}/services`
   );
   return unwrapData(res) ?? [];
 }
@@ -211,7 +236,7 @@ export async function fetchAvailability(
   };
 
   const usePublic = options?.public ?? false;
-  const path = usePublic ? '/public/booking/availability' : '/booking/availability';
+  const path = usePublic ? `${publicBookingBasePath()}/availability` : '/booking/availability';
 
   const res = usePublic
     ? await apiClient.getPublic<{ success?: boolean; data?: AvailabilityResponse }>(path, query)
@@ -258,7 +283,10 @@ export async function submitPublicBooking(
     success?: boolean;
     data?: { tracking_code: string; appointment_id: number };
     message?: string;
-  }>('/public/booking', payload);
+  }>(publicBookingBasePath(), {
+    ...payload,
+    website: '',
+  });
 
   const data = unwrapData(res);
   if (!data?.tracking_code) {
@@ -267,10 +295,16 @@ export async function submitPublicBooking(
   return data;
 }
 
-export async function fetchPublicTracking(code: string): Promise<PublicTrackingData> {
+export async function fetchPublicTracking(
+  code: string,
+  options?: { phone?: string }
+): Promise<PublicTrackingData> {
   const normalized = encodeURIComponent(code.trim().toUpperCase());
+  const phone = options?.phone?.trim();
+  const query = phone ? { phone } : undefined;
   const res = await apiClient.getPublic<{ success?: boolean; data?: PublicTrackingData }>(
-    `/public/booking/track/${normalized}`
+    `${publicBookingBasePath()}/track/${normalized}`,
+    query
   );
   const data = unwrapData(res);
   if (!data?.code) {
