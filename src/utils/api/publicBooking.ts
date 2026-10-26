@@ -160,6 +160,14 @@ export async function getPortalCompanyId(hint?: number | null): Promise<number> 
   } catch {
     // fallback abajo
   }
+  const envId = Number(import.meta.env.VITE_PUBLIC_COMPANY_ID || 0);
+  if (Number.isInteger(envId) && envId > 0) return envId;
+  // Legacy PE single-tenant: empresa 1. Preferir VITE_PUBLIC_BOOKING_SLUG en multi-tenant.
+  if (import.meta.env.DEV) {
+    console.warn(
+      '[booking] Sin slug/config de empresa; usando company_id=1. Define VITE_PUBLIC_BOOKING_SLUG.'
+    );
+  }
   return 1;
 }
 
